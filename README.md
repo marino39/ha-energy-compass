@@ -17,6 +17,8 @@ To try a source-independent synthetic setup, choose `Synthetic`, `EUR`, `UTC`, t
 
 ## What it shows
 
+Read the [HTML entity and calculation guide](docs/index.html) for every entity, state, formula, quality flag and worked example. To view it as a webpage, download or clone this repository and open `docs/index.html` in a browser. The guide works offline, includes English and Polish entity names, and follows your system's light or dark theme.
+
 The integration creates current consumption level and extra-kWh cost sensors, optimized machine state and cost sensors, next change and next `BOOST`/`CHEAP`/`LIMIT` window timestamps, a plan with a bounded outlook, optimizer status, and a forecast-valid binary sensor. Native entity names, diagnostics, and reasons are translated into English and Polish. Automations should compare level and machine state values using their stable uppercase names.
 
 Window alerts require **Notify enabled** in integration options and a nonempty action selected in the [optional blueprint](docs/installation.md#opt-in-notifications). The blueprint uses live integration preferences unless its override toggle is on. It handles favorable and `LIMIT` windows only. The integration does not execute actions.
