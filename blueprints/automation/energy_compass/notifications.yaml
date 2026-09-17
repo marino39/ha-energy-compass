@@ -1,0 +1,335 @@
+blueprint:
+  name: Energy Compass window notifications
+  description: >-
+    Opt-in alerts for favorable use and approaching LIMIT windows. Select entities
+    from one Energy Compass installation, five dedicated persistent helpers, and
+    your notification action. The integration itself never sends an action.
+  domain: automation
+  homeassistant:
+    min_version: 2026.9.1
+  input:
+    compass:
+      name: Consumption compass
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    plan:
+      name: Plan
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    forecast_valid:
+      name: Forecast valid
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+    next_boost:
+      name: Next BOOST start
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    next_cheap:
+      name: Next CHEAP start
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    next_limit:
+      name: Next LIMIT start
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    last_favorable:
+      name: Last favorable window start
+      description: Dedicated Text helper with maximum length at least 20.
+      selector:
+        entity:
+          filter:
+            domain: input_text
+    last_limit:
+      name: Last LIMIT window start
+      description: Dedicated Text helper with maximum length at least 20.
+      selector:
+        entity:
+          filter:
+            domain: input_text
+    daily_count:
+      name: Daily notification count
+      description: Dedicated Number helper with step 1 and maximum at least the daily cap.
+      selector:
+        entity:
+          filter:
+            domain: input_number
+    daily_date:
+      name: Last local date
+      description: Dedicated Date and/or time helper with date only.
+      selector:
+        entity:
+          filter:
+            domain: input_datetime
+    last_sent:
+      name: Last notification time
+      description: Dedicated Date and/or time helper with both date and time.
+      selector:
+        entity:
+          filter:
+            domain: input_datetime
+    use_blueprint_overrides:
+      name: Override integration notification settings
+      description: >-
+        Off uses the current Energy Compass notification preferences. On uses the
+        settings below, while Notify enabled in the integration still controls
+        whether any action can run.
+      default: false
+      selector:
+        boolean: {}
+    enabled_events:
+      name: Enabled events
+      description: Used only when blueprint overrides are enabled.
+      default:
+        - favorable
+        - limit
+      selector:
+        select:
+          multiple: true
+          options:
+            - label: Favorable use
+              value: favorable
+            - label: Approaching LIMIT
+              value: limit
+    minimum_hours:
+      name: Minimum favorable window duration
+      description: Used only when blueprint overrides are enabled.
+      default: 2
+      selector:
+        number:
+          min: 0
+          max: 48
+          step: 0.25
+          unit_of_measurement: h
+          mode: box
+    limit_lead_minutes:
+      name: LIMIT lead time
+      description: Used only when blueprint overrides are enabled.
+      default: 30
+      selector:
+        number:
+          min: 0
+          max: 1440
+          step: 1
+          unit_of_measurement: min
+          mode: box
+    quiet_start:
+      name: Quiet hours start
+      description: Used only when blueprint overrides are enabled.
+      default: "22:00:00"
+      selector:
+        time: {}
+    quiet_end:
+      name: Quiet hours end
+      description: Used only when blueprint overrides are enabled.
+      default: "08:00:00"
+      selector:
+        time: {}
+    cooldown_minutes:
+      name: Cooldown
+      description: Used only when blueprint overrides are enabled.
+      default: 60
+      selector:
+        number:
+          min: 0
+          max: 1440
+          step: 1
+          unit_of_measurement: min
+          mode: box
+    daily_cap:
+      name: Daily cap
+      description: Used only when blueprint overrides are enabled.
+      default: 3
+      selector:
+        number:
+          min: 0
+          max: 100
+          step: 1
+          mode: box
+    notification_actions:
+      name: Notification actions
+      description: Select a local Event action while testing.
+      default: []
+      selector:
+        action: {}
+
+mode: single
+max_exceeded: silent
+
+variables:
+  compass_entity: !input compass
+  plan_entity: !input plan
+  forecast_valid_entity: !input forecast_valid
+  last_favorable_entity: !input last_favorable
+  last_limit_entity: !input last_limit
+  daily_count_entity: !input daily_count
+  daily_date_entity: !input daily_date
+  last_sent_entity: !input last_sent
+  use_blueprint_overrides: !input use_blueprint_overrides
+  blueprint_enabled_events: !input enabled_events
+  blueprint_minimum_hours: !input minimum_hours
+  blueprint_limit_lead_minutes: !input limit_lead_minutes
+  blueprint_quiet_start: !input quiet_start
+  blueprint_quiet_end: !input quiet_end
+  blueprint_cooldown_minutes: !input cooldown_minutes
+  blueprint_daily_cap: !input daily_cap
+  configured_actions: !input notification_actions
+
+triggers:
+  - trigger: state
+    entity_id: !input plan
+  - trigger: state
+    entity_id: !input forecast_valid
+  - trigger: state
+    entity_id: !input next_boost
+  - trigger: state
+    entity_id: !input next_cheap
+  - trigger: state
+    entity_id: !input next_limit
+  - trigger: time_pattern
+    minutes: "/1"
+
+actions:
+  - condition: template
+    value_template: >-
+      {{ is_state(forecast_valid_entity, 'on') and has_value(plan_entity) }}
+  - condition: template
+    value_template: >-
+      {% set preferences = state_attr(plan_entity, 'notification_preferences') %}
+      {{ preferences is mapping
+         and preferences.get('notify_enabled') == true
+         and 'notify_events' in preferences
+         and 'notify_minimum_hours' in preferences
+         and 'notify_limit_lead_minutes' in preferences
+         and 'notify_daily_max' in preferences
+         and 'notify_cooldown_minutes' in preferences
+         and 'quiet_start' in preferences
+         and 'quiet_end' in preferences }}
+  - condition: template
+    value_template: "{{ configured_actions | count > 0 }}"
+  - variables:
+      notification_preferences: "{{ state_attr(plan_entity, 'notification_preferences') }}"
+  - variables:
+      enabled_events: "{{ blueprint_enabled_events if use_blueprint_overrides else notification_preferences.notify_events }}"
+      minimum_hours: "{{ blueprint_minimum_hours if use_blueprint_overrides else notification_preferences.notify_minimum_hours }}"
+      limit_lead_minutes: "{{ blueprint_limit_lead_minutes if use_blueprint_overrides else notification_preferences.notify_limit_lead_minutes }}"
+      quiet_start: "{{ blueprint_quiet_start if use_blueprint_overrides else notification_preferences.quiet_start }}"
+      quiet_end: "{{ blueprint_quiet_end if use_blueprint_overrides else notification_preferences.quiet_end }}"
+      cooldown_minutes: "{{ blueprint_cooldown_minutes if use_blueprint_overrides else notification_preferences.notify_cooldown_minutes }}"
+      daily_cap: "{{ blueprint_daily_cap if use_blueprint_overrides else notification_preferences.notify_daily_max }}"
+  - variables:
+      current_level: "{{ states(compass_entity) }}"
+      local_day: "{{ now().date().isoformat() }}"
+      favorable_rows: "{{ state_attr(plan_entity, 'favorable_windows') or [] }}"
+      limit_rows: "{{ (state_attr(plan_entity, 'windows') or {}).get('limit', []) }}"
+  - variables:
+      favorable_start: "{{ (favorable_rows | first | default({}, true)).get('start', '') }}"
+      favorable_end: "{{ (favorable_rows | first | default({}, true)).get('end', '') }}"
+      limit_candidate: >-
+        {%- set candidate = namespace(row={}) -%}
+        {%- set previous = states(last_limit_entity) | float(-9999999) -%}
+        {%- for row in limit_rows -%}
+          {%- set start = as_timestamp(row.start, 0) -%}
+          {%- if not candidate.row
+             and as_timestamp(row.end, 0) > as_timestamp(now())
+             and start <= as_timestamp(now()) + (limit_lead_minutes | float) * 60
+             and (start - previous) | abs >= 1800 -%}
+            {%- set candidate.row = row -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ candidate.row }}
+  - variables:
+      limit_start: "{{ limit_candidate.get('start', '') }}"
+      limit_end: "{{ limit_candidate.get('end', '') }}"
+  - condition: template
+    value_template: >-
+      {% set count = states(daily_count_entity) %}
+      {% set day = states(daily_date_entity) %}
+      {% set sent = states(last_sent_entity) %}
+      {{ states(last_favorable_entity) != 'unavailable'
+         and states(last_limit_entity) != 'unavailable'
+         and count not in ['unknown', 'unavailable', '']
+         and day != 'unavailable'
+         and sent != 'unavailable'
+         and (day not in ['unknown', ''] or count | int == 0)
+         and (sent not in ['unknown', ''] or count | int == 0) }}
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ 'limit' in enabled_events
+                 and limit_start
+                 and as_timestamp(limit_end, 0) > as_timestamp(now())
+                 and as_timestamp(limit_start, 0) <= as_timestamp(now()) + limit_lead_minutes | float * 60 }}
+        sequence:
+          - variables:
+              event_kind: limit
+              window_start: "{{ as_timestamp(limit_start) | int }}"
+              key_entity: "{{ last_limit_entity }}"
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ 'favorable' in enabled_events
+                 and favorable_start
+                 and as_timestamp(favorable_start, 0) <= as_timestamp(now())
+                 and as_timestamp(favorable_end, 0) > as_timestamp(now())
+                 and as_timestamp(favorable_end, 0) - as_timestamp(favorable_start, 0)
+                     >= minimum_hours | float * 3600 }}
+        sequence:
+          - variables:
+              event_kind: favorable
+              window_start: "{{ as_timestamp(favorable_start) | int }}"
+              key_entity: "{{ last_favorable_entity }}"
+    default:
+      - stop: No eligible window
+  - condition: template
+    value_template: >-
+      {% set time = now().strftime('%H:%M:%S') %}
+      {% set start = quiet_start | string %}
+      {% set end = quiet_end | string %}
+      {{ start == end or (not (start <= time < end) if start < end else not (time >= start or time < end)) }}
+  - variables:
+      today_count: >-
+        {{ states(daily_count_entity) | int(0) if states(daily_date_entity) == local_day else 0 }}
+  - condition: template
+    value_template: >-
+      {{ today_count | int < daily_cap | int
+         and (states(key_entity) in ['unknown', '']
+              or (window_start | float - states(key_entity) | float(-9999999)) | abs >= 1800)
+         and (states(last_sent_entity) in ['unknown', '']
+              or as_timestamp(now()) - (state_attr(last_sent_entity, 'timestamp') | float(0))
+                 >= cooldown_minutes | float * 60) }}
+  - action: input_text.set_value
+    target:
+      entity_id: "{{ key_entity }}"
+    data:
+      value: "{{ window_start | int }}"
+  - action: input_number.set_value
+    target:
+      entity_id: "{{ daily_count_entity }}"
+    data:
+      value: "{{ today_count | int + 1 }}"
+  - action: input_datetime.set_datetime
+    target:
+      entity_id: "{{ daily_date_entity }}"
+    data:
+      date: "{{ local_day }}"
+  - action: input_datetime.set_datetime
+    target:
+      entity_id: "{{ last_sent_entity }}"
+    data:
+      timestamp: "{{ as_timestamp(now()) }}"
+  - choose:
+      - conditions: "{{ true }}"
+        sequence: !input notification_actions

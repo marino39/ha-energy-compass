@@ -1,0 +1,12 @@
+{
+  "domain": "energy_compass",
+  "name": "Energy Compass",
+  "version": "0.1.0",
+  "config_flow": true,
+  "documentation": "https://github.com/marino39/ha-energy-compass",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "dependencies": ["recorder"],
+  "requirements": ["scipy==1.18.1"],
+  "codeowners": ["@marino39"]
+}

@@ -1,0 +1,858 @@
+{
+  "title": "Energy Compass",
+  "config": {
+    "step": {
+      "user": {
+        "title": "User",
+        "data": {
+          "name": "Name",
+          "currency": "Currency",
+          "timezone": "Timezone",
+          "preset": "Preset",
+          "pv_enabled": "Pv enabled",
+          "battery_enabled": "Battery enabled"
+        }
+      },
+      "installation": {
+        "title": "Installation",
+        "data": {
+          "name": "Name",
+          "currency": "Currency",
+          "timezone": "Timezone",
+          "preset": "Preset",
+          "pv_enabled": "Pv enabled",
+          "battery_enabled": "Battery enabled"
+        }
+      },
+      "sources": {
+        "title": "Source bindings",
+        "data": {
+          "target": "Target",
+          "mode": "Mode",
+          "operation": "Operation",
+          "group": "Group"
+        },
+        "description": "Select import, export, household load and enabled PV/SOC. Append merges today/tomorrow continuations; consecutive PV groups add independent arrays. Optional measurements are diagnostic only; throughput_today enforces a daily battery budget. Fixed prices and daily load are edited in Tariffs and Load forecasting."
+      },
+      "source_entity": {
+        "title": "Source entity",
+        "data": {
+          "entity_id": "Entity id"
+        }
+      },
+      "source_attribute": {
+        "title": "Source attribute",
+        "data": {
+          "attribute": "Attribute"
+        }
+      },
+      "source_mapping": {
+        "title": "Source mapping",
+        "data": {
+          "value_path": "Value path",
+          "start_path": "Start path",
+          "end_path": "End path",
+          "duration_path": "Duration path",
+          "unit_path": "Unit path",
+          "published_path": "Published path",
+          "interval_minutes": "Interval minutes",
+          "unit": "Unit",
+          "value_kind": "Value kind",
+          "value_sign": "Value sign",
+          "source_timezone": "Source timezone",
+          "check_age": "Check age",
+          "max_age_hours": "Max age hours"
+        },
+        "description": "{sample_status}. Paths refer to data fields only. {detail}"
+      },
+      "source_measurement": {
+        "title": "Source measurement",
+        "data": {
+          "unit": "Unit",
+          "sign": "Sign",
+          "timestamp_path": "Timestamp path",
+          "max_age_seconds": "Max age seconds"
+        }
+      },
+      "source_statistic": {
+        "title": "Source statistic",
+        "data": {
+          "statistic_id": "Statistic id",
+          "unit": "Unit",
+          "sign": "Sign"
+        }
+      },
+      "helpers": {
+        "title": "Numeric helper bindings",
+        "data": {
+          "setting": "Setting",
+          "mode": "Mode"
+        }
+      },
+      "helper_entity": {
+        "title": "Helper entity",
+        "data": {
+          "entity_id": "Entity id"
+        }
+      },
+      "helper_value": {
+        "title": "Helper value",
+        "data": {
+          "attribute": "Attribute",
+          "source_unit": "Source unit",
+          "multiplier": "Multiplier",
+          "check_age": "Check age",
+          "max_age_hours": "Max age hours"
+        },
+        "description": "Disable age checking for manual helpers that legitimately remain unchanged. Unavailable sources always fail. {detail}"
+      },
+      "preview": {
+        "title": "Preview and save",
+        "data": {
+          "confirm": "Confirm"
+        },
+        "description": "{preview}"
+      },
+      "battery": {
+        "title": "Battery",
+        "data": {
+          "capacity_kwh": "Capacity kwh",
+          "hardware_floor": "Hardware floor",
+          "operating_floor": "Operating floor",
+          "soc_ceiling": "Soc ceiling",
+          "charge_kw": "Charge kw",
+          "discharge_kw": "Discharge kw",
+          "eta_charge": "Eta charge",
+          "eta_discharge": "Eta discharge",
+          "wear_per_kwh": "Wear per kwh",
+          "daily_cycles": "Daily cycles",
+          "soc_max_age_seconds": "Soc max age seconds",
+          "soc_disagreement_percent": "Soc disagreement percent",
+          "soc_jump_percent": "Soc jump percent",
+          "capacity_calibration": "Capacity calibration",
+          "bms_max_age_seconds": "BMS maximum measurement age"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "hardware": {
+        "title": "Hardware capabilities",
+        "data": {
+          "inverter_kw": "Inverter kw",
+          "grid_import_kw": "Grid import kw",
+          "grid_export_kw": "Grid export kw",
+          "allow_grid_charge": "Allow grid charge",
+          "allow_battery_export": "Allow battery export",
+          "allow_curtailment": "Allow curtailment"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "tariffs": {
+        "title": "Tariffs and calibration",
+        "data": {
+          "buy_rate": "Buy rate",
+          "sell_rate": "Sell rate",
+          "buy_multiplier": "Buy multiplier",
+          "sell_multiplier": "Sell multiplier",
+          "buy_addition": "Buy addition",
+          "sell_addition": "Sell addition",
+          "vat_percent": "Vat percent",
+          "monthly_charge": "Monthly charge",
+          "buy_apply_vat": "Buy apply vat",
+          "sell_apply_vat": "Sell apply vat",
+          "calibration": "Calibration"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "forecast": {
+        "title": "Load forecasting",
+        "data": {
+          "daily_load_kwh": "Daily load kwh",
+          "fallback_daily_kwh": "Fallback daily kwh",
+          "lookback_days": "Lookback days",
+          "minimum_samples": "Minimum samples",
+          "power_max_gap_minutes": "Power max gap minutes",
+          "group_weekends": "Group weekends",
+          "allow_fallback": "Allow fallback",
+          "forecast_method": "Forecast method"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "planning": {
+        "title": "Planning",
+        "data": {
+          "horizon_hours": "Horizon hours",
+          "refresh_minutes": "Refresh minutes",
+          "terminal_value_per_kwh": "Terminal value per kwh",
+          "terminal_mode": "Terminal mode"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "compass": {
+        "title": "Consumption outlook",
+        "data": {
+          "display_horizon_hours": "Display horizon hours",
+          "reference_horizon_hours": "Reference horizon hours",
+          "display_interval_minutes": "Display interval minutes",
+          "probe_kwh": "Probe kwh",
+          "boost_ceiling": "Boost ceiling",
+          "cheap_percentile": "Cheap percentile",
+          "limit_percentile": "Limit percentile",
+          "limit_floor": "Limit floor",
+          "short_coverage": "Short coverage"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "performance": {
+        "title": "Performance and input quality",
+        "data": {
+          "debounce_seconds": "Debounce seconds",
+          "soc_trigger_percent": "Soc trigger percent",
+          "solve_time_limit_s": "Solve time limit s",
+          "probe_time_limit_s": "Probe time limit s",
+          "total_time_limit_s": "Total time limit s"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "presentation": {
+        "title": "Presentation",
+        "data": {
+          "cost_precision": "Cost precision",
+          "expose_costs": "Expose costs",
+          "expose_windows": "Expose windows",
+          "window_label": "Window label",
+          "boost_color": "Boost color",
+          "cheap_color": "Cheap color",
+          "normal_color": "Normal color",
+          "limit_color": "Limit color"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "notifications": {
+        "title": "Notification preferences",
+        "data": {
+          "notify_minimum_hours": "Notify minimum hours",
+          "notify_limit_lead_minutes": "Notify limit lead minutes",
+          "notify_daily_max": "Notify daily max",
+          "notify_cooldown_minutes": "Notify cooldown minutes",
+          "notify_enabled": "Notify enabled",
+          "quiet_start": "Quiet start",
+          "quiet_end": "Quiet end",
+          "notify_actions": "Notify actions",
+          "notify_events": "Notify events"
+        },
+        "description": "Preferences for notification blueprints. The advisory integration does not execute these actions itself. {detail}"
+      },
+      "menu": {
+        "title": "Energy Compass",
+        "menu_options": {
+          "installation": "Installation",
+          "sources": "Source bindings",
+          "battery": "Battery",
+          "hardware": "Hardware capabilities",
+          "tariffs": "Tariffs and calibration",
+          "forecast": "Load forecasting",
+          "planning": "Planning",
+          "compass": "Consumption outlook",
+          "performance": "Performance and input quality",
+          "presentation": "Presentation",
+          "notifications": "Notification preferences",
+          "helpers": "Numeric helper bindings",
+          "preview": "Preview and save"
+        }
+      }
+    },
+    "error": {
+      "invalid_input": "Invalid or contradictory settings.",
+      "invalid_source": "Invalid, missing or stale source; review the preview.",
+      "component_disabled": "Enable this component in Installation first."
+    },
+    "abort": {
+      "reconfigure_successful": "Configuration saved."
+    }
+  },
+  "options": {
+    "step": {
+      "user": {
+        "title": "User",
+        "data": {
+          "name": "Name",
+          "currency": "Currency",
+          "timezone": "Timezone",
+          "preset": "Preset",
+          "pv_enabled": "Pv enabled",
+          "battery_enabled": "Battery enabled"
+        }
+      },
+      "installation": {
+        "title": "Installation",
+        "data": {
+          "name": "Name",
+          "currency": "Currency",
+          "timezone": "Timezone",
+          "preset": "Preset",
+          "pv_enabled": "Pv enabled",
+          "battery_enabled": "Battery enabled"
+        }
+      },
+      "sources": {
+        "title": "Source bindings",
+        "data": {
+          "target": "Target",
+          "mode": "Mode",
+          "operation": "Operation",
+          "group": "Group"
+        },
+        "description": "Select import, export, household load and enabled PV/SOC. Append merges today/tomorrow continuations; consecutive PV groups add independent arrays. Optional measurements are diagnostic only; throughput_today enforces a daily battery budget. Fixed prices and daily load are edited in Tariffs and Load forecasting."
+      },
+      "source_entity": {
+        "title": "Source entity",
+        "data": {
+          "entity_id": "Entity id"
+        }
+      },
+      "source_attribute": {
+        "title": "Source attribute",
+        "data": {
+          "attribute": "Attribute"
+        }
+      },
+      "source_mapping": {
+        "title": "Source mapping",
+        "data": {
+          "value_path": "Value path",
+          "start_path": "Start path",
+          "end_path": "End path",
+          "duration_path": "Duration path",
+          "unit_path": "Unit path",
+          "published_path": "Published path",
+          "interval_minutes": "Interval minutes",
+          "unit": "Unit",
+          "value_kind": "Value kind",
+          "value_sign": "Value sign",
+          "source_timezone": "Source timezone",
+          "check_age": "Check age",
+          "max_age_hours": "Max age hours"
+        },
+        "description": "{sample_status}. Paths refer to data fields only. {detail}"
+      },
+      "source_measurement": {
+        "title": "Source measurement",
+        "data": {
+          "unit": "Unit",
+          "sign": "Sign",
+          "timestamp_path": "Timestamp path",
+          "max_age_seconds": "Max age seconds"
+        }
+      },
+      "source_statistic": {
+        "title": "Source statistic",
+        "data": {
+          "statistic_id": "Statistic id",
+          "unit": "Unit",
+          "sign": "Sign"
+        }
+      },
+      "helpers": {
+        "title": "Numeric helper bindings",
+        "data": {
+          "setting": "Setting",
+          "mode": "Mode"
+        }
+      },
+      "helper_entity": {
+        "title": "Helper entity",
+        "data": {
+          "entity_id": "Entity id"
+        }
+      },
+      "helper_value": {
+        "title": "Helper value",
+        "data": {
+          "attribute": "Attribute",
+          "source_unit": "Source unit",
+          "multiplier": "Multiplier",
+          "check_age": "Check age",
+          "max_age_hours": "Max age hours"
+        },
+        "description": "Disable age checking for manual helpers that legitimately remain unchanged. Unavailable sources always fail. {detail}"
+      },
+      "preview": {
+        "title": "Preview and save",
+        "data": {
+          "confirm": "Confirm"
+        },
+        "description": "{preview}"
+      },
+      "battery": {
+        "title": "Battery",
+        "data": {
+          "capacity_kwh": "Capacity kwh",
+          "hardware_floor": "Hardware floor",
+          "operating_floor": "Operating floor",
+          "soc_ceiling": "Soc ceiling",
+          "charge_kw": "Charge kw",
+          "discharge_kw": "Discharge kw",
+          "eta_charge": "Eta charge",
+          "eta_discharge": "Eta discharge",
+          "wear_per_kwh": "Wear per kwh",
+          "daily_cycles": "Daily cycles",
+          "soc_max_age_seconds": "Soc max age seconds",
+          "soc_disagreement_percent": "Soc disagreement percent",
+          "soc_jump_percent": "Soc jump percent",
+          "capacity_calibration": "Capacity calibration",
+          "bms_max_age_seconds": "BMS maximum measurement age"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "hardware": {
+        "title": "Hardware capabilities",
+        "data": {
+          "inverter_kw": "Inverter kw",
+          "grid_import_kw": "Grid import kw",
+          "grid_export_kw": "Grid export kw",
+          "allow_grid_charge": "Allow grid charge",
+          "allow_battery_export": "Allow battery export",
+          "allow_curtailment": "Allow curtailment"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "tariffs": {
+        "title": "Tariffs and calibration",
+        "data": {
+          "buy_rate": "Buy rate",
+          "sell_rate": "Sell rate",
+          "buy_multiplier": "Buy multiplier",
+          "sell_multiplier": "Sell multiplier",
+          "buy_addition": "Buy addition",
+          "sell_addition": "Sell addition",
+          "vat_percent": "Vat percent",
+          "monthly_charge": "Monthly charge",
+          "buy_apply_vat": "Buy apply vat",
+          "sell_apply_vat": "Sell apply vat",
+          "calibration": "Calibration"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "forecast": {
+        "title": "Load forecasting",
+        "data": {
+          "daily_load_kwh": "Daily load kwh",
+          "fallback_daily_kwh": "Fallback daily kwh",
+          "lookback_days": "Lookback days",
+          "minimum_samples": "Minimum samples",
+          "power_max_gap_minutes": "Power max gap minutes",
+          "group_weekends": "Group weekends",
+          "allow_fallback": "Allow fallback",
+          "forecast_method": "Forecast method"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "planning": {
+        "title": "Planning",
+        "data": {
+          "horizon_hours": "Horizon hours",
+          "refresh_minutes": "Refresh minutes",
+          "terminal_value_per_kwh": "Terminal value per kwh",
+          "terminal_mode": "Terminal mode"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "compass": {
+        "title": "Consumption outlook",
+        "data": {
+          "display_horizon_hours": "Display horizon hours",
+          "reference_horizon_hours": "Reference horizon hours",
+          "display_interval_minutes": "Display interval minutes",
+          "probe_kwh": "Probe kwh",
+          "boost_ceiling": "Boost ceiling",
+          "cheap_percentile": "Cheap percentile",
+          "limit_percentile": "Limit percentile",
+          "limit_floor": "Limit floor",
+          "short_coverage": "Short coverage"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "performance": {
+        "title": "Performance and input quality",
+        "data": {
+          "debounce_seconds": "Debounce seconds",
+          "soc_trigger_percent": "Soc trigger percent",
+          "solve_time_limit_s": "Solve time limit s",
+          "probe_time_limit_s": "Probe time limit s",
+          "total_time_limit_s": "Total time limit s"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "presentation": {
+        "title": "Presentation",
+        "data": {
+          "cost_precision": "Cost precision",
+          "expose_costs": "Expose costs",
+          "expose_windows": "Expose windows",
+          "window_label": "Window label",
+          "boost_color": "Boost color",
+          "cheap_color": "Cheap color",
+          "normal_color": "Normal color",
+          "limit_color": "Limit color"
+        },
+        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+      },
+      "notifications": {
+        "title": "Notification preferences",
+        "data": {
+          "notify_minimum_hours": "Notify minimum hours",
+          "notify_limit_lead_minutes": "Notify limit lead minutes",
+          "notify_daily_max": "Notify daily max",
+          "notify_cooldown_minutes": "Notify cooldown minutes",
+          "notify_enabled": "Notify enabled",
+          "quiet_start": "Quiet start",
+          "quiet_end": "Quiet end",
+          "notify_actions": "Notify actions",
+          "notify_events": "Notify events"
+        },
+        "description": "Preferences for notification blueprints. The advisory integration does not execute these actions itself. {detail}"
+      },
+      "menu": {
+        "title": "Energy Compass",
+        "menu_options": {
+          "installation": "Installation",
+          "sources": "Source bindings",
+          "battery": "Battery",
+          "hardware": "Hardware capabilities",
+          "tariffs": "Tariffs and calibration",
+          "forecast": "Load forecasting",
+          "planning": "Planning",
+          "compass": "Consumption outlook",
+          "performance": "Performance and input quality",
+          "presentation": "Presentation",
+          "notifications": "Notification preferences",
+          "helpers": "Numeric helper bindings",
+          "preview": "Preview and save"
+        }
+      }
+    },
+    "error": {
+      "invalid_input": "Invalid or contradictory settings.",
+      "invalid_source": "Invalid, missing or stale source; review the preview.",
+      "component_disabled": "Enable this component in Installation first."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "consumption_compass": {
+        "name": "Consumption compass",
+        "state": {
+          "BOOST": "Boost",
+          "CHEAP": "Cheap",
+          "NORMAL": "Normal",
+          "LIMIT": "Limit"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "complete": "Complete coverage",
+              "reference_horizon_uncovered": "Reference horizon uncovered",
+              "reference_probe_failed": "Reference probe failed",
+              "unvalidated_tariff": "Unvalidated tariff",
+              "unvalidated_capacity": "Unvalidated capacity",
+              "short_source_coverage": "Short source coverage",
+              "current_guidance_unavailable": "Current consumption probe is unknown; later windows may remain available",
+              "missing_forecast_continuation": "Unpublished forecast continuation"
+            }
+          },
+          "calibration": {
+            "name": "Calibration",
+            "state": {
+              "unvalidated": "Unvalidated estimate",
+              "verified": "Verified"
+            }
+          }
+        }
+      },
+      "consumption_cost": {
+        "name": "Consumption cost",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "complete": "Complete coverage",
+              "reference_horizon_uncovered": "Reference horizon uncovered",
+              "reference_probe_failed": "Reference probe failed",
+              "unvalidated_tariff": "Unvalidated tariff",
+              "unvalidated_capacity": "Unvalidated capacity",
+              "short_source_coverage": "Short source coverage",
+              "current_guidance_unavailable": "Current consumption probe is unknown; later windows may remain available",
+              "missing_forecast_continuation": "Unpublished forecast continuation"
+            }
+          },
+          "calibration": {
+            "name": "Calibration",
+            "state": {
+              "unvalidated": "Unvalidated estimate",
+              "verified": "Verified"
+            }
+          }
+        }
+      },
+      "next_change": {
+        "name": "Next change",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "complete": "Complete coverage",
+              "reference_horizon_uncovered": "Reference horizon uncovered",
+              "reference_probe_failed": "Reference probe failed",
+              "unvalidated_tariff": "Unvalidated tariff",
+              "unvalidated_capacity": "Unvalidated capacity",
+              "short_source_coverage": "Short source coverage",
+              "current_guidance_unavailable": "Current consumption probe is unknown; later windows may remain available",
+              "missing_forecast_continuation": "Unpublished forecast continuation"
+            }
+          },
+          "calibration": {
+            "name": "Calibration",
+            "state": {
+              "unvalidated": "Unvalidated estimate",
+              "verified": "Verified"
+            }
+          }
+        }
+      },
+      "next_boost_start": {
+        "name": "Next boost start",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "complete": "Complete coverage",
+              "reference_horizon_uncovered": "Reference horizon uncovered",
+              "reference_probe_failed": "Reference probe failed",
+              "unvalidated_tariff": "Unvalidated tariff",
+              "unvalidated_capacity": "Unvalidated capacity",
+              "short_source_coverage": "Short source coverage",
+              "current_guidance_unavailable": "Current consumption probe is unknown; later windows may remain available",
+              "missing_forecast_continuation": "Unpublished forecast continuation"
+            }
+          },
+          "calibration": {
+            "name": "Calibration",
+            "state": {
+              "unvalidated": "Unvalidated estimate",
+              "verified": "Verified"
+            }
+          }
+        }
+      },
+      "next_cheap_start": {
+        "name": "Next cheap start",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "complete": "Complete coverage",
+              "reference_horizon_uncovered": "Reference horizon uncovered",
+              "reference_probe_failed": "Reference probe failed",
+              "unvalidated_tariff": "Unvalidated tariff",
+              "unvalidated_capacity": "Unvalidated capacity",
+              "short_source_coverage": "Short source coverage",
+              "current_guidance_unavailable": "Current consumption probe is unknown; later windows may remain available",
+              "missing_forecast_continuation": "Unpublished forecast continuation"
+            }
+          },
+          "calibration": {
+            "name": "Calibration",
+            "state": {
+              "unvalidated": "Unvalidated estimate",
+              "verified": "Verified"
+            }
+          }
+        }
+      },
+      "next_limit_start": {
+        "name": "Next limit start",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "complete": "Complete coverage",
+              "reference_horizon_uncovered": "Reference horizon uncovered",
+              "reference_probe_failed": "Reference probe failed",
+              "unvalidated_tariff": "Unvalidated tariff",
+              "unvalidated_capacity": "Unvalidated capacity",
+              "short_source_coverage": "Short source coverage",
+              "current_guidance_unavailable": "Current consumption probe is unknown; later windows may remain available",
+              "missing_forecast_continuation": "Unpublished forecast continuation"
+            }
+          },
+          "calibration": {
+            "name": "Calibration",
+            "state": {
+              "unvalidated": "Unvalidated estimate",
+              "verified": "Verified"
+            }
+          }
+        }
+      },
+      "energy_compass": {
+        "name": "Energy compass",
+        "state": {
+          "CHARGE_GRID": "Charge from grid",
+          "CHARGE_PV": "Charge from PV",
+          "SELF_CONSUME": "Self consumption",
+          "DISCHARGE_GRID": "Battery export",
+          "HOLD": "Hold",
+          "CURTAIL": "Curtail PV"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "complete": "Complete coverage",
+              "reference_horizon_uncovered": "Reference horizon uncovered",
+              "reference_probe_failed": "Reference probe failed",
+              "unvalidated_tariff": "Unvalidated tariff",
+              "unvalidated_capacity": "Unvalidated capacity",
+              "short_source_coverage": "Short source coverage",
+              "current_guidance_unavailable": "Current consumption probe is unknown; later windows may remain available",
+              "missing_forecast_continuation": "Unpublished forecast continuation"
+            }
+          },
+          "calibration": {
+            "name": "Calibration",
+            "state": {
+              "unvalidated": "Unvalidated estimate",
+              "verified": "Verified"
+            }
+          }
+        }
+      },
+      "plan": {
+        "name": "Plan",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "complete": "Complete coverage",
+              "reference_horizon_uncovered": "Reference horizon uncovered",
+              "reference_probe_failed": "Reference probe failed",
+              "unvalidated_tariff": "Unvalidated tariff",
+              "unvalidated_capacity": "Unvalidated capacity",
+              "short_source_coverage": "Short source coverage",
+              "current_guidance_unavailable": "Current consumption probe is unknown; later windows may remain available",
+              "missing_forecast_continuation": "Unpublished forecast continuation"
+            }
+          },
+          "calibration": {
+            "name": "Calibration",
+            "state": {
+              "unvalidated": "Unvalidated estimate",
+              "verified": "Verified"
+            }
+          }
+        }
+      },
+      "expected_net_cost": {
+        "name": "Expected net cost",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "complete": "Complete coverage",
+              "reference_horizon_uncovered": "Reference horizon uncovered",
+              "reference_probe_failed": "Reference probe failed",
+              "unvalidated_tariff": "Unvalidated tariff",
+              "unvalidated_capacity": "Unvalidated capacity",
+              "short_source_coverage": "Short source coverage",
+              "current_guidance_unavailable": "Current consumption probe is unknown; later windows may remain available",
+              "missing_forecast_continuation": "Unpublished forecast continuation"
+            }
+          },
+          "calibration": {
+            "name": "Calibration",
+            "state": {
+              "unvalidated": "Unvalidated estimate",
+              "verified": "Verified"
+            }
+          }
+        }
+      },
+      "expected_wear_cost": {
+        "name": "Expected wear cost",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "complete": "Complete coverage",
+              "reference_horizon_uncovered": "Reference horizon uncovered",
+              "reference_probe_failed": "Reference probe failed",
+              "unvalidated_tariff": "Unvalidated tariff",
+              "unvalidated_capacity": "Unvalidated capacity",
+              "short_source_coverage": "Short source coverage",
+              "current_guidance_unavailable": "Current consumption probe is unknown; later windows may remain available",
+              "missing_forecast_continuation": "Unpublished forecast continuation"
+            }
+          },
+          "calibration": {
+            "name": "Calibration",
+            "state": {
+              "unvalidated": "Unvalidated estimate",
+              "verified": "Verified"
+            }
+          }
+        }
+      },
+      "optimizer_status": {
+        "name": "Optimizer status",
+        "state": {
+          "ready": "Ready",
+          "calculating": "Calculating",
+          "insufficient_data": "Insufficient data",
+          "invalid_input": "Invalid input",
+          "timeout": "Timeout",
+          "infeasible": "Infeasible",
+          "error": "Error"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "complete": "Complete coverage",
+              "reference_horizon_uncovered": "Reference horizon uncovered",
+              "reference_probe_failed": "Reference probe failed",
+              "unvalidated_tariff": "Unvalidated tariff",
+              "unvalidated_capacity": "Unvalidated capacity",
+              "short_source_coverage": "Short source coverage",
+              "current_guidance_unavailable": "Current consumption probe is unknown; later windows may remain available",
+              "missing_forecast_continuation": "Unpublished forecast continuation"
+            }
+          },
+          "calibration": {
+            "name": "Calibration",
+            "state": {
+              "unvalidated": "Unvalidated estimate",
+              "verified": "Verified"
+            }
+          }
+        }
+      }
+    },
+    "binary_sensor": {
+      "forecast_valid": {
+        "name": "Forecast valid",
+        "state_attributes": {
+          "current_guidance_valid": {
+            "name": "Current consumption guidance valid"
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "source_removed": {
+      "title": "Source removed",
+      "description": "Reconfigure the selected sources for {name}."
+    }
+  }
+}

@@ -1,0 +1,436 @@
+"""Bounded advisory dispatch for grid, solar, and optional battery energy."""
+
+from datetime import UTC, datetime, time, timedelta
+from math import isfinite
+from zoneinfo import ZoneInfo
+
+import numpy as np
+from scipy.optimize import Bounds, LinearConstraint, milp
+from scipy.sparse import coo_matrix
+
+from .models import Flow, InputError, Plan, Problem, SolveError
+from .normalize import validate_problem
+
+_TOL = 1e-6
+_UTC = UTC
+
+
+class _Model:
+    def __init__(self) -> None:
+        self.cost: list[float] = []
+        self.lower: list[float] = []
+        self.upper: list[float] = []
+        self.integrality: list[int] = []
+        self.rows: list[tuple[dict[int, float], float, float]] = []
+
+    def variable(
+        self, *, upper: float = np.inf, cost: float = 0.0, binary: bool = False
+    ) -> int:
+        index = len(self.cost)
+        self.cost.append(cost)
+        self.lower.append(0.0)
+        self.upper.append(1.0 if binary else upper)
+        self.integrality.append(int(binary))
+        return index
+
+    def constrain(self, terms: dict[int, float], lower: float, upper: float) -> None:
+        self.rows.append((terms, lower, upper))
+
+    def solve(self, time_limit_s: float) -> np.ndarray:
+        entries = [
+            (row_index, column, coefficient)
+            for row_index, (terms, _, _) in enumerate(self.rows)
+            for column, coefficient in terms.items()
+            if coefficient
+        ]
+        matrix = coo_matrix(
+            (
+                [item[2] for item in entries],
+                ([item[0] for item in entries], [item[1] for item in entries]),
+            ),
+            shape=(len(self.rows), len(self.cost)),
+        ).tocsc()
+        result = milp(
+            c=np.asarray(self.cost),
+            integrality=np.asarray(self.integrality),
+            bounds=Bounds(self.lower, self.upper),
+            constraints=LinearConstraint(
+                matrix,
+                [row[1] for row in self.rows],
+                [row[2] for row in self.rows],
+            ),
+            options={"time_limit": time_limit_s},
+        )
+        if result.status != 0 or result.x is None:
+            reasons = {1: "timeout", 2: "infeasible", 3: "unbounded"}
+            raise SolveError(
+                reasons.get(result.status, "solver_failure"), result.message
+            )
+        return np.asarray(result.x)
+
+
+def _day_fractions(start: datetime, end: datetime, zone: ZoneInfo) -> dict[str, float]:
+    start_utc = start.astimezone(_UTC)
+    end_utc = end.astimezone(_UTC)
+    elapsed = (end_utc - start_utc).total_seconds()
+    fractions: dict[str, float] = {}
+    cursor = start_utc
+    while cursor < end_utc:
+        local_day = cursor.astimezone(zone).date()
+        following_midnight = datetime.combine(
+            local_day + timedelta(days=1), time.min, tzinfo=zone
+        ).astimezone(_UTC)
+        boundary = min(end_utc, following_midnight)
+        if boundary <= cursor:
+            raise InputError("invalid local-day boundary")
+        key = local_day.isoformat()
+        fractions[key] = (
+            fractions.get(key, 0.0) + (boundary - cursor).total_seconds() / elapsed
+        )
+        cursor = boundary
+    return fractions
+
+
+def _check(condition: bool, detail: str) -> None:
+    if not condition:
+        raise SolveError("solver_failure", f"invalid solver result: {detail}")
+
+
+def _close(actual: float, expected: float, detail: str) -> None:
+    _check(abs(actual - expected) <= _TOL, detail)
+
+
+def _validate_solution(
+    problem: Problem,
+    vectors: list[dict[str, int]],
+    values: np.ndarray,
+    daily_fractions: list[dict[str, float]],
+    budgets: dict[str, float],
+) -> None:
+    _check(
+        len(values) == max(max(vector.values()) for vector in vectors) + 1,
+        "variable count",
+    )
+    _check(bool(np.all(np.isfinite(values))), "nonfinite variables")
+    battery = problem.battery
+    previous_energy = battery.initial_kwh if battery else 0.0
+    spent = {day: 0.0 for day in budgets}
+
+    for slot, variables, fractions in zip(
+        problem.slots, vectors, daily_fractions, strict=True
+    ):
+
+        def value(name, variables=variables):
+            return float(values[variables[name]])
+
+        duration = (
+            slot.end.astimezone(_UTC) - slot.start.astimezone(_UTC)
+        ).total_seconds() / 3600
+        for name in variables:
+            _check(value(name) >= -_TOL, f"negative {name}")
+        for name in ("grid_mode", "battery_mode"):
+            if name in variables:
+                _check(
+                    min(abs(value(name)), abs(value(name) - 1)) <= _TOL,
+                    f"fractional {name}",
+                )
+        gin, gout, curt = value("gin"), value("gout"), value("curt")
+        charge = value("bc") if battery else 0.0
+        discharge = value("bd") if battery else 0.0
+        _check(
+            curt <= (slot.pv_kwh if problem.site.allow_curtailment else 0) + _TOL,
+            "curtailment limit",
+        )
+        _check(
+            gin <= problem.site.grid_import_kw * duration + _TOL, "grid import limit"
+        )
+        _check(
+            gout <= problem.site.grid_export_kw * duration + _TOL, "grid export limit"
+        )
+        _check(min(gin, gout) <= _TOL, "simultaneous grid directions")
+        _check(
+            gin <= problem.site.grid_import_kw * duration * value("grid_mode") + _TOL,
+            "grid import direction",
+        )
+        _check(
+            gout
+            <= problem.site.grid_export_kw * duration * (1 - value("grid_mode")) + _TOL,
+            "grid export direction",
+        )
+        _check(
+            abs(slot.pv_kwh - curt + discharge - charge)
+            <= problem.site.inverter_kw * duration + _TOL,
+            "inverter limit",
+        )
+        _close(
+            slot.pv_kwh - curt + gin + discharge,
+            slot.load_kwh + gout + charge,
+            "site balance",
+        )
+        _close(
+            slot.pv_kwh - curt,
+            value("pv_load")
+            + value("pv_grid")
+            + (value("pv_battery") if battery else 0),
+            "solar allocation",
+        )
+        _close(
+            gin,
+            value("grid_load") + (value("grid_battery") if battery else 0),
+            "grid allocation",
+        )
+        _close(
+            slot.load_kwh,
+            value("pv_load")
+            + value("grid_load")
+            + (value("battery_load") if battery else 0),
+            "load allocation",
+        )
+        _close(
+            gout,
+            value("pv_grid") + (value("battery_grid") if battery else 0),
+            "export allocation",
+        )
+
+        if battery:
+            _close(
+                discharge,
+                value("battery_load") + value("battery_grid"),
+                "discharge allocation",
+            )
+            _close(
+                charge, value("pv_battery") + value("grid_battery"), "charge allocation"
+            )
+            _check(
+                charge <= battery.charge_kw * duration * value("battery_mode") + _TOL,
+                "charge direction",
+            )
+            _check(
+                discharge
+                <= battery.discharge_kw * duration * (1 - value("battery_mode")) + _TOL,
+                "discharge direction",
+            )
+            _check(min(charge, discharge) <= _TOL, "simultaneous battery directions")
+            if not battery.allow_grid_charge:
+                _check(value("grid_battery") <= _TOL, "grid charging capability")
+                _check(
+                    charge <= max(slot.pv_kwh - slot.load_kwh, 0) + _TOL,
+                    "solar surplus charging",
+                )
+            if not battery.allow_battery_export:
+                _check(value("battery_grid") <= _TOL, "battery export capability")
+                _check(
+                    discharge <= max(slot.load_kwh - slot.pv_kwh, 0) + _TOL,
+                    "residual load discharge",
+                )
+            previous_energy += (
+                battery.eta_charge * charge - discharge / battery.eta_discharge
+            )
+            _close(value("energy"), previous_energy, "battery energy")
+            _check(
+                battery.capacity_kwh * battery.minimum_soc_fraction - _TOL
+                <= previous_energy
+                <= battery.capacity_kwh * battery.maximum_soc_fraction + _TOL,
+                "battery SOC",
+            )
+            for day, fraction in fractions.items():
+                if day in spent:
+                    spent[day] += fraction * (charge + discharge)
+    if battery:
+        if problem.terminal_mode == "preserve_initial":
+            _check(previous_energy >= battery.initial_kwh - _TOL, "terminal SOC")
+        for day, total in spent.items():
+            _check(total <= budgets[day] + _TOL, f"daily throughput {day}")
+
+
+def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
+    """Find a bounded least-cost advisory plan or raise a typed solver error."""
+    validate_problem(problem)
+    try:
+        time_limit = float(time_limit_s)
+    except (TypeError, ValueError) as err:
+        raise InputError("time limit must be finite and positive") from err
+    if not isfinite(time_limit) or time_limit <= 0:
+        raise InputError("time limit must be finite and positive")
+
+    budgets = dict(problem.remaining_daily_throughput_kwh)
+    if len(budgets) != len(problem.remaining_daily_throughput_kwh):
+        raise InputError("duplicate daily throughput date")
+    zone = ZoneInfo(problem.timezone)
+    model = _Model()
+    vectors: list[dict[str, int]] = []
+    daily_fractions: list[dict[str, float]] = []
+    previous_energy_index: int | None = None
+    battery = problem.battery
+
+    for slot in problem.slots:
+        duration = (
+            slot.end.astimezone(_UTC) - slot.start.astimezone(_UTC)
+        ).total_seconds() / 3600
+        variables = {
+            "gin": model.variable(
+                upper=problem.site.grid_import_kw * duration, cost=slot.buy_per_kwh
+            ),
+            "gout": model.variable(
+                upper=problem.site.grid_export_kw * duration, cost=-slot.sell_per_kwh
+            ),
+            "curt": model.variable(
+                upper=slot.pv_kwh if problem.site.allow_curtailment else 0
+            ),
+            "pv_load": model.variable(upper=slot.pv_kwh),
+            "pv_grid": model.variable(upper=slot.pv_kwh),
+            "grid_load": model.variable(upper=problem.site.grid_import_kw * duration),
+            "grid_mode": model.variable(binary=True),
+        }
+        if battery:
+            variables.update(
+                {
+                    "bc": model.variable(
+                        upper=battery.charge_kw * duration,
+                        cost=battery.wear_per_kwh / 2,
+                    ),
+                    "bd": model.variable(
+                        upper=battery.discharge_kw * duration,
+                        cost=battery.wear_per_kwh / 2,
+                    ),
+                    "energy": model.variable(
+                        upper=battery.capacity_kwh * battery.maximum_soc_fraction,
+                        cost=-problem.terminal_value_per_kwh
+                        if problem.terminal_mode == "value"
+                        and slot is problem.slots[-1]
+                        else 0,
+                    ),
+                    "pv_battery": model.variable(upper=slot.pv_kwh),
+                    "grid_battery": model.variable(
+                        upper=problem.site.grid_import_kw * duration
+                        if battery.allow_grid_charge
+                        else 0
+                    ),
+                    "battery_load": model.variable(
+                        upper=battery.discharge_kw * duration
+                    ),
+                    "battery_grid": model.variable(
+                        upper=battery.discharge_kw * duration
+                        if battery.allow_battery_export
+                        else 0
+                    ),
+                    "battery_mode": model.variable(binary=True),
+                }
+            )
+            model.lower[variables["energy"]] = (
+                battery.capacity_kwh * battery.minimum_soc_fraction
+            )
+        v = variables
+        model.constrain(
+            {v["gin"]: 1, v["grid_mode"]: -problem.site.grid_import_kw * duration},
+            -np.inf,
+            0,
+        )
+        model.constrain(
+            {v["gout"]: 1, v["grid_mode"]: problem.site.grid_export_kw * duration},
+            -np.inf,
+            problem.site.grid_export_kw * duration,
+        )
+        model.constrain(
+            {v["curt"]: -1, **({v["bd"]: 1, v["bc"]: -1} if battery else {})},
+            -problem.site.inverter_kw * duration - slot.pv_kwh,
+            problem.site.inverter_kw * duration - slot.pv_kwh,
+        )
+        solar = {v["curt"]: 1, v["pv_load"]: 1, v["pv_grid"]: 1}
+        if battery:
+            solar[v["pv_battery"]] = 1
+        model.constrain(solar, slot.pv_kwh, slot.pv_kwh)
+        grid = {v["gin"]: 1, v["grid_load"]: -1}
+        load = {v["pv_load"]: 1, v["grid_load"]: 1}
+        export = {v["gout"]: 1, v["pv_grid"]: -1}
+        if battery:
+            grid[v["grid_battery"]] = -1
+            load[v["battery_load"]] = 1
+            export[v["battery_grid"]] = -1
+            model.constrain(
+                {v["bd"]: 1, v["battery_load"]: -1, v["battery_grid"]: -1}, 0, 0
+            )
+            model.constrain(
+                {v["bc"]: 1, v["pv_battery"]: -1, v["grid_battery"]: -1}, 0, 0
+            )
+            model.constrain(
+                {v["bc"]: 1, v["battery_mode"]: -battery.charge_kw * duration},
+                -np.inf,
+                0,
+            )
+            model.constrain(
+                {v["bd"]: 1, v["battery_mode"]: battery.discharge_kw * duration},
+                -np.inf,
+                battery.discharge_kw * duration,
+            )
+            energy = {
+                v["energy"]: 1,
+                v["bc"]: -battery.eta_charge,
+                v["bd"]: 1 / battery.eta_discharge,
+            }
+            if previous_energy_index is not None:
+                energy[previous_energy_index] = -1
+            initial = battery.initial_kwh if previous_energy_index is None else 0
+            model.constrain(energy, initial, initial)
+            previous_energy_index = v["energy"]
+            if not battery.allow_grid_charge:
+                model.constrain(
+                    {v["bc"]: 1}, -np.inf, max(slot.pv_kwh - slot.load_kwh, 0)
+                )
+            if not battery.allow_battery_export:
+                model.constrain(
+                    {v["bd"]: 1}, -np.inf, max(slot.load_kwh - slot.pv_kwh, 0)
+                )
+        model.constrain(grid, 0, 0)
+        model.constrain(load, slot.load_kwh, slot.load_kwh)
+        model.constrain(export, 0, 0)
+        vectors.append(variables)
+        daily_fractions.append(_day_fractions(slot.start, slot.end, zone))
+
+    if battery:
+        if problem.terminal_mode == "preserve_initial":
+            model.constrain({previous_energy_index: 1}, battery.initial_kwh, np.inf)
+        for day, budget in budgets.items():
+            terms = {}
+            for variables, fractions in zip(vectors, daily_fractions, strict=True):
+                fraction = fractions.get(day, 0)
+                if fraction:
+                    terms[variables["bc"]] = fraction
+                    terms[variables["bd"]] = fraction
+            if terms:
+                model.constrain(terms, -np.inf, budget)
+
+    values = model.solve(time_limit)
+    _validate_solution(problem, vectors, values, daily_fractions, budgets)
+    flows = tuple(
+        Flow(
+            float(values[v["gin"]]),
+            float(values[v["gout"]]),
+            float(values[v["bc"]]) if battery else 0.0,
+            float(values[v["bd"]]) if battery else 0.0,
+            float(values[v["curt"]]),
+            float(values[v["energy"]]) if battery else 0.0,
+        )
+        for v in vectors
+    )
+    grid_cost = sum(
+        slot.buy_per_kwh * flow.grid_import_kwh
+        - slot.sell_per_kwh * flow.grid_export_kwh
+        for slot, flow in zip(problem.slots, flows, strict=True)
+    )
+    wear_cost = (
+        sum(
+            battery.wear_per_kwh * (flow.charge_kwh + flow.discharge_kwh) / 2
+            for flow in flows
+        )
+        if battery
+        else 0.0
+    )
+    terminal_credit = (
+        problem.terminal_value_per_kwh * flows[-1].end_soc_kwh
+        if battery and problem.terminal_mode == "value"
+        else 0.0
+    )
+    objective = grid_cost + wear_cost - terminal_credit
+    _check(isfinite(objective), "nonfinite objective")
+    return Plan(flows, objective, grid_cost, wear_cost, terminal_credit)
