@@ -1,0 +1,22 @@
+{
+  "before": {
+    "state": "5.4",
+    "last_updated": "2026-09-17T10:00:00+02:00",
+    "attributes": {
+      "detailedForecast": [
+        {"period_start": "2026-09-17T11:00:00+02:00", "pv_estimate": 2.0, "pv_estimate10": 1.2, "pv_estimate90": 2.8},
+        {"period_start": "2026-09-17T11:30:00+02:00", "pv_estimate": 2.4, "pv_estimate10": 1.6, "pv_estimate90": 3.1}
+      ]
+    }
+  },
+  "after": {
+    "state": "5.8",
+    "last_updated": "2026-09-17T10:30:00+02:00",
+    "attributes": {
+      "detailedForecast": [
+        {"period_start": "2026-09-17T11:00:00+02:00", "pv_estimate": 2.5, "pv_estimate10": 1.7, "pv_estimate90": 3.2},
+        {"period_start": "2026-09-17T11:30:00+02:00", "pv_estimate": 2.7, "pv_estimate10": 1.9, "pv_estimate90": 3.4}
+      ]
+    }
+  }
+}

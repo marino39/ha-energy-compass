@@ -1,0 +1,181 @@
+"""Stable entity identity and shared advisory attributes."""
+
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
+
+from .settings import DOMAIN
+from .sources.bindings import parse_timestamp
+
+PLAN_ATTRIBUTES = frozenset(
+    {
+        "intervals",
+        "outlook",
+        "favorable_windows",
+        "windows",
+        "input_ages",
+        "measurements",
+    }
+)
+
+
+class EnergyCompassEntity(CoordinatorEntity):
+    """Expose a single coherent generation without recording forecast arrays."""
+
+    _attr_has_entity_name = True
+    _unrecorded_attributes = PLAN_ATTRIBUTES
+
+    def __init__(self, coordinator, key):
+        super().__init__(coordinator)
+        self.key = key
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_{key}"
+        self._attr_translation_key = key
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name=coordinator.entry.title,
+            manufacturer="Energy Compass",
+            model="Advisory",
+        )
+        if key == "optimizer_status":
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def available(self):
+        if self.key in ("forecast_valid", "optimizer_status"):
+            return True
+        data = self.coordinator.data
+        fresh = bool(
+            data.get("valid")
+            and data.get("valid_until")
+            and dt_util.utcnow() < parse_timestamp(data["valid_until"])
+        )
+        if not fresh:
+            return False
+        if self.key in ("consumption_compass", "consumption_cost"):
+            return data.get("guidance_valid", False)
+        if self.key == "next_change":
+            return next_change(data) is not None
+        if self.key.startswith("next_"):
+            return self._window() is not None
+        return True
+
+    def _window(self):
+        data = self.coordinator.data
+        kind = self.key.removeprefix("next_").removesuffix("_start")
+        now = dt_util.utcnow()
+        return next(
+            (
+                row
+                for row in data.get("windows", {}).get(kind, [])
+                if parse_timestamp(row["end"]) > now
+            ),
+            None,
+        )
+
+    @property
+    def extra_state_attributes(self):
+        data = self.coordinator.data
+        quality = data.get("quality", {})
+        attrs = {
+            "generated_at": data.get("generated_at"),
+            "valid_until": data.get("valid_until"),
+            "reasons": quality.get("warnings", [])
+            + (
+                [data["coverage_reason"]]
+                if data.get("coverage_reason") != "complete"
+                and data.get("coverage_reason")
+                else []
+            ),
+            "reason": data.get("reason", data.get("coverage_reason")),
+            "calibration": data.get("calibration"),
+            "capacity_calibration": data.get("capacity_calibration"),
+            "classification_mode": data.get("classification_mode"),
+        }
+        if self.key == "plan":
+            attrs.update(
+                {
+                    key: data.get(key, [])
+                    for key in (
+                        "intervals",
+                        "outlook",
+                        "favorable_windows",
+                        "windows",
+                        "measurements",
+                        "presentation",
+                        "notification_preferences",
+                    )
+                }
+            )
+            attrs["window_status"] = {
+                key: "active"
+                if rows
+                and parse_timestamp(rows[0]["start"])
+                <= dt_util.utcnow()
+                < parse_timestamp(rows[0]["end"])
+                else "upcoming"
+                if rows
+                else "none_in_coverage"
+                for key, rows in data.get("windows", {}).items()
+            }
+            attrs["attribute_schema_version"] = 1
+            attrs["monthly_charge_reporting_only"] = data.get(
+                "monthly_charge_reporting_only"
+            )
+        elif self.key == "consumption_cost":
+            attrs.update(method="finite_difference", probe_kwh=data.get("probe_kwh"))
+        elif self.key == "energy_compass" and data.get("intervals"):
+            attrs.update(data["intervals"][0])
+        elif self.key == "next_change":
+            change = next_change(data)
+            attrs["next_level"] = change.get("level") if change else None
+        elif self.key.startswith("next_") and self.key.endswith("_start"):
+            window = self._window()
+            attrs.update(status="none_in_coverage", end=None, duration_minutes=None)
+            if window:
+                start, end = (
+                    parse_timestamp(window["start"]),
+                    parse_timestamp(window["end"]),
+                )
+                attrs.update(
+                    status="active" if start <= dt_util.utcnow() < end else "upcoming",
+                    end=window["end"],
+                    duration_minutes=(end - start).total_seconds() / 60,
+                    remaining_minutes=max(
+                        0, (end - max(start, dt_util.utcnow())).total_seconds()
+                    )
+                    / 60,
+                    start_basis=window.get("start_basis", "forecast"),
+                )
+        elif self.key == "forecast_valid":
+            attrs.update(
+                current_guidance_valid=data.get("guidance_valid", False),
+                coverage_end=quality.get("coverage_end"),
+                requested_end=quality.get("requested_end"),
+                coverage_complete=quality.get("coverage_complete", False),
+                input_ages=quality.get("input_ages", {}),
+                missing_sources=[data["reason"]]
+                if not data.get("valid") and data.get("reason")
+                else quality.get("missing_sources", []),
+            )
+        elif self.key in ("expected_net_cost", "expected_wear_cost"):
+            attrs["coverage_hours"] = data.get("cost_coverage_hours")
+        elif self.key == "optimizer_status":
+            attrs["expired_previous_generated_at"] = data.get(
+                "expired_previous_generated_at"
+            )
+        return attrs
+
+
+def next_change(data):
+    """Stop at unknown coverage rather than forecasting through missing advice."""
+    rows = data.get("outlook", [])
+    if not rows:
+        return None
+    level = rows[0]["level"]
+    for row in rows[1:]:
+        if row["level"] is None:
+            return None
+        if row["level"] != level:
+            return row
+    return None

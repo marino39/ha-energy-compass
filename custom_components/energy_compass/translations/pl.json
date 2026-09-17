@@ -1,0 +1,876 @@
+{
+  "title": "Energy Compass",
+  "config": {
+    "step": {
+      "user": {
+        "title": "User",
+        "data": {
+          "name": "Nazwa",
+          "currency": "Waluta (bez automatycznej konwersji)",
+          "timezone": "Strefa czasowa",
+          "preset": "Opcjonalny profil dostawcy",
+          "pv_enabled": "Włącz fotowoltaikę",
+          "battery_enabled": "Włącz baterię"
+        }
+      },
+      "installation": {
+        "title": "Instalacja",
+        "data": {
+          "name": "Nazwa",
+          "currency": "Waluta (bez automatycznej konwersji)",
+          "timezone": "Strefa czasowa",
+          "preset": "Opcjonalny profil dostawcy",
+          "pv_enabled": "Włącz fotowoltaikę",
+          "battery_enabled": "Włącz baterię"
+        }
+      },
+      "sources": {
+        "title": "Źródła danych",
+        "data": {
+          "target": "Rodzaj źródła",
+          "mode": "Tryb",
+          "operation": "Operacja",
+          "group": "Numer niezależnej grupy PV"
+        },
+        "description": "Dodaj osobno zakup, sprzedaż, zużycie oraz włączone PV i SOC. Append łączy dziś/jutro; kolejny numer grupy PV oznacza sumowanie niezależnych instalacji. Pomiary opcjonalne służą diagnostyce; throughput_today ogranicza dzienną pracę baterii."
+      },
+      "source_entity": {
+        "title": "Source entity",
+        "data": {
+          "entity_id": "Encja"
+        }
+      },
+      "source_attribute": {
+        "title": "Source attribute",
+        "data": {
+          "attribute": "Atrybut (puste oznacza stan)"
+        }
+      },
+      "source_mapping": {
+        "title": "Source mapping",
+        "data": {
+          "value_path": "Pole wartości",
+          "start_path": "Pole początku",
+          "end_path": "Pole końca",
+          "duration_path": "Pole długości okresu",
+          "unit_path": "Pole jednostki",
+          "published_path": "Pole czasu publikacji",
+          "interval_minutes": "Długość okresu",
+          "unit": "Jednostka",
+          "value_kind": "Znaczenie wartości",
+          "value_sign": "Znak wartości",
+          "source_timezone": "Strefa czasowa źródła",
+          "check_age": "Sprawdzaj wiek danych",
+          "max_age_hours": "Maksymalny wiek danych"
+        },
+        "description": "{sample_status}. Ścieżki wskazują wyłącznie dane. {detail}"
+      },
+      "source_measurement": {
+        "title": "Source measurement",
+        "data": {
+          "unit": "Jednostka",
+          "sign": "Znak",
+          "timestamp_path": "Pole czasu pomiaru",
+          "max_age_seconds": "Maksymalny wiek pomiaru"
+        }
+      },
+      "source_statistic": {
+        "title": "Source statistic",
+        "data": {
+          "statistic_id": "Statystyka rejestratora",
+          "unit": "Jednostka",
+          "sign": "Znak"
+        }
+      },
+      "helpers": {
+        "title": "Pomocniki liczbowe",
+        "data": {
+          "setting": "Ustawienie",
+          "mode": "Tryb"
+        }
+      },
+      "helper_entity": {
+        "title": "Helper entity",
+        "data": {
+          "entity_id": "Encja"
+        }
+      },
+      "helper_value": {
+        "title": "Helper value",
+        "data": {
+          "attribute": "Atrybut (puste oznacza stan)",
+          "source_unit": "Jednostka źródła",
+          "multiplier": "Mnożnik",
+          "check_age": "Sprawdzaj wiek danych",
+          "max_age_hours": "Maksymalny wiek danych"
+        },
+        "description": "Wyłącz sprawdzanie wieku dla ręcznego pomocnika, który może długo nie zmieniać wartości. Niedostępne źródło zawsze jest błędem. {detail}"
+      },
+      "preview": {
+        "title": "Podgląd i zapis",
+        "data": {
+          "confirm": "Akceptuję podgląd i zapis"
+        },
+        "description": "{preview}"
+      },
+      "battery": {
+        "title": "Bateria",
+        "data": {
+          "capacity_kwh": "Pojemność znamionowa",
+          "hardware_floor": "Minimalny sprzętowy SOC",
+          "operating_floor": "Minimalny roboczy SOC",
+          "soc_ceiling": "Maksymalny SOC",
+          "charge_kw": "Moc ładowania",
+          "discharge_kw": "Moc rozładowania",
+          "eta_charge": "Sprawność ładowania",
+          "eta_discharge": "Sprawność rozładowania",
+          "wear_per_kwh": "Koszt zużycia baterii na kWh",
+          "daily_cycles": "Dzienny limit cykli (0 wyłącza)",
+          "soc_max_age_seconds": "Maksymalny wiek SOC",
+          "soc_disagreement_percent": "Tolerancja różnicy BMS",
+          "soc_jump_percent": "Tolerancja skoku SOC",
+          "capacity_calibration": "Kalibracja pojemności",
+          "bms_max_age_seconds": "Maksymalny wiek pomiaru BMS"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "hardware": {
+        "title": "Możliwości sprzętu",
+        "data": {
+          "inverter_kw": "Moc falownika",
+          "grid_import_kw": "Limit importu z sieci",
+          "grid_export_kw": "Limit eksportu do sieci",
+          "allow_grid_charge": "Ładowanie z sieci",
+          "allow_battery_export": "Eksport energii z baterii",
+          "allow_curtailment": "Ograniczanie produkcji PV"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "tariffs": {
+        "title": "Taryfy i kalibracja",
+        "data": {
+          "buy_rate": "Stała cena zakupu",
+          "sell_rate": "Stała cena sprzedaży",
+          "buy_multiplier": "Mnożnik ceny zakupu",
+          "sell_multiplier": "Mnożnik ceny sprzedaży",
+          "buy_addition": "Dodatek do ceny zakupu",
+          "sell_addition": "Dodatek do ceny sprzedaży",
+          "vat_percent": "Stawka VAT",
+          "monthly_charge": "Stała opłata miesięczna",
+          "buy_apply_vat": "Dolicz VAT przy zakupie",
+          "sell_apply_vat": "Dolicz VAT przy sprzedaży",
+          "calibration": "Kalibracja taryfy"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "forecast": {
+        "title": "Prognoza zużycia",
+        "data": {
+          "daily_load_kwh": "Dobowe zużycie domu",
+          "fallback_daily_kwh": "Zapasowe dobowe zużycie",
+          "lookback_days": "Długość historii",
+          "minimum_samples": "Minimalna liczba próbek",
+          "power_max_gap_minutes": "Maksymalna przerwa pomiarów mocy",
+          "group_weekends": "Grupuj weekendy",
+          "allow_fallback": "Zezwól na oszacowanie zapasowe",
+          "forecast_method": "Metoda prognozowania"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "planning": {
+        "title": "Planowanie",
+        "data": {
+          "horizon_hours": "Horyzont planowania",
+          "refresh_minutes": "Okres przeliczania",
+          "terminal_value_per_kwh": "Wartość energii na końcu planu",
+          "terminal_mode": "Polityka końcowego SOC"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "compass": {
+        "title": "Prognoza kosztu zużycia",
+        "data": {
+          "display_horizon_hours": "Horyzont wyświetlania",
+          "reference_horizon_hours": "Horyzont percentyli",
+          "display_interval_minutes": "Rozdzielczość prezentacji",
+          "probe_kwh": "Energia próby zużycia",
+          "boost_ceiling": "Próg zwiększania zużycia",
+          "cheap_percentile": "Percentyl taniego okresu",
+          "limit_percentile": "Percentyl ograniczenia",
+          "limit_floor": "Próg ograniczenia",
+          "short_coverage": "Niepełny horyzont odniesienia"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "performance": {
+        "title": "Wydajność i jakość danych",
+        "data": {
+          "debounce_seconds": "Opóźnienie łączenia aktualizacji",
+          "soc_trigger_percent": "Zmiana SOC wyzwalająca obliczenia",
+          "solve_time_limit_s": "Limit czasu podstawowego planu",
+          "probe_time_limit_s": "Limit czasu jednej próby",
+          "total_time_limit_s": "Łączny limit czasu obliczeń"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "presentation": {
+        "title": "Prezentacja",
+        "data": {
+          "cost_precision": "Liczba miejsc dziesiętnych",
+          "expose_costs": "Włącz encje kosztów",
+          "expose_windows": "Włącz encje okresów",
+          "window_label": "Etykieta okresu",
+          "boost_color": "Kolor BOOST",
+          "cheap_color": "Kolor CHEAP",
+          "normal_color": "Kolor NORMAL",
+          "limit_color": "Kolor LIMIT"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "notifications": {
+        "title": "Ustawienia powiadomień",
+        "data": {
+          "notify_minimum_hours": "Minimalny korzystny okres",
+          "notify_limit_lead_minutes": "Wyprzedzenie ostrzeżenia LIMIT",
+          "notify_daily_max": "Dzienny limit powiadomień",
+          "notify_cooldown_minutes": "Przerwa między powiadomieniami",
+          "notify_enabled": "Włącz powiadomienia",
+          "quiet_start": "Początek ciszy nocnej",
+          "quiet_end": "Koniec ciszy nocnej",
+          "notify_events": "Zdarzenia powiadomień"
+        },
+        "description": "Preferencje powiadomień o okresach. Wybierz akcję w schemacie powiadomień. {detail}"
+      },
+      "menu": {
+        "title": "Energy Compass",
+        "menu_options": {
+          "installation": "Instalacja",
+          "sources": "Źródła danych",
+          "battery": "Bateria",
+          "hardware": "Możliwości sprzętu",
+          "tariffs": "Taryfy i kalibracja",
+          "forecast": "Prognoza zużycia",
+          "planning": "Planowanie",
+          "compass": "Prognoza kosztu zużycia",
+          "performance": "Wydajność i jakość danych",
+          "presentation": "Prezentacja",
+          "notifications": "Ustawienia powiadomień",
+          "helpers": "Pomocniki liczbowe",
+          "preview": "Podgląd i zapis"
+        }
+      },
+      "currency_review": {
+        "title": "Przegląd kwot w nowej walucie",
+        "description": "Waluta została zmieniona na {currency}. Kwoty nie zostały przeliczone. Sprawdź i w razie potrzeby zmień każdą kwotę poniżej, a następnie potwierdź, że jest właściwa w {currency}. Wartości stałe są zachowywane także przy użyciu pomocników. Waluty pomocników i źródeł cen muszą być zgodne z nową walutą przed zapisem. {detail}",
+        "data": {
+          "wear_per_kwh": "Koszt zużycia baterii na kWh",
+          "buy_rate": "Stała cena zakupu",
+          "sell_rate": "Stała cena sprzedaży",
+          "buy_addition": "Dodatek do ceny zakupu",
+          "sell_addition": "Dodatek do ceny sprzedaży",
+          "monthly_charge": "Stała opłata miesięczna",
+          "terminal_value_per_kwh": "Wartość energii na końcu planu",
+          "boost_ceiling": "Próg zwiększania zużycia",
+          "limit_floor": "Próg ograniczenia",
+          "confirm_currency_values": "Potwierdzam kwoty w nowej walucie; nie wykonano automatycznej konwersji"
+        }
+      }
+    },
+    "error": {
+      "invalid_input": "Niepoprawne lub sprzeczne ustawienia.",
+      "invalid_source": "Niepoprawne, brakujące lub nieaktualne źródło; sprawdź podgląd.",
+      "component_disabled": "Najpierw włącz ten komponent w ustawieniach instalacji.",
+      "currency_review_required": "Potwierdź kwoty w nowej walucie przed zapisem."
+    },
+    "abort": {
+      "reconfigure_successful": "Zapisano konfigurację."
+    }
+  },
+  "options": {
+    "step": {
+      "user": {
+        "title": "User",
+        "data": {
+          "name": "Nazwa",
+          "currency": "Waluta (bez automatycznej konwersji)",
+          "timezone": "Strefa czasowa",
+          "preset": "Opcjonalny profil dostawcy",
+          "pv_enabled": "Włącz fotowoltaikę",
+          "battery_enabled": "Włącz baterię"
+        }
+      },
+      "installation": {
+        "title": "Instalacja",
+        "data": {
+          "name": "Nazwa",
+          "currency": "Waluta (bez automatycznej konwersji)",
+          "timezone": "Strefa czasowa",
+          "preset": "Opcjonalny profil dostawcy",
+          "pv_enabled": "Włącz fotowoltaikę",
+          "battery_enabled": "Włącz baterię"
+        }
+      },
+      "sources": {
+        "title": "Źródła danych",
+        "data": {
+          "target": "Rodzaj źródła",
+          "mode": "Tryb",
+          "operation": "Operacja",
+          "group": "Numer niezależnej grupy PV"
+        },
+        "description": "Dodaj osobno zakup, sprzedaż, zużycie oraz włączone PV i SOC. Append łączy dziś/jutro; kolejny numer grupy PV oznacza sumowanie niezależnych instalacji. Pomiary opcjonalne służą diagnostyce; throughput_today ogranicza dzienną pracę baterii."
+      },
+      "source_entity": {
+        "title": "Source entity",
+        "data": {
+          "entity_id": "Encja"
+        }
+      },
+      "source_attribute": {
+        "title": "Source attribute",
+        "data": {
+          "attribute": "Atrybut (puste oznacza stan)"
+        }
+      },
+      "source_mapping": {
+        "title": "Source mapping",
+        "data": {
+          "value_path": "Pole wartości",
+          "start_path": "Pole początku",
+          "end_path": "Pole końca",
+          "duration_path": "Pole długości okresu",
+          "unit_path": "Pole jednostki",
+          "published_path": "Pole czasu publikacji",
+          "interval_minutes": "Długość okresu",
+          "unit": "Jednostka",
+          "value_kind": "Znaczenie wartości",
+          "value_sign": "Znak wartości",
+          "source_timezone": "Strefa czasowa źródła",
+          "check_age": "Sprawdzaj wiek danych",
+          "max_age_hours": "Maksymalny wiek danych"
+        },
+        "description": "{sample_status}. Ścieżki wskazują wyłącznie dane. {detail}"
+      },
+      "source_measurement": {
+        "title": "Source measurement",
+        "data": {
+          "unit": "Jednostka",
+          "sign": "Znak",
+          "timestamp_path": "Pole czasu pomiaru",
+          "max_age_seconds": "Maksymalny wiek pomiaru"
+        }
+      },
+      "source_statistic": {
+        "title": "Source statistic",
+        "data": {
+          "statistic_id": "Statystyka rejestratora",
+          "unit": "Jednostka",
+          "sign": "Znak"
+        }
+      },
+      "helpers": {
+        "title": "Pomocniki liczbowe",
+        "data": {
+          "setting": "Ustawienie",
+          "mode": "Tryb"
+        }
+      },
+      "helper_entity": {
+        "title": "Helper entity",
+        "data": {
+          "entity_id": "Encja"
+        }
+      },
+      "helper_value": {
+        "title": "Helper value",
+        "data": {
+          "attribute": "Atrybut (puste oznacza stan)",
+          "source_unit": "Jednostka źródła",
+          "multiplier": "Mnożnik",
+          "check_age": "Sprawdzaj wiek danych",
+          "max_age_hours": "Maksymalny wiek danych"
+        },
+        "description": "Wyłącz sprawdzanie wieku dla ręcznego pomocnika, który może długo nie zmieniać wartości. Niedostępne źródło zawsze jest błędem. {detail}"
+      },
+      "preview": {
+        "title": "Podgląd i zapis",
+        "data": {
+          "confirm": "Akceptuję podgląd i zapis"
+        },
+        "description": "{preview}"
+      },
+      "battery": {
+        "title": "Bateria",
+        "data": {
+          "capacity_kwh": "Pojemność znamionowa",
+          "hardware_floor": "Minimalny sprzętowy SOC",
+          "operating_floor": "Minimalny roboczy SOC",
+          "soc_ceiling": "Maksymalny SOC",
+          "charge_kw": "Moc ładowania",
+          "discharge_kw": "Moc rozładowania",
+          "eta_charge": "Sprawność ładowania",
+          "eta_discharge": "Sprawność rozładowania",
+          "wear_per_kwh": "Koszt zużycia baterii na kWh",
+          "daily_cycles": "Dzienny limit cykli (0 wyłącza)",
+          "soc_max_age_seconds": "Maksymalny wiek SOC",
+          "soc_disagreement_percent": "Tolerancja różnicy BMS",
+          "soc_jump_percent": "Tolerancja skoku SOC",
+          "capacity_calibration": "Kalibracja pojemności",
+          "bms_max_age_seconds": "Maksymalny wiek pomiaru BMS"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "hardware": {
+        "title": "Możliwości sprzętu",
+        "data": {
+          "inverter_kw": "Moc falownika",
+          "grid_import_kw": "Limit importu z sieci",
+          "grid_export_kw": "Limit eksportu do sieci",
+          "allow_grid_charge": "Ładowanie z sieci",
+          "allow_battery_export": "Eksport energii z baterii",
+          "allow_curtailment": "Ograniczanie produkcji PV"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "tariffs": {
+        "title": "Taryfy i kalibracja",
+        "data": {
+          "buy_rate": "Stała cena zakupu",
+          "sell_rate": "Stała cena sprzedaży",
+          "buy_multiplier": "Mnożnik ceny zakupu",
+          "sell_multiplier": "Mnożnik ceny sprzedaży",
+          "buy_addition": "Dodatek do ceny zakupu",
+          "sell_addition": "Dodatek do ceny sprzedaży",
+          "vat_percent": "Stawka VAT",
+          "monthly_charge": "Stała opłata miesięczna",
+          "buy_apply_vat": "Dolicz VAT przy zakupie",
+          "sell_apply_vat": "Dolicz VAT przy sprzedaży",
+          "calibration": "Kalibracja taryfy"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "forecast": {
+        "title": "Prognoza zużycia",
+        "data": {
+          "daily_load_kwh": "Dobowe zużycie domu",
+          "fallback_daily_kwh": "Zapasowe dobowe zużycie",
+          "lookback_days": "Długość historii",
+          "minimum_samples": "Minimalna liczba próbek",
+          "power_max_gap_minutes": "Maksymalna przerwa pomiarów mocy",
+          "group_weekends": "Grupuj weekendy",
+          "allow_fallback": "Zezwól na oszacowanie zapasowe",
+          "forecast_method": "Metoda prognozowania"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "planning": {
+        "title": "Planowanie",
+        "data": {
+          "horizon_hours": "Horyzont planowania",
+          "refresh_minutes": "Okres przeliczania",
+          "terminal_value_per_kwh": "Wartość energii na końcu planu",
+          "terminal_mode": "Polityka końcowego SOC"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "compass": {
+        "title": "Prognoza kosztu zużycia",
+        "data": {
+          "display_horizon_hours": "Horyzont wyświetlania",
+          "reference_horizon_hours": "Horyzont percentyli",
+          "display_interval_minutes": "Rozdzielczość prezentacji",
+          "probe_kwh": "Energia próby zużycia",
+          "boost_ceiling": "Próg zwiększania zużycia",
+          "cheap_percentile": "Percentyl taniego okresu",
+          "limit_percentile": "Percentyl ograniczenia",
+          "limit_floor": "Próg ograniczenia",
+          "short_coverage": "Niepełny horyzont odniesienia"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "performance": {
+        "title": "Wydajność i jakość danych",
+        "data": {
+          "debounce_seconds": "Opóźnienie łączenia aktualizacji",
+          "soc_trigger_percent": "Zmiana SOC wyzwalająca obliczenia",
+          "solve_time_limit_s": "Limit czasu podstawowego planu",
+          "probe_time_limit_s": "Limit czasu jednej próby",
+          "total_time_limit_s": "Łączny limit czasu obliczeń"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "presentation": {
+        "title": "Prezentacja",
+        "data": {
+          "cost_precision": "Liczba miejsc dziesiętnych",
+          "expose_costs": "Włącz encje kosztów",
+          "expose_windows": "Włącz encje okresów",
+          "window_label": "Etykieta okresu",
+          "boost_color": "Kolor BOOST",
+          "cheap_color": "Kolor CHEAP",
+          "normal_color": "Kolor NORMAL",
+          "limit_color": "Kolor LIMIT"
+        },
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+      },
+      "notifications": {
+        "title": "Ustawienia powiadomień",
+        "data": {
+          "notify_minimum_hours": "Minimalny korzystny okres",
+          "notify_limit_lead_minutes": "Wyprzedzenie ostrzeżenia LIMIT",
+          "notify_daily_max": "Dzienny limit powiadomień",
+          "notify_cooldown_minutes": "Przerwa między powiadomieniami",
+          "notify_enabled": "Włącz powiadomienia",
+          "quiet_start": "Początek ciszy nocnej",
+          "quiet_end": "Koniec ciszy nocnej",
+          "notify_events": "Zdarzenia powiadomień"
+        },
+        "description": "Preferencje powiadomień o okresach. Wybierz akcję w schemacie powiadomień. {detail}"
+      },
+      "menu": {
+        "title": "Energy Compass",
+        "menu_options": {
+          "installation": "Instalacja",
+          "sources": "Źródła danych",
+          "battery": "Bateria",
+          "hardware": "Możliwości sprzętu",
+          "tariffs": "Taryfy i kalibracja",
+          "forecast": "Prognoza zużycia",
+          "planning": "Planowanie",
+          "compass": "Prognoza kosztu zużycia",
+          "performance": "Wydajność i jakość danych",
+          "presentation": "Prezentacja",
+          "notifications": "Ustawienia powiadomień",
+          "helpers": "Pomocniki liczbowe",
+          "preview": "Podgląd i zapis"
+        }
+      },
+      "currency_review": {
+        "title": "Przegląd kwot w nowej walucie",
+        "description": "Waluta została zmieniona na {currency}. Kwoty nie zostały przeliczone. Sprawdź i w razie potrzeby zmień każdą kwotę poniżej, a następnie potwierdź, że jest właściwa w {currency}. Wartości stałe są zachowywane także przy użyciu pomocników. Waluty pomocników i źródeł cen muszą być zgodne z nową walutą przed zapisem. {detail}",
+        "data": {
+          "wear_per_kwh": "Koszt zużycia baterii na kWh",
+          "buy_rate": "Stała cena zakupu",
+          "sell_rate": "Stała cena sprzedaży",
+          "buy_addition": "Dodatek do ceny zakupu",
+          "sell_addition": "Dodatek do ceny sprzedaży",
+          "monthly_charge": "Stała opłata miesięczna",
+          "terminal_value_per_kwh": "Wartość energii na końcu planu",
+          "boost_ceiling": "Próg zwiększania zużycia",
+          "limit_floor": "Próg ograniczenia",
+          "confirm_currency_values": "Potwierdzam kwoty w nowej walucie; nie wykonano automatycznej konwersji"
+        }
+      }
+    },
+    "error": {
+      "invalid_input": "Niepoprawne lub sprzeczne ustawienia.",
+      "invalid_source": "Niepoprawne, brakujące lub nieaktualne źródło; sprawdź podgląd.",
+      "component_disabled": "Najpierw włącz ten komponent w ustawieniach instalacji.",
+      "currency_review_required": "Potwierdź kwoty w nowej walucie przed zapisem."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "consumption_compass": {
+        "name": "Kompas zużycia",
+        "state_attributes": {
+          "reason": {
+            "name": "Powód",
+            "state": {
+              "complete": "Pełne pokrycie",
+              "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
+              "reference_probe_failed": "Nieudana próba odniesienia",
+              "unvalidated_tariff": "Niezweryfikowana taryfa",
+              "unvalidated_capacity": "Niezweryfikowana pojemność",
+              "short_source_coverage": "Krótszy horyzont źródła",
+              "current_guidance_unavailable": "Bieżąca próba zużycia jest nieznana; sprawdź przyszłe okresy",
+              "missing_forecast_continuation": "Nieopublikowana kontynuacja prognozy"
+            }
+          },
+          "calibration": {
+            "name": "Kalibracja",
+            "state": {
+              "unvalidated": "Niezweryfikowane oszacowanie",
+              "verified": "Zweryfikowane"
+            }
+          }
+        }
+      },
+      "consumption_cost": {
+        "name": "Koszt zużycia",
+        "state_attributes": {
+          "reason": {
+            "name": "Powód",
+            "state": {
+              "complete": "Pełne pokrycie",
+              "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
+              "reference_probe_failed": "Nieudana próba odniesienia",
+              "unvalidated_tariff": "Niezweryfikowana taryfa",
+              "unvalidated_capacity": "Niezweryfikowana pojemność",
+              "short_source_coverage": "Krótszy horyzont źródła",
+              "current_guidance_unavailable": "Bieżąca próba zużycia jest nieznana; sprawdź przyszłe okresy",
+              "missing_forecast_continuation": "Nieopublikowana kontynuacja prognozy"
+            }
+          },
+          "calibration": {
+            "name": "Kalibracja",
+            "state": {
+              "unvalidated": "Niezweryfikowane oszacowanie",
+              "verified": "Zweryfikowane"
+            }
+          }
+        }
+      },
+      "next_change": {
+        "name": "Następna zmiana",
+        "state_attributes": {
+          "reason": {
+            "name": "Powód",
+            "state": {
+              "complete": "Pełne pokrycie",
+              "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
+              "reference_probe_failed": "Nieudana próba odniesienia",
+              "unvalidated_tariff": "Niezweryfikowana taryfa",
+              "unvalidated_capacity": "Niezweryfikowana pojemność",
+              "short_source_coverage": "Krótszy horyzont źródła",
+              "current_guidance_unavailable": "Bieżąca próba zużycia jest nieznana; sprawdź przyszłe okresy",
+              "missing_forecast_continuation": "Nieopublikowana kontynuacja prognozy"
+            }
+          },
+          "calibration": {
+            "name": "Kalibracja",
+            "state": {
+              "unvalidated": "Niezweryfikowane oszacowanie",
+              "verified": "Zweryfikowane"
+            }
+          }
+        }
+      },
+      "next_boost_start": {
+        "name": "Początek zwiększonego zużycia",
+        "state_attributes": {
+          "reason": {
+            "name": "Powód",
+            "state": {
+              "complete": "Pełne pokrycie",
+              "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
+              "reference_probe_failed": "Nieudana próba odniesienia",
+              "unvalidated_tariff": "Niezweryfikowana taryfa",
+              "unvalidated_capacity": "Niezweryfikowana pojemność",
+              "short_source_coverage": "Krótszy horyzont źródła",
+              "current_guidance_unavailable": "Bieżąca próba zużycia jest nieznana; sprawdź przyszłe okresy",
+              "missing_forecast_continuation": "Nieopublikowana kontynuacja prognozy"
+            }
+          },
+          "calibration": {
+            "name": "Kalibracja",
+            "state": {
+              "unvalidated": "Niezweryfikowane oszacowanie",
+              "verified": "Zweryfikowane"
+            }
+          }
+        }
+      },
+      "next_cheap_start": {
+        "name": "Początek taniego okresu",
+        "state_attributes": {
+          "reason": {
+            "name": "Powód",
+            "state": {
+              "complete": "Pełne pokrycie",
+              "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
+              "reference_probe_failed": "Nieudana próba odniesienia",
+              "unvalidated_tariff": "Niezweryfikowana taryfa",
+              "unvalidated_capacity": "Niezweryfikowana pojemność",
+              "short_source_coverage": "Krótszy horyzont źródła",
+              "current_guidance_unavailable": "Bieżąca próba zużycia jest nieznana; sprawdź przyszłe okresy",
+              "missing_forecast_continuation": "Nieopublikowana kontynuacja prognozy"
+            }
+          },
+          "calibration": {
+            "name": "Kalibracja",
+            "state": {
+              "unvalidated": "Niezweryfikowane oszacowanie",
+              "verified": "Zweryfikowane"
+            }
+          }
+        }
+      },
+      "next_limit_start": {
+        "name": "Początek ograniczenia",
+        "state_attributes": {
+          "reason": {
+            "name": "Powód",
+            "state": {
+              "complete": "Pełne pokrycie",
+              "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
+              "reference_probe_failed": "Nieudana próba odniesienia",
+              "unvalidated_tariff": "Niezweryfikowana taryfa",
+              "unvalidated_capacity": "Niezweryfikowana pojemność",
+              "short_source_coverage": "Krótszy horyzont źródła",
+              "current_guidance_unavailable": "Bieżąca próba zużycia jest nieznana; sprawdź przyszłe okresy",
+              "missing_forecast_continuation": "Nieopublikowana kontynuacja prognozy"
+            }
+          },
+          "calibration": {
+            "name": "Kalibracja",
+            "state": {
+              "unvalidated": "Niezweryfikowane oszacowanie",
+              "verified": "Zweryfikowane"
+            }
+          }
+        }
+      },
+      "energy_compass": {
+        "name": "Kompas energii",
+        "state_attributes": {
+          "reason": {
+            "name": "Powód",
+            "state": {
+              "complete": "Pełne pokrycie",
+              "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
+              "reference_probe_failed": "Nieudana próba odniesienia",
+              "unvalidated_tariff": "Niezweryfikowana taryfa",
+              "unvalidated_capacity": "Niezweryfikowana pojemność",
+              "short_source_coverage": "Krótszy horyzont źródła",
+              "current_guidance_unavailable": "Bieżąca próba zużycia jest nieznana; sprawdź przyszłe okresy",
+              "missing_forecast_continuation": "Nieopublikowana kontynuacja prognozy"
+            }
+          },
+          "calibration": {
+            "name": "Kalibracja",
+            "state": {
+              "unvalidated": "Niezweryfikowane oszacowanie",
+              "verified": "Zweryfikowane"
+            }
+          }
+        }
+      },
+      "plan": {
+        "name": "Plan",
+        "state_attributes": {
+          "reason": {
+            "name": "Powód",
+            "state": {
+              "complete": "Pełne pokrycie",
+              "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
+              "reference_probe_failed": "Nieudana próba odniesienia",
+              "unvalidated_tariff": "Niezweryfikowana taryfa",
+              "unvalidated_capacity": "Niezweryfikowana pojemność",
+              "short_source_coverage": "Krótszy horyzont źródła",
+              "current_guidance_unavailable": "Bieżąca próba zużycia jest nieznana; sprawdź przyszłe okresy",
+              "missing_forecast_continuation": "Nieopublikowana kontynuacja prognozy"
+            }
+          },
+          "calibration": {
+            "name": "Kalibracja",
+            "state": {
+              "unvalidated": "Niezweryfikowane oszacowanie",
+              "verified": "Zweryfikowane"
+            }
+          }
+        }
+      },
+      "expected_net_cost": {
+        "name": "Przewidywany koszt netto",
+        "state_attributes": {
+          "reason": {
+            "name": "Powód",
+            "state": {
+              "complete": "Pełne pokrycie",
+              "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
+              "reference_probe_failed": "Nieudana próba odniesienia",
+              "unvalidated_tariff": "Niezweryfikowana taryfa",
+              "unvalidated_capacity": "Niezweryfikowana pojemność",
+              "short_source_coverage": "Krótszy horyzont źródła",
+              "current_guidance_unavailable": "Bieżąca próba zużycia jest nieznana; sprawdź przyszłe okresy",
+              "missing_forecast_continuation": "Nieopublikowana kontynuacja prognozy"
+            }
+          },
+          "calibration": {
+            "name": "Kalibracja",
+            "state": {
+              "unvalidated": "Niezweryfikowane oszacowanie",
+              "verified": "Zweryfikowane"
+            }
+          }
+        }
+      },
+      "expected_wear_cost": {
+        "name": "Przewidywany koszt zużycia baterii",
+        "state_attributes": {
+          "reason": {
+            "name": "Powód",
+            "state": {
+              "complete": "Pełne pokrycie",
+              "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
+              "reference_probe_failed": "Nieudana próba odniesienia",
+              "unvalidated_tariff": "Niezweryfikowana taryfa",
+              "unvalidated_capacity": "Niezweryfikowana pojemność",
+              "short_source_coverage": "Krótszy horyzont źródła",
+              "current_guidance_unavailable": "Bieżąca próba zużycia jest nieznana; sprawdź przyszłe okresy",
+              "missing_forecast_continuation": "Nieopublikowana kontynuacja prognozy"
+            }
+          },
+          "calibration": {
+            "name": "Kalibracja",
+            "state": {
+              "unvalidated": "Niezweryfikowane oszacowanie",
+              "verified": "Zweryfikowane"
+            }
+          }
+        }
+      },
+      "optimizer_status": {
+        "name": "Stan optymalizatora",
+        "state": {
+          "ready": "Gotowy",
+          "calculating": "Obliczanie",
+          "insufficient_data": "Za mało danych",
+          "invalid_input": "Niepoprawne dane",
+          "timeout": "Przekroczony czas",
+          "infeasible": "Brak rozwiązania",
+          "error": "Błąd"
+        },
+        "state_attributes": {
+          "reason": {
+            "name": "Powód",
+            "state": {
+              "complete": "Pełne pokrycie",
+              "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
+              "reference_probe_failed": "Nieudana próba odniesienia",
+              "unvalidated_tariff": "Niezweryfikowana taryfa",
+              "unvalidated_capacity": "Niezweryfikowana pojemność",
+              "short_source_coverage": "Krótszy horyzont źródła",
+              "current_guidance_unavailable": "Bieżąca próba zużycia jest nieznana; sprawdź przyszłe okresy",
+              "missing_forecast_continuation": "Nieopublikowana kontynuacja prognozy"
+            }
+          },
+          "calibration": {
+            "name": "Kalibracja",
+            "state": {
+              "unvalidated": "Niezweryfikowane oszacowanie",
+              "verified": "Zweryfikowane"
+            }
+          }
+        }
+      }
+    },
+    "binary_sensor": {
+      "forecast_valid": {
+        "name": "Poprawna prognoza",
+        "state_attributes": {
+          "current_guidance_valid": {
+            "name": "Poprawna bieżąca wskazówka zużycia"
+          }
+        }
+      }
+    }
+  },
+  "issues": {
+    "source_removed": {
+      "title": "Źródło zostało usunięte",
+      "description": "Zmień źródła instalacji {name}."
+    }
+  }
+}

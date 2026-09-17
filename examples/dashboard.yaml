@@ -1,0 +1,37 @@
+type: markdown
+title: Energy Compass
+content: |-
+  {% set current = 'sensor.replace_with_consumption_compass' %}
+  {% set change = 'sensor.replace_with_next_change' %}
+  {% set boost = 'sensor.replace_with_next_boost_start' %}
+  {% set cheap = 'sensor.replace_with_next_cheap_start' %}
+  {% set limit = 'sensor.replace_with_next_limit_start' %}
+  {% set plan = 'sensor.replace_with_plan' %}
+  {% set valid = 'binary_sensor.replace_with_forecast_valid' %}
+  {% if is_state(valid, 'on') %}
+  **Now:** {{ states(current) if has_value(current) else 'current household guidance unavailable' }}
+
+  {% if has_value(change) %}
+  **Next different level:** {{ state_attr(change, 'next_level') }} at
+  {{ as_local(as_datetime(states(change))).strftime('%a %d %b %H:%M %Z') }}
+  {% else %}
+  **Next different level:** none in known contiguous coverage.
+  {% endif %}
+
+  {% set window_status = state_attr(plan, 'window_status') or {} %}
+  | Window | Start | End |
+  |:--|:--|:--|
+  | BOOST | {{ as_local(as_datetime(states(boost))).strftime('%a %d %b %H:%M %Z') if has_value(boost) else ('No window in known coverage' if window_status.get('boost') == 'none_in_coverage' else 'Window unavailable') }} | {{ as_local(as_datetime(state_attr(boost, 'end'))).strftime('%a %d %b %H:%M %Z') if has_value(boost) and state_attr(boost, 'end') else '—' }} |
+  | CHEAP | {{ as_local(as_datetime(states(cheap))).strftime('%a %d %b %H:%M %Z') if has_value(cheap) else ('No window in known coverage' if window_status.get('cheap') == 'none_in_coverage' else 'Window unavailable') }} | {{ as_local(as_datetime(state_attr(cheap, 'end'))).strftime('%a %d %b %H:%M %Z') if has_value(cheap) and state_attr(cheap, 'end') else '—' }} |
+  | LIMIT | {{ as_local(as_datetime(states(limit))).strftime('%a %d %b %H:%M %Z') if has_value(limit) else ('No window in known coverage' if window_status.get('limit') == 'none_in_coverage' else 'Window unavailable') }} | {{ as_local(as_datetime(state_attr(limit, 'end'))).strftime('%a %d %b %H:%M %Z') if has_value(limit) and state_attr(limit, 'end') else '—' }} |
+
+  {% if not state_attr(valid, 'coverage_complete') %}
+  ⚠ Forecast coverage ends before the requested horizon.
+  {% endif %}
+  {% set missing = state_attr(valid, 'missing_sources') or [] %}
+  {% if missing %}
+  ⚠ Missing sources: {{ missing | join(', ') }}.
+  {% endif %}
+  {% else %}
+  ⚠ Forecast is stale or unavailable. No current recommendation is shown.
+  {% endif %}

@@ -1,0 +1,51 @@
+# Install and display Energy Compass
+
+Energy Compass is an advisory custom integration for Home Assistant 2026.9.1 or later. In HACS, add `https://github.com/marino39/ha-energy-compass` under **Custom repositories** as an **Integration**, download it, and restart Home Assistant. Alternatively, copy this repository's `custom_components/energy_compass` directory into the Home Assistant config directory's `custom_components` folder, then restart. Go to **Settings → Devices & services → Add integration → Energy Compass**. Choose a name, currency, and timezone, then configure the required buy tariff and household load. Presets are editable starting points; generic sources can select entities and nested attributes through the flow. Preview the normalized inputs, coverage, units, ages, and assumptions before saving. Optional PV and battery sources can be added when available. Open **Configure** on the integration to change horizons, presentation, and notification preferences later.
+
+Changing an existing installation’s currency opens **Review amounts in the new currency** before preview or save. Review fixed buy/sell rates, tariff additions, battery wear, absolute consumption thresholds, terminal energy value, and the monthly charge, then explicitly confirm the amounts in the selected currency. No exchange conversion occurs. Helpers and forecast price sources must also use the selected currency; update their bindings before saving. Another currency change requires another review.
+
+For a disposable synthetic setup with no provider entities, choose name **Synthetic**, currency **EUR**, timezone **UTC**, preset **Generic**, with PV and battery off. In **Tariffs**, enter an explicit fixed buy rate (for example, 0.30 EUR/kWh) and sell rate (for example, 0 EUR/kWh). In **Forecast**, set the daily household estimate to 10 kWh; in **Hardware**, set grid import to a finite value such as 10 kW. Then open **Sources** and choose **buy → fixed → replace**, **sell → fixed → replace**, and **load → fixed → replace** so each source captures the values just entered. Open **Preview** to inspect the generated intervals and assumptions, then confirm. The fixed source example exercises installation and entity creation; forecast updates and future windows require interval sources with adequate coverage.
+
+For a synthetic interval source, an entity can expose a `rows` attribute with records such as `{from: ISO timestamp, to: ISO timestamp, tariff: {amount: 0.2}}`. Select **Sources → buy → forecast → entity → rows**, map start `from`, end `to`, and value `tariff.amount`, and declare EUR/kWh. The example contains no household data. Real installations should select their own entities, units, timestamps, and age limits, and check the preview before saving.
+
+The integration creates one device and native sensors for the current household level and extra-kWh cost, the optimized machine state and costs, the next different level, three upcoming window starts, the plan, and optimizer status. A forecast-valid binary sensor reports input freshness, coverage, and current-guidance validity. If the current household probe is infeasible but the baseline forecast is valid, the current household level/cost may be unavailable while known later windows remain usable. Entity IDs can be renamed; select entities by name in the UI rather than assuming an ID.
+
+## Native dashboard, using the visual editor
+
+Create a **Sections** view or add cards to an existing view. Add a **Tile** card and select **Consumption compass** for the prominent current level. Add an **Entities** card and use its entity picker to add **Next change**, **Next BOOST start**, **Next CHEAP start**, and **Next LIMIT start**. Include **Forecast valid** and **Optimizer status** in a second card. Each timestamp row shows a local start time. For each window row, open **Edit → Secondary information → Add** and select the **End** attribute to show its end beside the start. An unavailable window means there is no matching window in known coverage: inspect **Plan** → `window_status` for `none_in_coverage`. The plan's `outlook`, `windows`, `presentation`, and coverage attributes are available through Home Assistant's entity state inspection.
+
+In the integration options, set **Display horizon**, **Reference horizon**, and **Display interval** to control the published outlook. Presentation options set the level label/colors, expose window or cost entities, and choose cost precision. The card editor can choose entity display names, icons, and timestamp format. A 24-hour horizon means 24 elapsed hours from the snapshot; its local clock range can span 23 or 25 wall-clock hours around daylight-saving transitions.
+
+For a denser tablet display, add the optional native [Markdown card example](../examples/dashboard.yaml) in a dashboard code editor and replace its placeholder entity IDs. That example renders current level, the next different level/time, all three upcoming start/end pairs, and coverage warnings. It includes the local timezone abbreviation so repeated daylight-saving hours remain distinct. The visual card setup above requires no YAML or custom card. Preview at the tablet's actual viewport and check that rendered timestamps match the selected Home Assistant timezone. With synthetic data, check that a near BOOST and a later LIMIT both appear before either starts, then check absent windows, missing tomorrow, and stale inputs. Do not install an example on a live kiosk merely to perform this preview.
+
+### Optional ApexCharts timeline
+
+If [ApexCharts Card](https://github.com/RomRider/apexcharts-card) is already installed, its `data_generator` can turn `plan.outlook` into a time-based curve. This card is optional and is not required by Energy Compass. In the recipe below, replace the plan entity with the one selected in your installation. The data generator reads each interval's actual timestamp, so it does not assume that a local day has exactly 24 clock hours.
+
+```yaml
+type: custom:apexcharts-card
+graph_span: 24h
+span:
+  start: minute
+series:
+  - entity: sensor.replace_with_plan
+    name: Extra kWh cost
+    type: column
+    data_generator: |
+      const rows = entity.attributes.outlook || [];
+      return rows.filter((row) => row.cost_per_kwh !== null).map((row) => [new Date(row.start).getTime(), row.cost_per_kwh]);
+```
+
+The timeline shows forecast-dependent incremental cost, not measured savings. The cost assumes the optimizer's proposed plan; actual consumption savings can differ until a controller follows it.
+
+## Opt-in notifications
+
+First open Energy Compass integration options and turn on **Notify enabled** in **Notifications**. This is the master opt-in: when it is off, the blueprint sends nothing, even if its override option is on. The integration options also set enabled events, minimum favorable duration, LIMIT lead time, quiet hours, cooldown, and daily cap. Defaults are 2 hours, 30 minutes, 22:00–08:00, 60 minutes, and 3 per local day.
+
+Copy [the blueprint](../blueprints/automation/energy_compass/notifications.yaml) into Home Assistant's `config/blueprints/automation/energy_compass/notifications.yaml`, then go to **Settings → Automations & scenes → Blueprints → Create automation**. Select **Energy Compass window notifications**. In the blueprint form, select the compass, plan, forecast-valid, and three window entities from the same integration instance. By default, the automation uses the current resolved notification preferences from that plan, including later integration-option changes. Turn on **Override integration notification settings** only when this automation needs its own events, timing, quiet hours, cooldown, or cap; the selectors below that toggle then take precedence. **Notify enabled** in the integration still controls both modes. If plan preferences are missing or incomplete, the automation waits for a valid plan instead of sending.
+
+Choose at least one **Notification action** in the blueprint's action selector; that sequence is the only action the automation runs. An empty action sequence sends nothing and does not use a window identity or daily allowance. The integration form offers the two events this version handles: **favorable** and **LIMIT**. Existing saved action or other event preferences remain readable but are not dispatched by this blueprint.
+
+Before creating the automation, use **Settings → Devices & services → Helpers → Create helper** to create two **Text** helpers for the last favorable and LIMIT window starts, one **Number** helper for the daily count (minimum 0, maximum at least your daily cap, step 1), one **Date and/or time** helper with **date only** for the last local date, and one **Date and/or time** helper with **both date and time** for the last send. Select all five in the blueprint form. Each text helper stores one integer Unix timestamp, shorter than 20 characters; a maximum length of at least 20 characters is sufficient, and the default 100 is safe. Leave their initial values empty so Home Assistant restores their last values after restart. Do not share the helpers between multiple automations.
+
+The blueprint examines current favorable windows and upcoming LIMIT windows on forecast changes and each minute. A favorable window must last at least the selected duration; LIMIT fires within the selected lead time. The last window start, local date, count, and send time persist through the helpers. A recalculation that shifts a start by less than 30 minutes is treated as the same window; a larger reschedule may notify again, subject to cooldown and cap. Empty first-use text/date/time values are accepted while the count is zero. An unknown count, an unknown date/time after the first action, or any unavailable helper suppresses actions until the helpers recover. During testing, choose an **Event** action with a local event name and inspect the automation trace; do not choose a real notify action until the behavior suits your household.
