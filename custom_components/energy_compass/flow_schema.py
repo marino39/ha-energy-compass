@@ -79,6 +79,24 @@ def settings_schema(group: str, values: dict, currency="EUR") -> vol.Schema:
     return vol.Schema(fields)
 
 
+def currency_review_schema(values: dict, currency: str) -> vol.Schema:
+    """Require a deliberate review of every fixed monetary setting."""
+    return vol.Schema(
+        {
+            **{
+                vol.Required(key, default=values.get(key, default)): number(
+                    low, high, unit.replace("currency", currency)
+                )
+                for key, (_, default, low, high, unit) in NUMBERS.items()
+                if "currency" in unit
+            },
+            vol.Required("confirm_currency_values", default=False): (
+                selector.BooleanSelector()
+            ),
+        }
+    )
+
+
 def entity_binding(hass, entity_id: str, attribute: str | None = None) -> EntityBinding:
     """Reject owned outputs by registry identity even after user renames."""
     item = er.async_get(hass).async_get(entity_id)

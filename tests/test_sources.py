@@ -250,10 +250,10 @@ def test_recorder_counter_reset_and_incomplete_hour():
 
 def test_recorder_sum_semantics_and_selected_load_modes():
     rows = (
-        {"start": "2026-09-15T10:00:00+00:00", "sum": 0},
-        {"start": "2026-09-15T11:00:00+00:00", "sum": 1},
-        {"start": "2026-09-16T10:00:00+00:00", "sum": 8},
-        {"start": "2026-09-16T11:00:00+00:00", "sum": 11},
+        {"start": "2026-09-15T09:00:00+00:00", "sum": 0},
+        {"start": "2026-09-15T10:00:00+00:00", "sum": 1},
+        {"start": "2026-09-16T09:00:00+00:00", "sum": 8},
+        {"start": "2026-09-16T10:00:00+00:00", "sum": 11},
     )
     assert [value for _, value in recorder_statistics_to_hours(rows)] == [1.0, 3.0]
     slot = (

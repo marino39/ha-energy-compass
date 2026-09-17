@@ -67,7 +67,7 @@ def recorder_statistics_to_hours(
     for (start, first), (end, second) in pairwise(ordered):
         if end - start != timedelta(hours=1):
             continue
-        if observed_before is not None and end > aware(
+        if observed_before is not None and end + timedelta(hours=1) > aware(
             observed_before, "observed before"
         ):
             continue
@@ -83,7 +83,8 @@ def recorder_statistics_to_hours(
         )
         if delta < 0:
             raise InputError("recorder sum decreased")
-        result.append((start, delta))
+        # Each recorder row ends at the last five-minute sum within its hour.
+        result.append((end, delta))
     return tuple(result)
 
 
@@ -104,13 +105,16 @@ def power_samples_to_hours(
     if maximum_gap <= 0:
         raise InputError("power sample gap limit must be positive")
     ordered = sorted(
-        (parse_timestamp(time), finite(value, "power")) for time, value in samples
+        (parse_timestamp(time), None if value is None else finite(value, "power"))
+        for time, value in samples
     )
     totals: dict[datetime, float] = {}
     coverage: dict[datetime, float] = {}
     for (start, before), (end, _) in pairwise(ordered):
         if end <= start:
             raise InputError("power samples must increase")
+        if before is None:
+            continue
         if (end - start).total_seconds() > maximum_gap * 60:
             raise InputError("power sample gap exceeds configured limit")
         if observed_before is not None and end > aware(

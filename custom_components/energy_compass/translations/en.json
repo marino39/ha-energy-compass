@@ -258,12 +258,29 @@
           "helpers": "Numeric helper bindings",
           "preview": "Preview and save"
         }
+      },
+      "currency_review": {
+        "title": "Review amounts in the new currency",
+        "description": "The currency has changed to {currency}. Amounts have not been converted. Review and, where needed, edit every amount below, then confirm that these values are intentional in {currency}. Fixed values are retained even when a helper is selected. Helper and price-source currencies must match the new currency before saving. {detail}",
+        "data": {
+          "wear_per_kwh": "Wear per kwh",
+          "buy_rate": "Buy rate",
+          "sell_rate": "Sell rate",
+          "buy_addition": "Buy addition",
+          "sell_addition": "Sell addition",
+          "monthly_charge": "Monthly charge",
+          "terminal_value_per_kwh": "Terminal value per kwh",
+          "boost_ceiling": "Boost ceiling",
+          "limit_floor": "Limit floor",
+          "confirm_currency_values": "I confirm these amounts in the new currency; no automatic conversion was performed"
+        }
       }
     },
     "error": {
       "invalid_input": "Invalid or contradictory settings.",
       "invalid_source": "Invalid, missing or stale source; review the preview.",
-      "component_disabled": "Enable this component in Installation first."
+      "component_disabled": "Enable this component in Installation first.",
+      "currency_review_required": "Confirm the amounts in the new currency before saving."
     },
     "abort": {
       "reconfigure_successful": "Configuration saved."
@@ -527,12 +544,29 @@
           "helpers": "Numeric helper bindings",
           "preview": "Preview and save"
         }
+      },
+      "currency_review": {
+        "title": "Review amounts in the new currency",
+        "description": "The currency has changed to {currency}. Amounts have not been converted. Review and, where needed, edit every amount below, then confirm that these values are intentional in {currency}. Fixed values are retained even when a helper is selected. Helper and price-source currencies must match the new currency before saving. {detail}",
+        "data": {
+          "wear_per_kwh": "Wear per kwh",
+          "buy_rate": "Buy rate",
+          "sell_rate": "Sell rate",
+          "buy_addition": "Buy addition",
+          "sell_addition": "Sell addition",
+          "monthly_charge": "Monthly charge",
+          "terminal_value_per_kwh": "Terminal value per kwh",
+          "boost_ceiling": "Boost ceiling",
+          "limit_floor": "Limit floor",
+          "confirm_currency_values": "I confirm these amounts in the new currency; no automatic conversion was performed"
+        }
       }
     },
     "error": {
       "invalid_input": "Invalid or contradictory settings.",
       "invalid_source": "Invalid, missing or stale source; review the preview.",
-      "component_disabled": "Enable this component in Installation first."
+      "component_disabled": "Enable this component in Installation first.",
+      "currency_review_required": "Confirm the amounts in the new currency before saving."
     }
   },
   "entity": {

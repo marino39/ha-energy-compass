@@ -10,7 +10,13 @@ from homeassistant.helpers import selector
 from homeassistant.util import dt as dt_util
 
 from .engine.models import InputError
-from .flow_schema import rebind_configuration, select, settings_schema, snapshot
+from .flow_schema import (
+    currency_review_schema,
+    rebind_configuration,
+    select,
+    settings_schema,
+    snapshot,
+)
 from .presets import PRESETS
 from .runtime import async_history, build_problem
 from .settings import (
@@ -25,6 +31,9 @@ from .source_flow import SourceEditor
 
 class Editor(SourceEditor):
     """Keep unfinished edits separate until a validated preview is accepted."""
+
+    _existing_installation = False
+    _currency_review_pending = False
 
     async def async_step_menu(self, user_input=None):
         return self.async_show_menu(
@@ -49,16 +58,20 @@ class Editor(SourceEditor):
                 candidate["sources"]["pv"]["arrays"] = []
             if not user_input["battery_enabled"]:
                 candidate["sources"].update(soc=None, bms_soc=None)
-            if candidate["currency"] != self._draft["currency"]:
+            currency_changed = candidate["currency"] != self._draft["currency"]
+            if currency_changed:
                 candidate["settings"]["calibration"] = "unvalidated"
             try:
                 validate_configuration(
-                    candidate,
+                    {**candidate, "helpers": {}} if currency_changed else candidate,
                     snapshot(self.hass, candidate),
                     dt_util.utcnow(),
                     sources=False,
                 )
                 self._draft = candidate
+                if currency_changed and self._existing_installation:
+                    self._currency_review_pending = True
+                    return await self.async_step_currency_review()
                 return await self.async_step_menu()
             except InputError:
                 errors["base"] = "invalid_input"
@@ -66,6 +79,45 @@ class Editor(SourceEditor):
             step_id="installation",
             data_schema=self._installation_schema(),
             errors=errors,
+        )
+
+    async def async_step_currency_review(self, user_input=None):
+        errors = {}
+        detail = ""
+        if user_input is not None:
+            if user_input.get("confirm_currency_values") is not True:
+                errors["base"] = "currency_review_required"
+            else:
+                candidate = deepcopy(self._draft)
+                try:
+                    reviewed = currency_review_schema(
+                        candidate["settings"], candidate["currency"]
+                    )(user_input)
+                    reviewed.pop("confirm_currency_values")
+                    candidate["settings"].update(reviewed)
+                    # Old helper units remain visible until rebound in the helper editor.
+                    validate_configuration(
+                        {**candidate, "helpers": {}},
+                        {},
+                        dt_util.utcnow(),
+                        sources=False,
+                    )
+                    self._draft = candidate
+                    self._currency_review_pending = False
+                    return await self.async_step_menu()
+                except (InputError, vol.Invalid) as err:
+                    errors["base"] = "invalid_input"
+                    detail = str(err)
+        return self.async_show_form(
+            step_id="currency_review",
+            data_schema=currency_review_schema(
+                self._draft["settings"], self._draft["currency"]
+            ),
+            errors=errors,
+            description_placeholders={
+                "currency": self._draft["currency"],
+                "detail": detail,
+            },
         )
 
     def _installation_schema(self):
@@ -155,6 +207,8 @@ class Editor(SourceEditor):
         return await self._settings_step("notifications", user_input)
 
     async def async_step_preview(self, user_input=None):
+        if self._currency_review_pending:
+            return await self.async_step_currency_review()
         errors = {}
         preview = ""
         try:
@@ -220,6 +274,7 @@ class EnergyCompassConfigFlow(Editor, config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(self, user_input=None):
         self._entry = self._get_reconfigure_entry()
         self._draft = merged_configuration(self._entry)
+        self._existing_installation = True
         return await self.async_step_menu()
 
     @callback
@@ -241,6 +296,7 @@ class EnergyCompassOptionsFlow(Editor, config_entries.OptionsFlowWithReload):
 
     async def async_step_init(self, user_input=None):
         self._draft = merged_configuration(self.config_entry)
+        self._existing_installation = True
         return await self.async_step_menu()
 
     @callback

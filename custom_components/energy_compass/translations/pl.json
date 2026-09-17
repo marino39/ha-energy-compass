@@ -258,12 +258,29 @@
           "helpers": "Pomocniki liczbowe",
           "preview": "Podgląd i zapis"
         }
+      },
+      "currency_review": {
+        "title": "Przegląd kwot w nowej walucie",
+        "description": "Waluta została zmieniona na {currency}. Kwoty nie zostały przeliczone. Sprawdź i w razie potrzeby zmień każdą kwotę poniżej, a następnie potwierdź, że jest właściwa w {currency}. Wartości stałe są zachowywane także przy użyciu pomocników. Waluty pomocników i źródeł cen muszą być zgodne z nową walutą przed zapisem. {detail}",
+        "data": {
+          "wear_per_kwh": "Koszt zużycia baterii na kWh",
+          "buy_rate": "Stała cena zakupu",
+          "sell_rate": "Stała cena sprzedaży",
+          "buy_addition": "Dodatek do ceny zakupu",
+          "sell_addition": "Dodatek do ceny sprzedaży",
+          "monthly_charge": "Stała opłata miesięczna",
+          "terminal_value_per_kwh": "Wartość energii na końcu planu",
+          "boost_ceiling": "Próg zwiększania zużycia",
+          "limit_floor": "Próg ograniczenia",
+          "confirm_currency_values": "Potwierdzam kwoty w nowej walucie; nie wykonano automatycznej konwersji"
+        }
       }
     },
     "error": {
       "invalid_input": "Niepoprawne lub sprzeczne ustawienia.",
       "invalid_source": "Niepoprawne, brakujące lub nieaktualne źródło; sprawdź podgląd.",
-      "component_disabled": "Najpierw włącz ten komponent w ustawieniach instalacji."
+      "component_disabled": "Najpierw włącz ten komponent w ustawieniach instalacji.",
+      "currency_review_required": "Potwierdź kwoty w nowej walucie przed zapisem."
     },
     "abort": {
       "reconfigure_successful": "Zapisano konfigurację."
@@ -527,12 +544,29 @@
           "helpers": "Pomocniki liczbowe",
           "preview": "Podgląd i zapis"
         }
+      },
+      "currency_review": {
+        "title": "Przegląd kwot w nowej walucie",
+        "description": "Waluta została zmieniona na {currency}. Kwoty nie zostały przeliczone. Sprawdź i w razie potrzeby zmień każdą kwotę poniżej, a następnie potwierdź, że jest właściwa w {currency}. Wartości stałe są zachowywane także przy użyciu pomocników. Waluty pomocników i źródeł cen muszą być zgodne z nową walutą przed zapisem. {detail}",
+        "data": {
+          "wear_per_kwh": "Koszt zużycia baterii na kWh",
+          "buy_rate": "Stała cena zakupu",
+          "sell_rate": "Stała cena sprzedaży",
+          "buy_addition": "Dodatek do ceny zakupu",
+          "sell_addition": "Dodatek do ceny sprzedaży",
+          "monthly_charge": "Stała opłata miesięczna",
+          "terminal_value_per_kwh": "Wartość energii na końcu planu",
+          "boost_ceiling": "Próg zwiększania zużycia",
+          "limit_floor": "Próg ograniczenia",
+          "confirm_currency_values": "Potwierdzam kwoty w nowej walucie; nie wykonano automatycznej konwersji"
+        }
       }
     },
     "error": {
       "invalid_input": "Niepoprawne lub sprzeczne ustawienia.",
       "invalid_source": "Niepoprawne, brakujące lub nieaktualne źródło; sprawdź podgląd.",
-      "component_disabled": "Najpierw włącz ten komponent w ustawieniach instalacji."
+      "component_disabled": "Najpierw włącz ten komponent w ustawieniach instalacji.",
+      "currency_review_required": "Potwierdź kwoty w nowej walucie przed zapisem."
     }
   },
   "entity": {

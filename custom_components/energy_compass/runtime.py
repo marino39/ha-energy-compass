@@ -474,13 +474,15 @@ async def async_history(hass, config, states, now):
     result = await recorder.async_add_executor_job(query)
     samples = []
     for state in result.get(source.power.entity_id, []):
-        if state.state in ("unknown", "unavailable"):
-            continue
         value = (
-            state.attributes.get(source.power.attribute)
+            None
+            if state.state in ("unknown", "unavailable")
+            else state.attributes.get(source.power.attribute)
             if source.power.attribute
             else state.state
         )
+        if value in ("unknown", "unavailable"):
+            value = None
         samples.append((state.last_updated, value))
     return {"power_samples": tuple(samples)}, ()
 
