@@ -2,6 +2,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 
 import pytest
+from homeassistant.helpers import selector
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.energy_compass.engine.models import InputError
@@ -30,6 +31,37 @@ async def test_options_preserve_invalid_edit(
     )
     assert result["errors"]
     assert entry.data == before
+
+
+async def test_notification_form_offers_only_dispatchable_events(
+    recorder_mock, hass, enable_custom_integrations
+):
+    config = default_configuration("EUR", "UTC")
+    config["settings"]["notify_events"] = ["favorable", "invalid"]
+    config["settings"]["notify_actions"] = [{"event": "legacy_test"}]
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Synthetic", version=2
+    )
+    entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "notifications"}
+    )
+    fields = {
+        str(key): (key, value) for key, value in result["data_schema"].schema.items()
+    }
+    assert "notify_actions" not in fields
+    events_marker, events_selector = fields["notify_events"]
+    assert isinstance(events_selector, selector.SelectSelector)
+    assert events_selector.config["options"] == ["favorable", "limit"]
+    assert events_marker.default() == ["favorable"]
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"notify_enabled": True, "notify_events": ["limit"]}
+    )
+    assert result["step_id"] == "menu"
+    assert entry.data["settings"]["notify_actions"] == [{"event": "legacy_test"}]
 
 
 def test_helper_unavailable_and_disabled_age():

@@ -237,10 +237,9 @@
           "notify_enabled": "Notify enabled",
           "quiet_start": "Quiet start",
           "quiet_end": "Quiet end",
-          "notify_actions": "Notify actions",
           "notify_events": "Notify events"
         },
-        "description": "Preferences for notification blueprints. The advisory integration does not execute these actions itself. {detail}"
+        "description": "Window notification preferences. Select the action in the notification blueprint. {detail}"
       },
       "menu": {
         "title": "Energy Compass",
@@ -507,10 +506,9 @@
           "notify_enabled": "Notify enabled",
           "quiet_start": "Quiet start",
           "quiet_end": "Quiet end",
-          "notify_actions": "Notify actions",
           "notify_events": "Notify events"
         },
-        "description": "Preferences for notification blueprints. The advisory integration does not execute these actions itself. {detail}"
+        "description": "Window notification preferences. Select the action in the notification blueprint. {detail}"
       },
       "menu": {
         "title": "Energy Compass",
@@ -541,12 +539,6 @@
     "sensor": {
       "consumption_compass": {
         "name": "Consumption compass",
-        "state": {
-          "BOOST": "Boost",
-          "CHEAP": "Cheap",
-          "NORMAL": "Normal",
-          "LIMIT": "Limit"
-        },
         "state_attributes": {
           "reason": {
             "name": "Reason",
@@ -697,14 +689,6 @@
       },
       "energy_compass": {
         "name": "Energy compass",
-        "state": {
-          "CHARGE_GRID": "Charge from grid",
-          "CHARGE_PV": "Charge from PV",
-          "SELF_CONSUME": "Self consumption",
-          "DISCHARGE_GRID": "Battery export",
-          "HOLD": "Hold",
-          "CURTAIL": "Curtail PV"
-        },
         "state_attributes": {
           "reason": {
             "name": "Reason",

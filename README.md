@@ -1,11 +1,23 @@
 # Energy Compass
 
-Energy Compass is a read-only Home Assistant advisory integration. It estimates the incremental cost of one more kWh of household use against an optimized battery and grid plan, classifies near-term use as BOOST, CHEAP, NORMAL, or LIMIT, and exposes upcoming windows as native entities. It never controls equipment or sends messages by itself.
+Energy Compass is an advisory Home Assistant integration. It estimates the incremental cost of one more kWh of household use against an optimized battery and grid plan, classifies near-term use as `BOOST`, `CHEAP`, `NORMAL`, or `LIMIT`, and exposes upcoming windows as native entities. It makes no inverter control writes and sends no messages by itself.
 
-Install it as a custom integration, then configure sources and settings in the Home Assistant UI. [Installation and dashboard guide](docs/installation.md) covers the visual setup, optional dashboard example, and opt-in notification blueprint. [Model and limitations](docs/model.md) explains the optimizer and the meaning of its estimates.
+## Install
 
-Window alerts require **Notify enabled** in integration options and a nonempty action selected in the blueprint. The blueprint uses live integration preferences unless its override toggle is on.
+Requires Home Assistant **2026.9.1 or later**. The integration installs `scipy==1.18.1` through its manifest. Its tested ARM64 Core/Python/solver combination and representative benchmark results are recorded in [runtime validation](docs/runtime-validation.md).
 
-The extra-kWh estimate assumes the optimizer's proposed plan. Until a controller follows that plan, actual consumption savings can differ under existing automation. A forecast-dependent recommendation is not a measurement of savings.
+In HACS, open **Custom repositories**, add `https://github.com/marino39/ha-energy-compass` as an **Integration**, then download Energy Compass. Restart Home Assistant, and add **Energy Compass** under **Settings → Devices & services → Add integration**. For a manual installation, copy `custom_components/energy_compass` into the Home Assistant config directory's `custom_components` folder and restart. The optional notification blueprint lives outside the HACS-installed integration folder and must be [copied separately](docs/installation.md#opt-in-notifications).
 
-The integration supports Home Assistant 2026.9.1 or later, subject to the tested release and installation requirements. It does not require a custom dashboard card; an optional ApexCharts recipe is available for users who already have that card installed.
+To try a source-independent synthetic setup, choose `Synthetic`, `EUR`, `UTC`, the `generic` preset, and disable PV and battery. Set fixed buy and sell rates in **Tariffs**, a daily household load in **Forecast**, and a finite grid import limit in **Hardware**. In **Sources**, select fixed buy, fixed sell, and fixed load after setting those values, then open **Preview** and confirm. The [installation guide](docs/installation.md) also shows how to select real entities and how to build a dashboard without a custom card.
+
+## What it shows
+
+The integration creates current consumption level and extra-kWh cost sensors, optimized machine state and cost sensors, next change and next `BOOST`/`CHEAP`/`LIMIT` window timestamps, a plan with a bounded outlook, optimizer status, and a forecast-valid binary sensor. Native entity names, diagnostics, and reasons are translated into English and Polish. Automations should compare level and machine state values using their stable uppercase names.
+
+Window alerts require **Notify enabled** in integration options and a nonempty action selected in the [optional blueprint](docs/installation.md#opt-in-notifications). The blueprint uses live integration preferences unless its override toggle is on. It handles favorable and `LIMIT` windows only. The integration does not execute actions.
+
+The extra-kWh estimate assumes the optimizer's proposed plan. Until a controller follows that plan, actual consumption savings can differ under existing automation. A forecast-dependent recommendation is not a measurement of savings. See [model and limitations](docs/model.md) for energy balance, coverage, battery assumptions, and solver behavior.
+
+## License
+
+Energy Compass source and original artwork are provided under [Apache License 2.0](LICENSE). SciPy and NumPy are installed as separate dependencies and retain their own licenses; their source is not included here.

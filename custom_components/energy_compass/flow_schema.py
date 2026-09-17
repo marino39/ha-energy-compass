@@ -57,12 +57,16 @@ def settings_schema(group: str, values: dict, currency="EUR") -> vol.Schema:
     if group == "notifications":
         for key in ("quiet_start", "quiet_end"):
             fields[vol.Optional(key, default=values[key])] = selector.TimeSelector()
-        fields[vol.Optional("notify_actions", default=values["notify_actions"])] = (
-            selector.ActionSelector()
-        )
-        fields[vol.Optional("notify_events", default=values["notify_events"])] = select(
-            ["favorable", "limit", "invalid"], multiple=True
-        )
+        fields[
+            vol.Optional(
+                "notify_events",
+                default=[
+                    event
+                    for event in values["notify_events"]
+                    if event in ("favorable", "limit")
+                ],
+            )
+        ] = select(["favorable", "limit"], multiple=True)
     if group == "presentation":
         for key in (
             "window_label",
