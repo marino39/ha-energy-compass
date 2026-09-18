@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Energy Compass v0.1.0: every Home Assistant entity, state, calculation, planning assumption and forecast-quality signal explained.">
+  <meta name="description" content="Energy Compass v0.1.1: every Home Assistant entity, state, calculation, planning assumption and forecast-quality signal explained.">
   <title>Energy Compass — Entity and calculation guide</title>
   <style>
     :root {
@@ -118,7 +118,7 @@
       </picture>
       <span>Energy<br>Compass</span>
     </a>
-    <p class="version">User guide · v0.1.0</p>
+    <p class="version">User guide · v0.1.1</p>
     <nav aria-label="Sections">
       <ul>
         <li><a href="#overview">Reading the compass</a></li>
@@ -139,7 +139,7 @@
     <header>
       <h1>Understand every recommendation.</h1>
       <p class="lead">What Energy Compass entities mean, how their values are calculated, and which assumptions sit behind the plan.</p>
-      <p>This guide describes the Home Assistant integration in <strong>v0.1.0</strong>. Examples use PLN; your installation uses its configured currency. Names are shown in English and Polish.</p>
+      <p>This guide describes the Home Assistant integration in <strong>v0.1.1</strong>. Examples use PLN; your installation uses its configured currency. Names are shown in English and Polish.</p>
     </header>
 
     <section id="overview" aria-labelledby="overview-title">
@@ -391,12 +391,12 @@
             <thead><tr><th scope="col">State</th><th scope="col">Meaning and next check</th></tr></thead>
             <tbody>
               <tr><th scope="row"><code>ready</code></th><td>A baseline result was published. Check Forecast valid for freshness and current guidance validity for the consumption probe; ready does not promise complete reference coverage.</td></tr>
-              <tr><th scope="row"><code>calculating</code></th><td>Setup, changed inputs or a time boundary triggered a new calculation. Old advice is invalidated while calculation runs.</td></tr>
+              <tr><th scope="row"><code>calculating</code></th><td>Setup, changed inputs or a time boundary triggered a new calculation. Previously published values remain visible with <code>refreshing=true</code> while a replacement is queued or running; Forecast valid stays off. Initial setup or recovery after a failure has no retained values.</td></tr>
               <tr><th scope="row"><code>invalid_input</code></th><td>A required input or configuration failed validation. Inspect <code>reason</code> for missing/stale sources, units, SOC checks, history coverage or invalid settings.</td></tr>
               <tr><th scope="row"><code>timeout</code></th><td>The base solve or overall calculation exceeded its budget. Check timing, model size and hardware. A single failed probe can instead leave a ready baseline with incomplete guidance.</td></tr>
               <tr><th scope="row"><code>infeasible</code></th><td>No baseline plan satisfies all constraints. Check demand/generation, SOC, reserve, power/export limits, terminal requirements and allowed capabilities.</td></tr>
               <tr><th scope="row"><code>error</code></th><td>Another solver failure or unexpected exception occurred. Inspect reason and integration diagnostics/logs.</td></tr>
-              <tr><th scope="row"><code>insufficient_data</code></th><td>Reserved in translations, but not emitted by the v0.1.0 coordinator. Missing-data validation currently reports <code>invalid_input</code>.</td></tr>
+              <tr><th scope="row"><code>insufficient_data</code></th><td>Reserved in translations, but not emitted by the v0.1.1 coordinator. Missing-data validation currently reports <code>invalid_input</code>.</td></tr>
             </tbody>
           </table>
         </section>
@@ -421,6 +421,7 @@
     <section id="quality" aria-labelledby="quality-title">
       <h2 id="quality-title">Validity and missing data</h2>
       <p>Entities share <code>generated_at</code>, <code>valid_until</code>, <code>reason</code>, <code>reasons</code>, <code>calibration</code>, <code>capacity_calibration</code> and <code>classification_mode</code> attributes when available. <code>reason</code> describes invalidation or reference coverage; <code>reasons</code> combines quality warnings and any incomplete-reference reason.</p>
+      <div class="note"><p><strong>Refresh continuity (v0.1.1).</strong> A queued or running refresh keeps the last published values visible, including at a scheduled validity boundary. The new shared attribute <code>refreshing=true</code> identifies this retained display. Original timestamps, plan arrays and quality metadata stay unchanged; <strong>Forecast valid remains off</strong>, so retained values must not be treated as current advice. A successful calculation replaces the snapshot and clears <code>refreshing</code>. Invalid/stale required inputs or a failed calculation make recommendations unavailable. Absent or ended windows and unknown consumption probes remain unavailable during refresh.</p></div>
       <section class="table-scroll" aria-label="Classification modes" tabindex="0">
         <table>
           <caption>Classification modes</caption>
@@ -511,7 +512,7 @@
         <li>Enable <strong>Allow curtailment</strong> (<span lang="pl">Ograniczanie produkcji PV</span>), then use <strong>Preview and save</strong> (<span lang="pl">Podgląd i zapis</span>).</li>
       </ol>
       <p>This allows <code>curtail_kwh</code> to be positive in the optimizer; it does not force curtailment or operate the inverter. Enabling a capability that equipment cannot follow makes the advisory plan unrealistic.</p>
-      <div class="note"><p><strong>Physical curtailment needs a separate control layer.</strong> That layer needs compatible inverter generation/export controls, verified metering and operating-mode behavior, and a way to restore normal limits. Energy Compass v0.1.0 provides no such controller.</p></div>
+      <div class="note"><p><strong>Physical curtailment needs a separate control layer.</strong> That layer needs compatible inverter generation/export controls, verified metering and operating-mode behavior, and a way to restore normal limits. Energy Compass v0.1.1 provides no such controller.</p></div>
       <p>An 8 kW PV system with an 8 kW permitted export path usually has room to export surplus, subject to shared inverter and other limits. When export value is explicitly floored at zero, negative raw market prices alone do not create a modeled export penalty. Allowing curtailment therefore does not guarantee a CURTAIL state.</p>
     </section>
 
@@ -530,7 +531,7 @@
       </ul>
     </section>
     <footer>
-      <p>Energy Compass v0.1.0 · This guide works online and offline from a repository checkout. Theme follows your system preference. Supporting documentation and source-code links open GitHub.</p>
+      <p>Energy Compass v0.1.1 · This guide works online and offline from a repository checkout. Theme follows your system preference. Supporting documentation and source-code links open GitHub.</p>
       <p><a href="#overview">Back to the guide</a> · <a href="https://github.com/marino39/ha-energy-compass/blob/main/LICENSE">Apache License 2.0</a></p>
     </footer>
   </main>

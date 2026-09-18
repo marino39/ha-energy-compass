@@ -298,12 +298,21 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._boundary = self.hass.loop.call_later(delay, refresh)
 
     def _invalidate(self, status, reason):
+        """Revoke advice validity; keep its display only while a replacement runs."""
+        retained = (
+            self.data
+            if status == "calculating"
+            and (self.data.get("valid") or self.data.get("refreshing"))
+            else {}
+        )
         if self.data.get("valid"):
             self.previous_plan = {**deepcopy(self.data), "expired": True}
         self.async_set_updated_data(
             {
+                **retained,
                 "status": status,
                 "valid": False,
+                "refreshing": bool(retained),
                 "reason": reason,
                 "expired_previous_generated_at": self.previous_plan.get("generated_at")
                 if self.previous_plan
