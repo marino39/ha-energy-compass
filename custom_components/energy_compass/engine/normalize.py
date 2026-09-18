@@ -143,6 +143,16 @@ def validate_problem(problem: Problem) -> None:
     if problem.terminal_mode not in ("preserve_initial", "value"):
         raise InputError("invalid terminal mode")
     finite(problem.terminal_value_per_kwh, "terminal value")
+    if (
+        not 0
+        <= finite(
+            problem.minimum_export_episode_benefit, "minimum_export_episode_benefit"
+        )
+        <= 1000
+    ):
+        raise InputError("minimum_export_episode_benefit must be in [0, 1000]")
+    if type(problem.initial_export_active) is not bool:
+        raise InputError("initial_export_active must be boolean")
     if type(problem.limit_export_to_pv) is not bool:
         raise InputError("PV export limit must be boolean")
     for name in ("pv_generated_today_kwh", "grid_exported_today_kwh"):

@@ -30,6 +30,7 @@ from .runtime import (
     compute,
     measurement_diagnostics,
     restore_commitment,
+    restore_export_commitment,
 )
 from .settings import DOMAIN, merged_configuration, validate_configuration
 from .sources.bindings import merge_continuations, parse_intervals, parse_timestamp
@@ -61,6 +62,8 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.anchors")
         self._battery_commitment = None
         self._dispatch_store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.dispatch")
+        self._export_commitment = None
+        self._export_store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.export")
         self.previous_plan = None
 
     async def async_start(self):
@@ -68,6 +71,9 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._anchors = await self._store.async_load() or {}
         self._battery_commitment = restore_commitment(
             await self._dispatch_store.async_load(), dt_util.utcnow()
+        )
+        self._export_commitment = restore_export_commitment(
+            await self._export_store.async_load(), dt_util.utcnow()
         )
         self._registry_unsub = self.hass.bus.async_listen(
             er.EVENT_ENTITY_REGISTRY_UPDATED, self._registry_changed
@@ -392,6 +398,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                             now,
                             previous_soc=self._previous_soc,
                             battery_commitment=deepcopy(self._battery_commitment),
+                            export_commitment=deepcopy(self._export_commitment),
                             **history,
                         )
                     )
@@ -415,6 +422,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                         )
                         self._anchor_windows(result)
                         self._commit_battery_direction(result)
+                        self._commit_current_export(result)
                         self.async_set_updated_data(result)
                 except InputError as err:
                     if not self._closed and generation == self._generation:
@@ -457,6 +465,22 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                 ]
         self._dispatch_store.async_delay_save(lambda: self._battery_commitment, 1)
 
+    def _commit_current_export(self, result):
+        now = parse_timestamp(result["generated_at"])
+        until = now
+        for row in result.get("intervals", []):
+            if (
+                parse_timestamp(row["start"]) != until
+                or min(row.get("discharge_kwh", 0), row.get("grid_export_kwh", 0))
+                <= 1e-6
+            ):
+                break
+            until = parse_timestamp(row["end"])
+        self._export_commitment = restore_export_commitment(
+            {"generated_at": now.isoformat(), "until": until.isoformat()}, now
+        )
+        self._export_store.async_delay_save(lambda: self._export_commitment, 1)
+
     async def async_stop(self):
         """Detach listeners and prevent late worker results from owning entities."""
         self._closed = True
@@ -478,3 +502,4 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                 )
         await self._store.async_save(self._anchors)
         await self._dispatch_store.async_save(self._battery_commitment)
+        await self._export_store.async_save(self._export_commitment)

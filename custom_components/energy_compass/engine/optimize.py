@@ -10,6 +10,7 @@ from scipy.sparse import coo_matrix
 
 from .daily_energy import daily_export_rows, day_fractions
 from .dispatch_policy import MODES, constrain_modes, validate_modes
+from .export_benefit import constrain_export_benefit, validate_export_benefit
 from .models import Flow, InputError, Plan, Problem, SolveError
 from .normalize import validate_problem
 
@@ -19,6 +20,7 @@ _UTC = UTC
 
 class _Model:
     def __init__(self) -> None:
+        self.exact_mip_gap = False
         self.cost: list[float] = []
         self.lower: list[float] = []
         self.upper: list[float] = []
@@ -61,7 +63,10 @@ class _Model:
                 [row[1] for row in self.rows],
                 [row[2] for row in self.rows],
             ),
-            options={"time_limit": time_limit_s},
+            options={
+                "time_limit": time_limit_s,
+                **({"mip_rel_gap": 0} if self.exact_mip_gap else {}),
+            },
         )
         if result.status != 0 or result.x is None:
             reasons = {1: "timeout", 2: "infeasible", 3: "unbounded"}
@@ -92,6 +97,7 @@ def _validate_solution(
         "variable count",
     )
     _check(bool(np.all(np.isfinite(values))), "nonfinite variables")
+    validate_export_benefit(problem, vectors, values)
     battery = problem.battery
     previous_energy = battery.initial_kwh if battery else 0.0
     spent = {day: 0.0 for day in budgets}
@@ -408,6 +414,7 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
             if terms:
                 model.constrain(terms, -np.inf, budget)
 
+    constrain_export_benefit(model, problem, vectors)
     values = model.solve(time_limit)
     _validate_solution(problem, vectors, values, daily_fractions, budgets)
     flows = tuple(
@@ -453,4 +460,7 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
     )
     objective = grid_cost + wear_cost - terminal_credit
     _check(isfinite(objective), "nonfinite objective")
-    return Plan(flows, objective, grid_cost, wear_cost, terminal_credit)
+    episodes, reserve = validate_export_benefit(problem, vectors, values)
+    return Plan(
+        flows, objective, grid_cost, wear_cost, terminal_credit, episodes, reserve
+    )
