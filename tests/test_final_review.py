@@ -103,6 +103,7 @@ MONETARY_VALUES = {
     "limit_floor": 0.8,
     "terminal_value_per_kwh": 0.3,
     "monthly_charge": 25,
+    "minimum_export_episode_benefit": 1,
 }
 
 
@@ -179,7 +180,9 @@ async def test_currency_review_requires_acknowledgement_and_saves_edited_amounts
         marker, value_selector = fields[name]
         assert marker.default() == old_value
         assert value_selector.config["unit_of_measurement"] == (
-            "EUR" if name == "monthly_charge" else "EUR/kWh"
+            "EUR"
+            if name in ("monthly_charge", "minimum_export_episode_benefit")
+            else "EUR/kWh"
         )
     reviewed = {name: value / 5 for name, value in MONETARY_VALUES.items()}
     result = await manager.async_configure(

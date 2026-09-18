@@ -185,13 +185,15 @@
           "terminal_mode": "Terminal mode",
           "minimum_mode_minutes": "Minimum operating-mode duration",
           "limit_export_to_pv": "Sell only PV",
-          "minimum_mode_power_kw": "Minimum active-mode power"
+          "minimum_mode_power_kw": "Minimum active-mode power",
+          "minimum_export_episode_benefit": "Minimum benefit per additional battery-export period"
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}",
         "data_description": {
-          "minimum_mode_minutes": "Default 60 min; 0 disables duration and minimum power. Holds actual PV/grid charge, export, self-consumption, HOLD and CURTAIL modes. A source or sink change starts a new period. Exception: an observed SoC bound during an active commitment.",
+          "minimum_mode_minutes": "Default 60 min; 0 disables mode duration and mode power restrictions, but an enabled export-benefit hurdle still requires material discharge and export. Holds actual PV/grid charge, export, self-consumption, HOLD and CURTAIL modes. A source or sink change starts a new period. Exception: an observed SoC bound during an active commitment.",
           "limit_export_to_pv": "Enabled by default. Solar and battery export cannot exceed PV generation on the same local calendar day. Combines observed totals since midnight with the remaining forecast; no credit carries between days. Select pv_energy_today and grid_export_energy_today daily counters in Sources. Off removes this budget; other limits remain active.",
-          "minimum_mode_power_kw": "Default 0.1 kW (100 W); range 0.001–1000 kW. Minimum active power, not constant power. CURTAIL excludes battery charge and discharge while the duration policy is enabled."
+          "minimum_mode_power_kw": "Default 0.1 kW (100 W); range 0.001–1000 kW. Minimum active power, not constant power. With duration 0 and the benefit hurdle enabled, applies only to simultaneous battery discharge and grid export. CURTAIL excludes battery charge and discharge only while the duration policy is enabled.",
+          "minimum_export_episode_benefit": "Default 1 unit of installation currency (for example 1 PLN); range 0–1000, 0 disables. Each additional period must improve full-horizon physical cost versus fewer periods by at least this amount. Includes prices, losses, wear and optional terminal value; not a realized cycle-profit guarantee. An ongoing published period is exempt. With mode duration 0, the minimum power still applies to simultaneous discharge and export. Real low-power export may bridge a price valley without recharging."
         }
       },
       "compass": {
@@ -279,7 +281,8 @@
           "terminal_value_per_kwh": "Terminal value per kwh",
           "boost_ceiling": "Boost ceiling",
           "limit_floor": "Limit floor",
-          "confirm_currency_values": "I confirm these amounts in the new currency; no automatic conversion was performed"
+          "confirm_currency_values": "I confirm these amounts in the new currency; no automatic conversion was performed",
+          "minimum_export_episode_benefit": "Minimum benefit per additional battery-export period"
         }
       },
       "source_inventory": {
@@ -548,13 +551,15 @@
           "terminal_mode": "Terminal mode",
           "minimum_mode_minutes": "Minimum operating-mode duration",
           "limit_export_to_pv": "Sell only PV",
-          "minimum_mode_power_kw": "Minimum active-mode power"
+          "minimum_mode_power_kw": "Minimum active-mode power",
+          "minimum_export_episode_benefit": "Minimum benefit per additional battery-export period"
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}",
         "data_description": {
-          "minimum_mode_minutes": "Default 60 min; 0 disables duration and minimum power. Holds actual PV/grid charge, export, self-consumption, HOLD and CURTAIL modes. A source or sink change starts a new period. Exception: an observed SoC bound during an active commitment.",
+          "minimum_mode_minutes": "Default 60 min; 0 disables mode duration and mode power restrictions, but an enabled export-benefit hurdle still requires material discharge and export. Holds actual PV/grid charge, export, self-consumption, HOLD and CURTAIL modes. A source or sink change starts a new period. Exception: an observed SoC bound during an active commitment.",
           "limit_export_to_pv": "Enabled by default. Solar and battery export cannot exceed PV generation on the same local calendar day. Combines observed totals since midnight with the remaining forecast; no credit carries between days. Select pv_energy_today and grid_export_energy_today daily counters in Sources. Off removes this budget; other limits remain active.",
-          "minimum_mode_power_kw": "Default 0.1 kW (100 W); range 0.001–1000 kW. Minimum active power, not constant power. CURTAIL excludes battery charge and discharge while the duration policy is enabled."
+          "minimum_mode_power_kw": "Default 0.1 kW (100 W); range 0.001–1000 kW. Minimum active power, not constant power. With duration 0 and the benefit hurdle enabled, applies only to simultaneous battery discharge and grid export. CURTAIL excludes battery charge and discharge only while the duration policy is enabled.",
+          "minimum_export_episode_benefit": "Default 1 unit of installation currency (for example 1 PLN); range 0–1000, 0 disables. Each additional period must improve full-horizon physical cost versus fewer periods by at least this amount. Includes prices, losses, wear and optional terminal value; not a realized cycle-profit guarantee. An ongoing published period is exempt. With mode duration 0, the minimum power still applies to simultaneous discharge and export. Real low-power export may bridge a price valley without recharging."
         }
       },
       "compass": {
@@ -642,7 +647,8 @@
           "terminal_value_per_kwh": "Terminal value per kwh",
           "boost_ceiling": "Boost ceiling",
           "limit_floor": "Limit floor",
-          "confirm_currency_values": "I confirm these amounts in the new currency; no automatic conversion was performed"
+          "confirm_currency_values": "I confirm these amounts in the new currency; no automatic conversion was performed",
+          "minimum_export_episode_benefit": "Minimum benefit per additional battery-export period"
         }
       },
       "source_inventory": {

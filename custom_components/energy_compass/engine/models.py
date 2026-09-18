@@ -71,6 +71,8 @@ class Problem:
     minimum_mode_power_kw: float = 0.1
     initial_dispatch_mode: MachineState | None = None
     initial_dispatch_mode_since: datetime | None = None
+    minimum_export_episode_benefit: float = 1.0
+    initial_export_active: bool = False
 
 
 @dataclass(frozen=True)
@@ -92,6 +94,8 @@ class Plan:
     grid_cost: float
     wear_cost: float
     terminal_credit: float
+    new_export_episodes: int = 0
+    export_episode_reserve: float = 0.0
 
 
 @dataclass(frozen=True)

@@ -54,6 +54,7 @@ NUMBERS = {
     "refresh_minutes": ("planning", 15, 1, 60, "min"),
     "minimum_mode_minutes": ("planning", 60, 0, 1440, "min"),
     "minimum_mode_power_kw": ("planning", 0.1, 0.001, 1000, "kW"),
+    "minimum_export_episode_benefit": ("planning", 1, 0, 1000, "currency"),
     "terminal_value_per_kwh": ("planning", 0, -1000, 1000, "currency/kWh"),
     "display_horizon_hours": ("compass", 24, 1, 48, "h"),
     "reference_horizon_hours": ("compass", 24, 1, 48, "h"),
