@@ -272,6 +272,34 @@ def test_native_report_timestamp_controls_soc_validation_and_expiry(target, path
         build_problem(config, states, now)
 
 
+@pytest.mark.parametrize("target", ["soc", "bms_soc"])
+@pytest.mark.parametrize("path", ["last_reported", "last_updated"])
+@pytest.mark.parametrize("report", ["future", "malformed"])
+def test_present_invalid_native_report_never_falls_back_to_receipt(
+    target, path, report
+):
+    config = battery_configuration()
+    config["sources"]["bms_soc"] = EntityBinding("sensor.bms_soc").to_dict()
+    config["soc_options"].update(timestamp_path=path, bms_timestamp_path=path)
+    config["soc_options"].pop("timestamp_policy", None)
+    config["soc_options"].pop("bms_timestamp_policy", None)
+    now = datetime(2026, 9, 17, 10, tzinfo=UTC)
+    states = {
+        name: {
+            "state": "50",
+            "attributes": {},
+            "last_updated": now,
+            "last_reported": now,
+        }
+        for name in ("sensor.soc", "sensor.bms_soc")
+    }
+    states[f"sensor.{target}"]["last_reported"] = (
+        now + timedelta(seconds=1) if report == "future" else "bad timestamp"
+    )
+    with pytest.raises(InputError, match="stale or future|invalid timestamp"):
+        build_problem(config, states, now)
+
+
 @pytest.mark.parametrize("stamp", ["stale", "future", "invalid"])
 def test_custom_soc_measurement_timestamp_never_uses_recent_receipt(stamp):
     config = battery_configuration()

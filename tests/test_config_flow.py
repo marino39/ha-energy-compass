@@ -10,6 +10,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.energy_compass.config_models import LoadSource
 from custom_components.energy_compass.engine.models import InputError, SolveError
 from custom_components.energy_compass.flow_schema import settings_schema, snapshot
+from custom_components.energy_compass.runtime import build_problem, freshness_deadline
 from custom_components.energy_compass.settings import (
     default_configuration,
     merged_configuration,
@@ -227,21 +228,46 @@ async def test_soc_source_freshness_is_saved(
     assert defaults["soc_max_age_seconds"] == 10
 
 
-def test_snapshot_preserves_identical_native_soc_report_time(hass, freezer):
+@pytest.mark.parametrize("path", ["last_reported", "last_updated"])
+def test_snapshot_preserves_identical_native_soc_report_time(hass, freezer, path):
     freezer.move_to("2026-09-17T10:00:00+00:00")
-    hass.states.async_set("sensor.soc", "50")
-    first_updated = hass.states.get("sensor.soc").last_updated
-    first_reported = hass.states.get("sensor.soc").last_reported
+    names = ("sensor.soc", "sensor.bms_soc")
+    for name in names:
+        hass.states.async_set(name, "50")
+    first = {
+        name: (hass.states.get(name).last_updated, hass.states.get(name).last_reported)
+        for name in names
+    }
     freezer.move_to("2026-09-17T10:11:00+00:00")
-    hass.states.async_set("sensor.soc", "50")
-    repeated = hass.states.get("sensor.soc")
-    assert repeated.last_updated == first_updated
-    assert repeated.last_reported > first_reported
+    for name in names:
+        hass.states.async_set(name, "50")
+        repeated = hass.states.get(name)
+        assert repeated.last_updated == first[name][0]
+        assert repeated.last_reported > first[name][1]
     config = default_configuration("EUR", "UTC")
-    config["sources"].update(battery_enabled=True, soc={"entity_id": "sensor.soc"})
-    copied = snapshot(hass, config)["sensor.soc"]
-    assert copied["last_updated"] == first_updated.isoformat()
-    assert copied["last_reported"] == repeated.last_reported.isoformat()
+    config["sources"].update(
+        battery_enabled=True,
+        soc={"entity_id": "sensor.soc"},
+        bms_soc={"entity_id": "sensor.bms_soc"},
+    )
+    config["soc_options"].update(timestamp_path=path, bms_timestamp_path=path)
+    if path == "last_updated":
+        config["soc_options"].pop("timestamp_policy")
+        config["soc_options"].pop("bms_timestamp_policy")
+    states = snapshot(hass, config)
+    for name in names:
+        assert states[name]["last_updated"] == first[name][0].isoformat()
+        assert (
+            states[name]["last_reported"]
+            == hass.states.get(name).last_reported.isoformat()
+        )
+    now = datetime(2026, 9, 17, 10, 11, tzinfo=UTC)
+    problem, values, quality = build_problem(config, states, now)
+    assert problem.battery.initial_kwh == 5
+    assert quality["soc_observation"][0] == now
+    assert freshness_deadline(config, states, values, now) == now + timedelta(
+        minutes=10
+    )
 
 
 @pytest.mark.parametrize("currency,expected", [("PLN", (0.05, 0.8)), ("EUR", (0, 1))])
@@ -598,4 +624,73 @@ async def test_existing_forecast_without_optional_value_path_can_preview_and_sav
     assert saved["type"] == "create_entry"
     assert (
         "value_path" not in merged_configuration(entry)["sources"]["load"]["forecast"]
+    )
+
+
+async def test_daily_estimate_preview_identifies_helper_attribute_with_equal_values(
+    recorder_mock, hass, enable_custom_integrations
+):
+    hass.states.async_set("sensor.household_estimate", "ok", {"east": 10, "west": 10})
+    fid, _ = await _setup_preview(hass)
+    flow = hass.config_entries.flow._progress[fid]
+    previews = []
+    for attribute in ("east", "west"):
+        flow._draft["helpers"]["daily_load_kwh"] = {
+            "entity": {
+                "entity_id": "sensor.household_estimate",
+                "attribute": attribute,
+            },
+            "unit": "kWh",
+            "max_age_seconds": None,
+        }
+        result = await flow.async_step_preview()
+        assert not result["errors"]
+        previews.append(result["description_placeholders"]["preview"])
+    assert previews[0] != previews[1]
+    assert "sensor.household_estimate attribute east" in previews[0]
+    assert "sensor.household_estimate attribute west" in previews[1]
+
+
+async def test_daily_estimate_preview_omits_empty_sample_coverage_label(
+    recorder_mock, hass, enable_custom_integrations
+):
+    _, preview = await _setup_preview(hass)
+    assert (
+        "samples available/required"
+        not in preview["description_placeholders"]["preview"]
+    )
+
+
+async def test_recorder_preview_pairs_sample_counts_with_coverage_segments(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    freezer.move_to("2026-09-17T10:15:00+00:00")
+    fid, _ = await _setup_preview(hass)
+    flow = hass.config_entries.flow._progress[fid]
+    flow._draft["sources"]["load"] = LoadSource(
+        "recorder", statistic_id="sensor.household", history_unit="kWh"
+    ).to_dict()
+    flow._draft["settings"].update(
+        allow_fallback=True,
+        minimum_samples=1,
+        horizon_hours=2,
+        display_horizon_hours=2,
+        reference_horizon_hours=2,
+    )
+    rows = (
+        {"start": "2026-09-16T09:00:00+00:00", "sum": 0},
+        {"start": "2026-09-16T10:00:00+00:00", "sum": 1},
+    )
+    with patch(
+        "custom_components.energy_compass.config_flow.async_history",
+        return_value=({"statistics": rows}, ()),
+    ):
+        result = await flow.async_step_preview()
+    assert not result["errors"]
+    summary = result["description_placeholders"]["preview"]
+    assert (
+        "2026-09-17T10:15:00+00:00 → 2026-09-17T11:00:00+00:00 history 1/1" in summary
+    )
+    assert (
+        "2026-09-17T11:00:00+00:00 → 2026-09-17T12:00:00+00:00 fallback 0/1" in summary
     )

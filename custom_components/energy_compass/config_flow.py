@@ -69,7 +69,14 @@ def _preview_assumptions(config, problem, values, quality):
     if load["mode"] == "daily_estimate":
         helper = config.get("helpers", {}).get("daily_load_kwh")
         origin = (
-            f"helper {helper['entity']['entity_id']}" if helper else "fixed setting"
+            f"helper {helper['entity']['entity_id']}"
+            + (
+                f" attribute {helper['entity']['attribute']}"
+                if helper["entity"].get("attribute")
+                else ""
+            )
+            if helper
+            else "fixed setting"
         )
         load_text = f"Household load: daily estimate from {origin}, resolved {values['daily_load_kwh']:g} kWh/day"
     elif load["mode"] == "recorder":
@@ -110,14 +117,19 @@ def _preview_assumptions(config, problem, values, quality):
     if load_quality:
         load_text += (
             f"; fallback {load_quality['fallback_coverage_hours']:g} h "
-            f"({load_quality['fallback_fraction']:.1%} of elapsed forecast time); "
-            f"samples available/required by segment: "
-            + ", ".join(
-                f"{row['samples_available']}/{row['samples_required']}"
-                for row in load_quality["coverage"]
-                if row["samples_available"] is not None
-            )
+            f"({load_quality['fallback_fraction']:.1%} of elapsed forecast time)"
         )
+        samples = [
+            row
+            for row in load_quality["coverage"]
+            if row["samples_available"] is not None
+        ]
+        if samples:
+            load_text += "; samples available/required by segment: " + ", ".join(
+                f"{row['start']} → {row['end']} {row['method']} "
+                f"{row['samples_available']}/{row['samples_required']}"
+                for row in samples
+            )
     return source + "\n" + load_text + "."
 
 
