@@ -152,15 +152,18 @@ async def test_daily_sources_can_be_selected_and_saved_in_options(
     entry.add_to_hass(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     fid = result["flow_id"]
+    await hass.config_entries.options.async_configure(fid, {"next_step_id": "sources"})
     for name, value in (("pv_energy_today", 8), ("grid_export_energy_today", 6)):
         hass.states.async_set(f"sensor.{name}", value, {"unit_of_measurement": "kWh"})
         await hass.config_entries.options.async_configure(
-            fid, {"next_step_id": "sources"}
+            fid, {"next_step_id": "source_add"}
         )
-        await hass.config_entries.options.async_configure(
-            fid,
-            {"target": name, "mode": "measurement", "operation": "replace", "group": 1},
+        mode = await hass.config_entries.options.async_configure(fid, {"target": name})
+        assert mode["step_id"] == "source_mode"
+        result = await hass.config_entries.options.async_configure(
+            fid, {"mode": "measurement"}
         )
+        assert result["step_id"] == "source_entity"
         await hass.config_entries.options.async_configure(
             fid, {"entity_id": f"sensor.{name}"}
         )
@@ -168,7 +171,7 @@ async def test_daily_sources_can_be_selected_and_saved_in_options(
         fields = {str(key): key for key in result["data_schema"].schema}
         assert fields["unit"].default() == "kWh"
         assert fields["max_age_seconds"].default() == 86400
-        await hass.config_entries.options.async_configure(
+        result = await hass.config_entries.options.async_configure(
             fid,
             {
                 "unit": "kWh",
@@ -177,6 +180,46 @@ async def test_daily_sources_can_be_selected_and_saved_in_options(
                 "max_age_seconds": 86400,
             },
         )
+        assert result["step_id"] == "sources"
+        flow = hass.config_entries.options._progress[fid]
+        assert flow._draft["measurements"][name]["minimum"] == 0
+    inventory = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "source_inventory"}
+    )
+    choices = next(
+        field.config["options"]
+        for key, field in inventory["data_schema"].schema.items()
+        if str(key) == "source"
+    )
+    pv_source = next(
+        choice["value"]
+        for choice in choices
+        if "sensor.pv_energy_today" in choice["label"]
+    )
+    await hass.config_entries.options.async_configure(fid, {"source": pv_source})
+    await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "source_edit"}
+    )
+    await hass.config_entries.options.async_configure(
+        fid, {"entity_id": "sensor.pv_energy_today"}
+    )
+    edit = await hass.config_entries.options.async_configure(fid, {})
+    fields = {str(key): key for key in edit["data_schema"].schema}
+    assert fields["max_age_seconds"].default() == 86400
+    await hass.config_entries.options.async_configure(
+        fid,
+        {
+            "unit": "kWh",
+            "sign": 1,
+            "timestamp_path": "last_updated",
+            "max_age_seconds": 86400,
+        },
+    )
+    assert set(flow._draft["measurements"]) == {
+        "pv_energy_today",
+        "grid_export_energy_today",
+    }
+    await hass.config_entries.options.async_configure(fid, {"next_step_id": "menu"})
     await hass.config_entries.options.async_configure(fid, {"next_step_id": "hardware"})
     await hass.config_entries.options.async_configure(fid, {"grid_export_kw": 8})
     result = await hass.config_entries.options.async_configure(
@@ -193,6 +236,52 @@ async def test_daily_sources_can_be_selected_and_saved_in_options(
     await hass.async_block_till_done()
     assert entry.runtime_data.data["valid"]
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+@pytest.mark.parametrize(
+    "name, label",
+    [
+        ("pv_energy_today", "Dzienna energia PV"),
+        ("grid_export_energy_today", "Dzienna energia eksportu do sieci"),
+    ],
+)
+async def test_daily_counter_roles_reject_forged_statistic_mode_and_submission(
+    recorder_mock, hass, enable_custom_integrations, name, label
+):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    config = default_configuration("PLN", "Europe/Warsaw")
+    hass.config.language = "pl"
+    entry = MockConfigEntry(domain="energy_compass", data=config, version=2)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fid = result["flow_id"]
+    await hass.config_entries.options.async_configure(fid, {"next_step_id": "sources"})
+    selection = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "source_add"}
+    )
+    roles = next(
+        field.config["options"]
+        for key, field in selection["data_schema"].schema.items()
+        if str(key) == "target"
+    )
+    assert {choice["value"]: choice["label"] for choice in roles}[name] == label
+    mode = await hass.config_entries.options.async_configure(fid, {"target": name})
+    choices = next(
+        field.config["options"]
+        for key, field in mode["data_schema"].schema.items()
+        if str(key) == "mode"
+    )
+    assert [choice["value"] for choice in choices] == ["measurement", "back"]
+    flow = hass.config_entries.options._progress[fid]
+    rejected = await flow.async_step_source_mode({"mode": "statistic"})
+    assert rejected["errors"] == {"base": "invalid_input"}
+    rejected = await flow.async_step_source_statistic(
+        {"statistic_id": f"sensor.{name}", "unit": "kWh", "sign": 1}
+    )
+    assert rejected["errors"] == {"base": "invalid_input"}
+    assert flow._draft == config
+    assert dict(entry.data) == config
 
 
 async def test_counter_change_recalculates_without_resetting_daily_budget(

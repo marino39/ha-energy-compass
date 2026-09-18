@@ -2,6 +2,7 @@
 
 import json
 from copy import deepcopy
+from zoneinfo import ZoneInfo
 
 import voluptuous as vol
 from homeassistant import config_entries
@@ -28,41 +29,19 @@ from .settings import (
     validate_configuration,
 )
 from .source_flow import SourceEditor
+from .source_management import (
+    SourceRef,
+    selected_source,
+    source_error_detail,
+    source_mode_options,
+)
 from .sources.bindings import IntervalBinding
+from .sources.throughput import resolve_daily_throughput
 
 
 def _preview_assumptions(config, problem, values, quality):
-    buy = config["sources"]["buy"]
-    currency = config["currency"]
-    if buy["mode"] == "fixed":
-        helper = config.get("helpers", {}).get("buy_rate")
-        origin = (
-            f"helper {helper['entity']['entity_id']}"
-            + (
-                f" attribute {helper['entity']['attribute']}"
-                if helper["entity"].get("attribute")
-                else ""
-            )
-            if helper
-            else "fixed setting"
-        )
-        source = f"Buy source: fixed, {origin}; resolved {values['buy_rate']:g} {currency}/kWh"
-        if values["buy_rate"] == 0:
-            source += " (intentional free import rate)"
-    else:
-        bindings = ", ".join(
-            row["entity"]["entity_id"]
-            + (
-                f" attribute {row['entity']['attribute']}"
-                if row["entity"].get("attribute")
-                else ""
-            )
-            for row in buy["forecast"]
-        )
-        source = f"Buy source: forecast {bindings}; first resolved {problem.slots[0].buy_per_kwh:g} {currency}/kWh"
-    source += (
-        f"; multiplier {values['buy_multiplier']:g}, addition {values['buy_addition']:g} {currency}/kWh, "
-        f"VAT {'applied' if values['buy_apply_vat'] else 'not applied'} at {values['vat_percent']:g}%."
+    source = "\n".join(
+        _price_preview(config, problem, values, role) for role in ("buy", "sell")
     )
     load = config["sources"]["load"]
     method = quality.get("load", {}).get("method", load["mode"])
@@ -131,6 +110,62 @@ def _preview_assumptions(config, problem, values, quality):
                 for row in samples
             )
     return source + "\n" + load_text + "."
+
+
+def _price_preview(config, problem, values, role):
+    price = config["sources"][role]
+    currency = config["currency"]
+    effective = (
+        problem.slots[0].buy_per_kwh if role == "buy" else problem.slots[0].sell_per_kwh
+    )
+    if price["mode"] == "fixed":
+        helper = config.get("helpers", {}).get(f"{role}_rate")
+        if helper:
+            entity = helper["entity"]
+            origin = f"helper {entity['entity_id']}"
+            if entity.get("attribute"):
+                origin += f" attribute {entity['attribute']}"
+            source_unit = helper.get("source_unit") or helper["unit"]
+            source = (
+                f"{role.title()} source: fixed, {origin}; declared/source unit {source_unit}; "
+                f"normalized {values[f'{role}_rate']:g} {currency}/kWh; "
+                "scalar rate held constant across the planning horizon"
+            )
+        else:
+            source = (
+                f"{role.title()} source: fixed setting; normalized "
+                f"{values[f'{role}_rate']:g} {currency}/kWh; "
+                "scalar rate held constant across the planning horizon"
+            )
+        if role == "buy" and values["buy_rate"] == 0:
+            source += " (intentional free import rate)"
+    else:
+        entries = []
+        for row in price["forecast"]:
+            entity = row["entity"]
+            origin = entity["entity_id"]
+            if entity.get("attribute"):
+                origin += f" attribute {entity['attribute']}"
+            mapping = f"value {row.get('value_path', 'value')}"
+            for key in (
+                "start_path",
+                "end_path",
+                "duration_path",
+                "unit_path",
+                "published_path",
+            ):
+                if row.get(key):
+                    mapping += f", {key.replace('_', ' ')} {row[key]}"
+            entries.append(f"{origin} ({mapping}; {row['unit']})")
+        source = f"{role.title()} source: forecast {'; '.join(entries)}"
+    source += (
+        f"; effective first interval {effective:g} {currency}/kWh; "
+        f"multiplier {values[f'{role}_multiplier']:g}, addition "
+        f"{values[f'{role}_addition']:g} {currency}/kWh, VAT "
+        f"{'applied' if values[f'{role}_apply_vat'] else 'not applied'} "
+        f"at {values['vat_percent']:g}%."
+    )
+    return source
 
 
 def _solver_failure_detail(problem, values, error):
@@ -289,26 +324,45 @@ class Editor(SourceEditor):
             }
         )
 
-    async def _settings_step(self, group, user_input):
+    async def _settings_step(self, group, user_input, *, step_id=None):
         errors = {}
         detail = ""
         if user_input is not None:
             candidate = deepcopy(self._draft)
             candidate["settings"].update(user_input)
             try:
-                validate_configuration(
+                states = snapshot(self.hass, candidate)
+                values = validate_configuration(
                     candidate,
-                    snapshot(self.hass, candidate),
+                    states,
                     dt_util.utcnow(),
                     sources=False,
                 )
+                if (
+                    group == "battery"
+                    and candidate["sources"]["battery_enabled"]
+                    and values["daily_cycles"]
+                ):
+                    resolve_daily_throughput(
+                        candidate, values, states, dt_util.utcnow()
+                    )
                 self._draft = candidate
-                return await self.async_step_menu()
+                return (
+                    await self.async_step_tariffs()
+                    if group == "tariffs"
+                    else await self.async_step_menu()
+                )
             except InputError as err:
-                errors["base"] = "invalid_input"
-                detail = str(err)
+                errors["base"] = (
+                    "invalid_source" if "throughput" in str(err) else "invalid_input"
+                )
+                detail = (
+                    source_error_detail(err, self.hass.config.language)
+                    if "throughput" in str(err)
+                    else str(err)
+                )
         return self.async_show_form(
-            step_id=group,
+            step_id=step_id or group,
             data_schema=settings_schema(
                 group, self._draft["settings"], self._draft["currency"]
             ),
@@ -323,7 +377,80 @@ class Editor(SourceEditor):
         return await self._settings_step("hardware", user_input)
 
     async def async_step_tariffs(self, user_input=None):
-        return await self._settings_step("tariffs", user_input)
+        return self.async_show_menu(
+            step_id="tariffs",
+            menu_options=["tariff_values", "tariff_buy", "tariff_sell", "menu"],
+        )
+
+    async def async_step_tariff_values(self, user_input=None):
+        return await self._settings_step("tariffs", user_input, step_id="tariff_values")
+
+    async def async_step_tariff_buy(self, user_input=None):
+        return await self._tariff_source("buy", user_input)
+
+    async def async_step_tariff_sell(self, user_input=None):
+        return await self._tariff_source("sell", user_input)
+
+    async def _tariff_source(self, role, user_input):
+        errors = {}
+        if user_input is not None:
+            mode = user_input["mode"]
+            if mode == "back":
+                return await self.async_step_tariffs()
+            if mode not in ("fixed", "entity", "forecast"):
+                errors["base"] = "invalid_input"
+            else:
+                current = self._draft["sources"][role]
+                ref = (
+                    SourceRef(role, "interval", binding_index=0)
+                    if current["mode"] == "forecast" and current["forecast"]
+                    else SourceRef(role, "scalar")
+                )
+                self._source_ref = ref
+                self._source_original = deepcopy(selected_source(self._draft, ref))
+                self._source = {
+                    "target": role,
+                    "mode": mode,
+                    "operation": "edit"
+                    if mode == "forecast" and ref.kind == "interval"
+                    else "replace",
+                    "return_to": "tariffs",
+                }
+                self._binding = None
+                selected = (
+                    self._draft.get("helpers", {}).get(f"{role}_rate", {}).get("entity")
+                    if mode == "entity"
+                    else current["forecast"][0]["entity"]
+                    if mode == "forecast" and ref.kind == "interval"
+                    else None
+                )
+                if selected:
+                    self._binding = self._saved_entity_binding(selected)
+                if mode == "fixed":
+                    return await self._save_fixed_source()
+                return await self.async_step_source_entity()
+        current = self._draft["sources"][role]
+        default = (
+            "forecast"
+            if current["mode"] == "forecast"
+            else "entity"
+            if self._draft.get("helpers", {}).get(f"{role}_rate")
+            else "fixed"
+        )
+        return self.async_show_form(
+            step_id=f"tariff_{role}",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("mode", default=default): select(
+                        source_mode_options(
+                            ["fixed", "entity", "forecast", "back"],
+                            self.hass.config.language,
+                        )
+                    )
+                }
+            ),
+            errors=errors,
+        )
 
     async def async_step_forecast(self, user_input=None):
         return await self._settings_step("forecast", user_input)
@@ -386,6 +513,21 @@ class Editor(SourceEditor):
                 f"Battery: {'disabled' if problem.battery is None else str(values['capacity_kwh']) + ' kWh; floor ' + str(values['operating_floor']) + '%; ceiling ' + str(values['soc_ceiling']) + '%'} .\n"
                 f"Grid import/export: {values['grid_import_kw']}/{values['grid_export_kw']} kW. Currency conversion is not supported."
             )
+            if candidate["sources"]["battery_enabled"] and values["daily_cycles"]:
+                selected = candidate["measurements"]["throughput_today"]["entity"]
+                origin = selected["entity_id"]
+                if selected.get("attribute"):
+                    origin += f" attribute {selected['attribute']}"
+                observed = resolve_daily_throughput(candidate, values, states, now)
+                cap = 2 * values["capacity_kwh"] * values["daily_cycles"]
+                today = (
+                    now.astimezone(ZoneInfo(candidate["timezone"])).date().isoformat()
+                )
+                remaining = dict(problem.remaining_daily_throughput_kwh)[today]
+                preview += (
+                    f"\nDaily AC-side battery throughput: {origin}; measured {observed:g} kWh; "
+                    f"cap {cap:g} kWh; remaining today {remaining:g} kWh."
+                )
             if solver_error:
                 preview += "\n" + _solver_failure_detail(problem, values, solver_error)
             elif user_input is not None and user_input.get("confirm") is True:

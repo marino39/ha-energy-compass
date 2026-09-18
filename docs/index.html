@@ -162,7 +162,7 @@
           <caption>What feeds the calculation</caption>
           <thead><tr><th scope="col">Input</th><th scope="col">Meaning and treatment</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Import and export prices</th><td>Separate fixed rates or interval forecasts, normalized to the configured currency/kWh. Currency/MWh is divided by 1,000. Buy and sell transformations are independent; no currency conversion occurs.</td></tr>
+            <tr><th scope="row">Import and export prices</th><td>Choose each side in Tariffs as a fixed rate, a numeric sensor/number/input_number state or attribute held constant across the known horizon, or an interval forecast. Currency/MWh is divided by 1,000. Buy and sell transformations are independent; no currency conversion occurs.</td></tr>
             <tr><th scope="row">Solar forecast</th><td>Interval energy, or average power multiplied by elapsed hours. For example, 4 kW over 30 minutes becomes 2 kWh. Today/tomorrow continuations merge; only explicitly separate arrays add together. A daily total alone cannot place production in time. Disabled PV contributes zero.</td></tr>
             <tr><th scope="row">Household load</th><td>A selected forecast, consumption energy statistic, power history or explicit daily estimate. Grid import alone is not whole-home load: it omits consumption supplied by PV or a battery.</td></tr>
             <tr><th scope="row">Battery SOC</th><td>Current stored energy, derived from a selected percentage, fraction or kWh source. Capacity, freshness, plausibility and optional independent BMS agreement are checked. Battery-disabled installations do not require SOC.</td></tr>
@@ -213,7 +213,7 @@
         <li>With grid charging disabled, charging cannot exceed forecast solar surplus. With battery export disabled, discharge cannot exceed the forecast household deficit after PV.</li>
         <li>With curtailment disabled, its value is fixed at zero. Incompatible generation, load, battery and export constraints may then make a plan infeasible.</li>
         <li>The default <code>preserve_initial</code> terminal rule requires final battery energy at least equal to initial energy. Its terminal credit is zero. In <code>value</code> mode, final energy is credited at <code>terminal_value_per_kwh</code> instead.</li>
-        <li>An enabled daily cycle cap limits charge-plus-discharge throughput to <code>2 × capacity × daily_cycles</code> per local date, less today's observed throughput. Zero disables the cap; a positive cap requires a current observed-throughput source.</li>
+        <li>An enabled daily cycle cap limits AC-side charge-plus-discharge throughput to <code>2 × capacity × daily_cycles</code> per local date, less today's observed throughput. SOC efficiency is modeled separately; DC counters need upstream conversion. Zero disables the cap; a positive cap requires a current observed-throughput source.</li>
       </ul>
       <p>The solver must report an optimum within its limit. Returned flows are independently checked with a 0.000001 kWh absolute tolerance. These are AC-equivalent energy flows; equipment efficiency and usable capacity still need validation against measurements.</p>
       <h3>2. Add hypothetical consumption</h3>
@@ -523,6 +523,7 @@
       <p>This guide follows the released implementation. When updating calculations or entity behavior, update the corresponding explanations here.</p>
       <ul>
         <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md">Installation, source selection, dashboards and notifications</a></li>
+        <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/source-requirements.md">Source requirements, tariff entities and daily throughput</a></li>
         <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/model.md">Detailed optimizer and incremental-consumption model</a></li>
         <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/source-contracts.md">Source mapping, units and normalization contracts</a></li>
         <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/runtime-validation.md">Runtime compatibility and benchmark evidence</a></li>

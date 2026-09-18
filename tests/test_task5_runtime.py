@@ -159,6 +159,61 @@ def test_unobserved_daily_throughput_is_rejected():
         )
 
 
+def test_daily_throughput_wh_is_normalized_into_public_remaining_budget():
+    now = datetime(2026, 9, 18, 10, tzinfo=UTC)
+    config = battery_configuration()
+    config["settings"]["daily_cycles"] = 1
+    config["measurements"]["throughput_today"] = {
+        "entity": EntityBinding("sensor.battery_throughput").to_dict(),
+        "unit": "kWh",
+        "source_unit": "Wh",
+        "multiplier": 0.001,
+        "max_age_seconds": 3600,
+    }
+    states = {
+        "sensor.soc": {"state": "50", "attributes": {}, "last_updated": now},
+        "sensor.battery_throughput": {
+            "state": "4000",
+            "attributes": {"unit_of_measurement": "Wh"},
+            "last_updated": now,
+        },
+    }
+
+    problem, _, _ = build_problem(config, states, now)
+
+    assert dict(problem.remaining_daily_throughput_kwh)["2026-09-18"] == 36
+
+
+@pytest.mark.parametrize(
+    "source_unit, multiplier, state",
+    [("kW", 1, "4"), ("Wh", -0.001, "4000"), ("Wh", 1, "4000"), ("kWh", 1, "-4")],
+)
+def test_daily_throughput_rejects_non_energy_or_negative_observation(
+    source_unit, multiplier, state
+):
+    now = datetime(2026, 9, 18, 10, tzinfo=UTC)
+    config = battery_configuration()
+    config["settings"]["daily_cycles"] = 1
+    config["measurements"]["throughput_today"] = {
+        "entity": EntityBinding("sensor.battery_throughput").to_dict(),
+        "unit": "kWh",
+        "source_unit": source_unit,
+        "multiplier": multiplier,
+        "max_age_seconds": 3600,
+    }
+    states = {
+        "sensor.soc": {"state": "50", "attributes": {}, "last_updated": now},
+        "sensor.battery_throughput": {
+            "state": state,
+            "attributes": {"unit_of_measurement": source_unit},
+            "last_updated": now,
+        },
+    }
+
+    with pytest.raises(InputError, match="throughput"):
+        build_problem(config, states, now)
+
+
 def test_zero_native_coarsening_guard():
     now = datetime(2026, 9, 17, tzinfo=UTC)
     config = default_configuration("EUR", "UTC")
