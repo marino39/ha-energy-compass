@@ -28,6 +28,7 @@ from .settings import (
     validate_configuration,
 )
 from .source_flow import SourceEditor
+from .sources.bindings import IntervalBinding
 
 
 def _preview_assumptions(config, problem, values, quality):
@@ -88,14 +89,13 @@ def _preview_assumptions(config, problem, values, quality):
             f"Household load: recorder {origin}, actual method {method}; {fallback}"
         )
     else:
-        forecast = load["forecast"]
-        binding = forecast["entity"]
-        origin = binding["entity_id"]
-        if binding.get("attribute"):
-            origin += f" attribute {binding['attribute']}"
-        mapping = [f"value path {forecast['value_path']}"]
+        forecast = IntervalBinding.from_dict(load["forecast"])
+        origin = forecast.entity.entity_id
+        if forecast.entity.attribute:
+            origin += f" attribute {forecast.entity.attribute}"
+        mapping = [f"value path {forecast.value_path}"]
         mapping.extend(
-            f"{name.replace('_', ' ')} {forecast[name]}"
+            f"{name.replace('_', ' ')} {getattr(forecast, name)}"
             for name in (
                 "start_path",
                 "end_path",
@@ -103,7 +103,7 @@ def _preview_assumptions(config, problem, values, quality):
                 "unit_path",
                 "published_path",
             )
-            if forecast.get(name)
+            if getattr(forecast, name)
         )
         load_text = f"Household load: forecast {origin}, {', '.join(mapping)}, actual method {method}"
     load_quality = quality.get("load")

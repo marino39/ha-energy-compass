@@ -5,12 +5,14 @@ import pytest
 from homeassistant import config_entries
 from homeassistant.helpers import selector
 from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.energy_compass.config_models import LoadSource
 from custom_components.energy_compass.engine.models import InputError, SolveError
 from custom_components.energy_compass.flow_schema import settings_schema, snapshot
 from custom_components.energy_compass.settings import (
     default_configuration,
+    merged_configuration,
     validate_configuration,
 )
 from custom_components.energy_compass.sources.bindings import (
@@ -553,3 +555,47 @@ async def test_load_preview_distinguishes_bindings_on_same_entity(
         ) in preview
         if mode == "forecast":
             assert f"load_{letter}" in preview
+
+
+async def test_existing_forecast_without_optional_value_path_can_preview_and_save(
+    recorder_mock, hass, enable_custom_integrations
+):
+    now = dt_util.utcnow()
+    hass.states.async_set(
+        "sensor.legacy_load",
+        "ok",
+        {
+            "rows": [
+                {
+                    "start": (now - timedelta(minutes=1)).isoformat(),
+                    "end": (now + timedelta(hours=24)).isoformat(),
+                    "value": 10,
+                }
+            ]
+        },
+    )
+    config = default_configuration("EUR", "UTC")
+    config["sources"]["load"] = {
+        "mode": "forecast",
+        "forecast": {
+            "entity": {"entity_id": "sensor.legacy_load", "attribute": "rows"},
+            "start_path": "start",
+            "end_path": "end",
+        },
+    }
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Legacy", version=2
+    )
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fid = result["flow_id"]
+    preview = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "preview"}
+    )
+    assert preview["errors"] == {}
+    assert "value path value" in preview["description_placeholders"]["preview"]
+    saved = await hass.config_entries.options.async_configure(fid, {"confirm": True})
+    assert saved["type"] == "create_entry"
+    assert (
+        "value_path" not in merged_configuration(entry)["sources"]["load"]["forecast"]
+    )
