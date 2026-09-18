@@ -1,0 +1,54 @@
+template:
+  - triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: time_pattern
+        minutes: "/15"
+    variables:
+      tariff_group: G12w
+      # Illustrative final PLN/kWh rates; replace these with your own contract prices.
+      base_rate: 0.90
+      off_peak_rate: 0.55
+      # Only dates explicitly listed here receive the G12w off-peak rate.
+      off_peak_dates: []
+      forecast_rows: >-
+        {% if tariff_group is defined and tariff_group in ['G11', 'G12', 'G12w']
+              and base_rate is defined and is_number(base_rate)
+              and off_peak_rate is defined and is_number(off_peak_rate)
+              and off_peak_dates is defined
+              and off_peak_dates is sequence and off_peak_dates is not string %}
+          {% set rows = namespace(value=[]) %}
+          {% set first_hour = ((as_timestamp(utcnow()) // 3600) * 3600) | int %}
+          {% for hour in range(49) %}
+            {% set start = as_datetime((first_hour + hour * 3600) | timestamp_utc) %}
+            {% set end = as_datetime((first_hour + (hour + 1) * 3600) | timestamp_utc) %}
+            {% set local = as_local(start) %}
+            {% set off_peak = tariff_group != 'G11' and
+                (local.hour >= 22 or local.hour < 6 or 13 <= local.hour < 15 or
+                (tariff_group == 'G12w' and
+                (local.weekday() >= 5 or local.date().isoformat() in off_peak_dates))) %}
+            {% set rows.value = rows.value + [{
+                'start': start.isoformat(),
+                'end': end.isoformat(),
+                'price': (off_peak_rate if off_peak else base_rate) | float
+            }] %}
+          {% endfor %}
+          {{ rows.value }}
+        {% else %}
+          {{ [] }}
+        {% endif %}
+    sensor:
+      - name: Energy Compass tariff price
+        unique_id: energy_compass_tariff_price_example
+        default_entity_id: sensor.energy_compass_tariff_price
+        unit_of_measurement: PLN/kWh
+        availability: >-
+          {{ tariff_group is defined and tariff_group in ['G11', 'G12', 'G12w']
+             and base_rate is defined and is_number(base_rate)
+             and off_peak_rate is defined and is_number(off_peak_rate)
+             and off_peak_dates is defined
+             and off_peak_dates is sequence and off_peak_dates is not string }}
+        state: "{{ forecast_rows[0].price if forecast_rows | count == 49 else none }}"
+        attributes:
+          forecast: "{{ forecast_rows }}"
+          generated_at: "{{ utcnow().isoformat() }}"
