@@ -625,7 +625,11 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
     compass = CompassSettings(
         **{key: values[key] for key in CompassSettings.__dataclass_fields__}
     )
-    analysis = analyze_consumption(problem, plan, settings=compass, budget_s=remaining)
+    # Optional probes can overrun their solver deadline slightly. Leave time to
+    # finish analysis without discarding an already certified dispatch plan.
+    analysis = analyze_consumption(
+        problem, plan, settings=compass, budget_s=max(0, remaining - 1.0)
+    )
     if perf_counter() - started > values["total_time_limit_s"]:
         raise SolveError("timeout")
     zone = ZoneInfo(config["timezone"])
