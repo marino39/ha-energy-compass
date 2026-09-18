@@ -31,7 +31,7 @@
 - Create: `custom_components/energy_compass/sources/throughput.py` for one resolver used by form/preview/runtime.
 - Modify: `custom_components/energy_compass/runtime.py` to use the shared throughput resolver without changing the budget formula.
 - Modify: `custom_components/energy_compass/strings.json`, `translations/en.json`, `translations/pl.json` for new steps and copy.
-- Modify: `docs/installation.md`, `docs/index.html`; create `docs/source-requirements.md` for the complete data contract and examples.
+- Modify: `README.md`, `docs/installation.md`, `docs/index.html`; add a link in `docs/source-contracts.md` if useful; create `docs/source-requirements.md` for the complete data contract and examples.
 - Create: `tests/test_source_management.py`, `tests/test_tariff_entities.py`; modify existing source-flow tests if step navigation changes while preserving their assertions; extend `tests/test_task5_runtime.py` / `tests/test_options_flow.py` for shared validation and atomic save behavior.
 
 **Interfaces and responsibilities:**
