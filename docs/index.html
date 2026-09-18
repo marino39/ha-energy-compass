@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Energy Compass v0.1.1: every Home Assistant entity, state, calculation, planning assumption and forecast-quality signal explained.">
+  <meta name="description" content="Energy Compass v0.1.2: every Home Assistant entity, state, calculation, planning assumption and forecast-quality signal explained.">
   <title>Energy Compass — Entity and calculation guide</title>
   <style>
     :root {
@@ -118,7 +118,7 @@
       </picture>
       <span>Energy<br>Compass</span>
     </a>
-    <p class="version">User guide · v0.1.1</p>
+    <p class="version">User guide · v0.1.2</p>
     <nav aria-label="Sections">
       <ul>
         <li><a href="#overview">Reading the compass</a></li>
@@ -139,7 +139,7 @@
     <header>
       <h1>Understand every recommendation.</h1>
       <p class="lead">What Energy Compass entities mean, how their values are calculated, and which assumptions sit behind the plan.</p>
-      <p>This guide describes the Home Assistant integration in <strong>v0.1.1</strong>. Examples use PLN; your installation uses its configured currency. Names are shown in English and Polish.</p>
+      <p>This guide describes the Home Assistant integration in <strong>v0.1.2</strong>. Examples use PLN; your installation uses its configured currency. Names are shown in English and Polish.</p>
     </header>
 
     <section id="overview" aria-labelledby="overview-title">
@@ -176,7 +176,9 @@
       <div class="formula"><p>effective price = normalized source price × multiplier × VAT factor + addition</p><p>VAT factor = 1 + VAT percent / 100 when enabled; otherwise 1</p></div>
       <p>The addition is applied after the VAT factor. Fixed rates use the same transformation. Include applicable variable charges once; do not apply VAT again to a source that already contains it. Fixed monthly charges are reporting metadata and do not affect dispatch or the extra-kWh calculation.</p>
       <p>Negative prices remain valid in the generic integration. Clipping an export price to zero or applying a deposit valuation factor requires an explicitly prepared source or suitable configuration; neither is an automatic assumption for every RCE installation.</p>
+      <p>First setup requires separate confirmation of the displayed buy source and household load source. Every preview and save validates current inputs and solves a bounded base plan. An infeasible or timed-out plan cannot be saved; extra-consumption guidance is calculated after saving. Existing installations retain their original final confirmation.</p>
       <h3>Load forecast from history</h3>
+      <p>The Plan and Forecast valid sensors expose <code>load_quality</code>: selected source, actual forecast method, per-segment history sample counts, and fallback coverage. <code>fallback_fraction</code> measures elapsed forecast time, including separate repeated daylight-saving hours. Recorder fallback raises <code>load_history_fallback</code> even when its estimated energy is zero. This detailed attribute is excluded from recorder history.</p>
       <p>The history model averages complete hourly consumption samples by local hour and day group. With <code>group_weekends</code> enabled, weekdays share one group and weekends another; otherwise each weekday has its own group. Defaults use 14 days of history and at least two samples per bucket.</p>
       <p>Each forecast slot receives its elapsed share of the matching hourly mean. Recorder statistics use reset-adjusted cumulative sums; power history is integrated over complete hours with coverage checks. Missing buckets use <code>fallback_daily_kwh / 24</code> only when fallback is enabled. An explicit fixed daily estimate is also distributed uniformly at <code>daily_load_kwh / 24</code> kWh per elapsed hour.</p>
       <p>Timestamp identity and durations use UTC; day grouping uses the configured local timezone. Repeated daylight-saving hours remain distinct intervals.</p>
@@ -396,7 +398,7 @@
               <tr><th scope="row"><code>timeout</code></th><td>The base solve or overall calculation exceeded its budget. Check timing, model size and hardware. A single failed probe can instead leave a ready baseline with incomplete guidance.</td></tr>
               <tr><th scope="row"><code>infeasible</code></th><td>No baseline plan satisfies all constraints. Check demand/generation, SOC, reserve, power/export limits, terminal requirements and allowed capabilities.</td></tr>
               <tr><th scope="row"><code>error</code></th><td>Another solver failure or unexpected exception occurred. Inspect reason and integration diagnostics/logs.</td></tr>
-              <tr><th scope="row"><code>insufficient_data</code></th><td>Reserved in translations, but not emitted by the v0.1.1 coordinator. Missing-data validation currently reports <code>invalid_input</code>.</td></tr>
+              <tr><th scope="row"><code>insufficient_data</code></th><td>Reserved in translations, but not emitted by the v0.1.2 coordinator. Missing-data validation currently reports <code>invalid_input</code>.</td></tr>
             </tbody>
           </table>
         </section>
@@ -407,7 +409,7 @@
         <h3>Forecast valid</h3>
         <p class="entity-meta"><code>forecast_valid</code> · <span lang="pl">Poprawna prognoza</span> · Binary sensor</p>
         <p><strong>on:</strong> a valid baseline exists and current UTC time is strictly before <code>valid_until</code>. <strong>off:</strong> calculation is pending, inputs or baseline failed, or the generation has expired. This entity remains available to report that condition.</p>
-        <p><code>valid_until</code> is the earliest of the first native interval's end, the configured refresh deadline and applicable required-source freshness deadlines. An unchanged numeric SOC still needs a trustworthy report timestamp; availability is not established by its percentage alone.</p>
+        <p><code>valid_until</code> is the earliest of the first native interval's end, the configured refresh deadline and applicable required-source freshness deadlines. An unchanged numeric SOC still needs a trustworthy report timestamp; availability is not established by its percentage alone. The default <code>auto</code> policy uses Home Assistant’s native <code>last_reported</code> for native SOC and BMS timestamp paths, including older saved <code>last_updated</code> paths. An identical fresh report therefore stays fresh. Custom timestamp paths retain their exact meaning; <code>exact_path</code> also preserves literal native-field selection.</p>
         <dl>
           <dt><code>current_guidance_valid</code></dt><dd>Whether the current consumption outlook has a known level. Use it together with the binary sensor's on state; it is generation metadata and is not itself a clock-based freshness check.</dd>
           <dt><code>coverage_end</code>, <code>requested_end</code>, <code>coverage_complete</code></dt><dd>Actual source horizon, requested planning end, and whether that entire requested horizon is covered. These are distinct from reference-horizon classification.</dd>
@@ -421,7 +423,7 @@
     <section id="quality" aria-labelledby="quality-title">
       <h2 id="quality-title">Validity and missing data</h2>
       <p>Entities share <code>generated_at</code>, <code>valid_until</code>, <code>reason</code>, <code>reasons</code>, <code>calibration</code>, <code>capacity_calibration</code> and <code>classification_mode</code> attributes when available. <code>reason</code> describes invalidation or reference coverage; <code>reasons</code> combines quality warnings and any incomplete-reference reason.</p>
-      <div class="note"><p><strong>Refresh continuity (v0.1.1).</strong> A queued or running refresh keeps the last published values visible, including at a scheduled validity boundary. The new shared attribute <code>refreshing=true</code> identifies this retained display. Original timestamps, plan arrays and quality metadata stay unchanged; <strong>Forecast valid remains off</strong>, so retained values must not be treated as current advice. A successful calculation replaces the snapshot and clears <code>refreshing</code>. Invalid/stale required inputs or a failed calculation make recommendations unavailable. Absent or ended windows and unknown consumption probes remain unavailable during refresh.</p></div>
+      <div class="note"><p><strong>Refresh continuity (since v0.1.1).</strong> A queued or running refresh keeps the last published values visible, including at a scheduled validity boundary. The new shared attribute <code>refreshing=true</code> identifies this retained display. Original timestamps, plan arrays and quality metadata stay unchanged; <strong>Forecast valid remains off</strong>, so retained values must not be treated as current advice. A successful calculation replaces the snapshot and clears <code>refreshing</code>. Invalid/stale required inputs or a failed calculation make recommendations unavailable. Absent or ended windows and unknown consumption probes remain unavailable during refresh.</p></div>
       <section class="table-scroll" aria-label="Classification modes" tabindex="0">
         <table>
           <caption>Classification modes</caption>
@@ -512,7 +514,7 @@
         <li>Enable <strong>Allow curtailment</strong> (<span lang="pl">Ograniczanie produkcji PV</span>), then use <strong>Preview and save</strong> (<span lang="pl">Podgląd i zapis</span>).</li>
       </ol>
       <p>This allows <code>curtail_kwh</code> to be positive in the optimizer; it does not force curtailment or operate the inverter. Enabling a capability that equipment cannot follow makes the advisory plan unrealistic.</p>
-      <div class="note"><p><strong>Physical curtailment needs a separate control layer.</strong> That layer needs compatible inverter generation/export controls, verified metering and operating-mode behavior, and a way to restore normal limits. Energy Compass v0.1.1 provides no such controller.</p></div>
+      <div class="note"><p><strong>Physical curtailment needs a separate control layer.</strong> That layer needs compatible inverter generation/export controls, verified metering and operating-mode behavior, and a way to restore normal limits. Energy Compass v0.1.2 provides no such controller.</p></div>
       <p>An 8 kW PV system with an 8 kW permitted export path usually has room to export surplus, subject to shared inverter and other limits. When export value is explicitly floored at zero, negative raw market prices alone do not create a modeled export penalty. Allowing curtailment therefore does not guarantee a CURTAIL state.</p>
     </section>
 
@@ -531,7 +533,7 @@
       </ul>
     </section>
     <footer>
-      <p>Energy Compass v0.1.1 · This guide works online and offline from a repository checkout. Theme follows your system preference. Supporting documentation and source-code links open GitHub.</p>
+      <p>Energy Compass v0.1.2 · This guide works online and offline from a repository checkout. Theme follows your system preference. Supporting documentation and source-code links open GitHub.</p>
       <p><a href="#overview">Back to the guide</a> · <a href="https://github.com/marino39/ha-energy-compass/blob/main/LICENSE">Apache License 2.0</a></p>
     </footer>
   </main>

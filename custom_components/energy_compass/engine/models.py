@@ -107,6 +107,21 @@ class ForecastSettings:
 
 
 @dataclass(frozen=True)
+class LoadCoverageSegment:
+    start: datetime
+    end: datetime
+    method: Literal["history", "fallback", "daily_estimate", "forecast"]
+    samples_available: int | None
+    samples_required: int | None
+
+
+@dataclass(frozen=True)
+class LoadForecastResult:
+    values: tuple[float, ...]
+    coverage: tuple[LoadCoverageSegment, ...]
+
+
+@dataclass(frozen=True)
 class CompassSettings:
     display_horizon_hours: int = 24
     display_interval_minutes: int = 60

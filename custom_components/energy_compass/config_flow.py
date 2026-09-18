@@ -9,7 +9,8 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 from homeassistant.util import dt as dt_util
 
-from .engine.models import InputError
+from .engine.models import InputError, SolveError
+from .engine.optimize import solve
 from .flow_schema import (
     currency_review_schema,
     rebind_configuration,
@@ -27,6 +28,142 @@ from .settings import (
     validate_configuration,
 )
 from .source_flow import SourceEditor
+from .sources.bindings import IntervalBinding
+
+
+def _preview_assumptions(config, problem, values, quality):
+    buy = config["sources"]["buy"]
+    currency = config["currency"]
+    if buy["mode"] == "fixed":
+        helper = config.get("helpers", {}).get("buy_rate")
+        origin = (
+            f"helper {helper['entity']['entity_id']}"
+            + (
+                f" attribute {helper['entity']['attribute']}"
+                if helper["entity"].get("attribute")
+                else ""
+            )
+            if helper
+            else "fixed setting"
+        )
+        source = f"Buy source: fixed, {origin}; resolved {values['buy_rate']:g} {currency}/kWh"
+        if values["buy_rate"] == 0:
+            source += " (intentional free import rate)"
+    else:
+        bindings = ", ".join(
+            row["entity"]["entity_id"]
+            + (
+                f" attribute {row['entity']['attribute']}"
+                if row["entity"].get("attribute")
+                else ""
+            )
+            for row in buy["forecast"]
+        )
+        source = f"Buy source: forecast {bindings}; first resolved {problem.slots[0].buy_per_kwh:g} {currency}/kWh"
+    source += (
+        f"; multiplier {values['buy_multiplier']:g}, addition {values['buy_addition']:g} {currency}/kWh, "
+        f"VAT {'applied' if values['buy_apply_vat'] else 'not applied'} at {values['vat_percent']:g}%."
+    )
+    load = config["sources"]["load"]
+    method = quality.get("load", {}).get("method", load["mode"])
+    if load["mode"] == "daily_estimate":
+        helper = config.get("helpers", {}).get("daily_load_kwh")
+        origin = (
+            f"helper {helper['entity']['entity_id']}"
+            + (
+                f" attribute {helper['entity']['attribute']}"
+                if helper["entity"].get("attribute")
+                else ""
+            )
+            if helper
+            else "fixed setting"
+        )
+        load_text = f"Household load: daily estimate from {origin}, resolved {values['daily_load_kwh']:g} kWh/day"
+    elif load["mode"] == "recorder":
+        if load.get("statistic_id"):
+            origin = f"statistic {load['statistic_id']}"
+        else:
+            power = load["power"]
+            origin = f"power {power['entity_id']}"
+            if power.get("attribute"):
+                origin += f" attribute {power['attribute']}"
+        fallback = (
+            f"fallback daily estimate {values['fallback_daily_kwh']:g} kWh/day"
+            if values["allow_fallback"]
+            else "fallback disabled"
+        )
+        load_text = (
+            f"Household load: recorder {origin}, actual method {method}; {fallback}"
+        )
+    else:
+        forecast = IntervalBinding.from_dict(load["forecast"])
+        origin = forecast.entity.entity_id
+        if forecast.entity.attribute:
+            origin += f" attribute {forecast.entity.attribute}"
+        mapping = [f"value path {forecast.value_path}"]
+        mapping.extend(
+            f"{name.replace('_', ' ')} {getattr(forecast, name)}"
+            for name in (
+                "start_path",
+                "end_path",
+                "duration_path",
+                "unit_path",
+                "published_path",
+            )
+            if getattr(forecast, name)
+        )
+        load_text = f"Household load: forecast {origin}, {', '.join(mapping)}, actual method {method}"
+    load_quality = quality.get("load")
+    if load_quality:
+        load_text += (
+            f"; fallback {load_quality['fallback_coverage_hours']:g} h "
+            f"({load_quality['fallback_fraction']:.1%} of elapsed forecast time)"
+        )
+        samples = [
+            row
+            for row in load_quality["coverage"]
+            if row["samples_available"] is not None
+        ]
+        if samples:
+            load_text += "; samples available/required by segment: " + ", ".join(
+                f"{row['start']} → {row['end']} {row['method']} "
+                f"{row['samples_available']}/{row['samples_required']}"
+                for row in samples
+            )
+    return source + "\n" + load_text + "."
+
+
+def _solver_failure_detail(problem, values, error):
+    if error.reason == "timeout":
+        return "Feasibility is unknown; retry or increase the bounded solve time limit in Performance."
+    if error.reason != "infeasible":
+        return f"Optimizer error: {error}. Review Planning and retry."
+    detail = (
+        f"Review Hardware, Battery and Planning settings: grid import/export "
+        f"{values['grid_import_kw']:g}/{values['grid_export_kw']:g} kW, "
+        f"inverter {values['inverter_kw']:g} kW, curtailment "
+        f"{'enabled' if values['allow_curtailment'] else 'disabled'}."
+    )
+    if problem.battery:
+        detail += (
+            f" Battery capacity {values['capacity_kwh']:g} kWh, floor "
+            f"{values['operating_floor']:g}%, ceiling {values['soc_ceiling']:g}%, "
+            f"charge/discharge {values['charge_kw']:g}/{values['discharge_kw']:g} kW."
+        )
+    if (
+        any(slot.load_kwh > 0 for slot in problem.slots)
+        and not problem.battery
+        and values["grid_import_kw"] == 0
+        and all(slot.pv_kwh == 0 for slot in problem.slots)
+    ):
+        detail += " Positive household load has no grid import, PV, or battery supply."
+    if (
+        any(slot.pv_kwh > 0 for slot in problem.slots)
+        and values["inverter_kw"] == 0
+        and not values["allow_curtailment"]
+    ):
+        detail += " Positive PV has zero inverter capacity and curtailment is disabled."
+    return detail
 
 
 class Editor(SourceEditor):
@@ -210,7 +347,7 @@ class Editor(SourceEditor):
         if self._currency_review_pending:
             return await self.async_step_currency_review()
         errors = {}
-        preview = ""
+        preview = "Source inputs: failed. Base plan: not checked. Extra-consumption guidance: not checked in preview; computed after saving."
         try:
             candidate = rebind_configuration(self.hass, self._draft)
             now = dt_util.utcnow()
@@ -219,22 +356,65 @@ class Editor(SourceEditor):
             problem, values, quality = await self.hass.async_add_executor_job(
                 lambda: build_problem(candidate, states, now, **history)
             )
+            solver_error = None
+            plan_status = "feasible"
+            try:
+                await self.hass.async_add_executor_job(
+                    lambda: solve(problem, time_limit_s=values["solve_time_limit_s"])
+                )
+            except SolveError as err:
+                solver_error = err
+                if err.reason == "infeasible":
+                    errors["base"] = "plan_infeasible"
+                    plan_status = "infeasible"
+                elif err.reason == "timeout":
+                    errors["base"] = "plan_timeout"
+                    plan_status = "timed out; feasibility unknown"
+                else:
+                    errors["base"] = "optimizer_error"
+                    plan_status = "optimizer error; feasibility unknown"
             rows = "\n".join(
                 f"{slot.start.isoformat()} → {slot.end.isoformat()}: import {slot.buy_per_kwh:g}, export {slot.sell_per_kwh:g} {candidate['currency']}/kWh; PV {slot.pv_kwh:.3f}, household {slot.load_kwh:.3f} kWh"
                 for slot in problem.slots[:4]
             )
-            preview = f"{rows}\n\nCoverage: {problem.slots[0].start.isoformat()} → {quality['coverage_end']} ({len(problem.slots)} native intervals).\nWarnings: {', '.join(quality['warnings']) or 'none'}.\nInput ages (seconds): {json.dumps(quality['input_ages'])}.\nBattery: {'disabled' if problem.battery is None else str(values['capacity_kwh']) + ' kWh; floor ' + str(values['operating_floor']) + '%; ceiling ' + str(values['soc_ceiling']) + '%'}.\nGrid import/export: {values['grid_import_kw']}/{values['grid_export_kw']} kW. Currency conversion is not supported."
-            if user_input is not None and user_input.get("confirm"):
-                self._draft = candidate
-                return self._finish()
+            preview = (
+                f"Source inputs: validated. Base plan: {plan_status}. Extra-consumption guidance: not checked in preview; computed after saving.\n"
+                f"{_preview_assumptions(candidate, problem, values, quality)}\n"
+                f"{rows}\n\nCoverage: {problem.slots[0].start.isoformat()} → {quality['coverage_end']} ({len(problem.slots)} native intervals).\n"
+                f"Warnings: {', '.join(quality['warnings']) or 'none'}.\n"
+                f"Input ages (seconds): {json.dumps(quality['input_ages'])}.\n"
+                f"Battery: {'disabled' if problem.battery is None else str(values['capacity_kwh']) + ' kWh; floor ' + str(values['operating_floor']) + '%; ceiling ' + str(values['soc_ceiling']) + '%'} .\n"
+                f"Grid import/export: {values['grid_import_kw']}/{values['grid_export_kw']} kW. Currency conversion is not supported."
+            )
+            if solver_error:
+                preview += "\n" + _solver_failure_detail(problem, values, solver_error)
+            elif user_input is not None and user_input.get("confirm") is True:
+                if not self._existing_installation and (
+                    user_input.get("confirm_buy_source") is not True
+                    or user_input.get("confirm_load_source") is not True
+                ):
+                    errors["base"] = "input_acknowledgement_required"
+                else:
+                    self._draft = candidate
+                    return self._finish()
         except (InputError, ValueError, KeyError) as err:
             errors["base"] = "invalid_source"
-            preview = str(err)
+            preview += "\n" + str(err)
+        schema = {vol.Required("confirm", default=False): selector.BooleanSelector()}
+        if not self._existing_installation:
+            schema.update(
+                {
+                    vol.Required(
+                        "confirm_buy_source", default=False
+                    ): selector.BooleanSelector(),
+                    vol.Required(
+                        "confirm_load_source", default=False
+                    ): selector.BooleanSelector(),
+                }
+            )
         return self.async_show_form(
             step_id="preview",
-            data_schema=vol.Schema(
-                {vol.Required("confirm", default=False): selector.BooleanSelector()}
-            ),
+            data_schema=vol.Schema(schema),
             errors=errors,
             description_placeholders={"preview": preview},
         )
