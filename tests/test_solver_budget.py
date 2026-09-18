@@ -9,11 +9,16 @@ from custom_components.energy_compass.engine import consumption, optimize
 from custom_components.energy_compass.engine.models import (
     Battery,
     CompassSettings,
+    InputError,
     Problem,
     SiteLimits,
     Slot,
 )
-from custom_components.energy_compass.settings import default_configuration
+from custom_components.energy_compass.flow_schema import settings_schema
+from custom_components.energy_compass.settings import (
+    default_configuration,
+    validate_configuration,
+)
 
 
 def solar_problem():
@@ -95,3 +100,30 @@ def test_zero_optional_budget_leaves_costs_unknown():
     )
     assert result.coverage_reason == "reference_probe_failed"
     assert all(row.cost_per_kwh is None for row in result.opportunities)
+
+
+@pytest.mark.parametrize("seconds", [20, 30])
+def test_long_base_budget_keeps_hard_overall_limit(seconds):
+    now = datetime(2026, 9, 18, tzinfo=UTC)
+    config = default_configuration("PLN", "UTC")
+    assert config["settings"]["solve_time_limit_s"] == 10
+    config["settings"]["solve_time_limit_s"] = seconds
+    assert (
+        settings_schema("performance", config["settings"])(
+            {"solve_time_limit_s": seconds}
+        )["solve_time_limit_s"]
+        == seconds
+    )
+    values = validate_configuration(config, {}, now)
+    assert values["solve_time_limit_s"] == seconds
+    assert values["total_time_limit_s"] == 60
+    config["settings"]["total_time_limit_s"] = seconds
+    with pytest.raises(InputError, match="total compute budget"):
+        validate_configuration(config, {}, now)
+
+
+def test_base_budget_above_supported_limit_is_rejected():
+    config = default_configuration("PLN", "UTC")
+    config["settings"]["solve_time_limit_s"] = 31
+    with pytest.raises(InputError, match="solve_time_limit_s outside"):
+        validate_configuration(config, {}, datetime(2026, 9, 18, tzinfo=UTC))
