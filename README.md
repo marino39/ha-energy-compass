@@ -25,6 +25,8 @@ Window alerts require **Notify enabled** in integration options and a nonempty a
 
 The extra-kWh estimate assumes the optimizer's proposed plan. Until a controller follows that plan, actual consumption savings can differ under existing automation. A forecast-dependent recommendation is not a measurement of savings. See [model and limitations](docs/model.md) for energy balance, coverage, battery assumptions, and solver behavior.
 
+Under **Planning**, **Sell only PV** defaults to on and limits total grid export to total PV generation **for each local calendar day**. Choose the `pv_energy_today` and `grid_export_energy_today` counters in **Sources** to include energy already generated and exported since midnight. Switch it off to remove this budget. The battery direction hold defaults to **60 minutes**. A hold allows idle periods and switching between PV and grid charging. The export budget includes direct solar and battery export; battery provenance is not tracked and initial SOC is eligible within the budget. See [policy details and limitations](docs/model.md#battery-direction-duration-and-pv-export-budget).
+
 ## License
 
 Energy Compass source and original artwork are provided under [Apache License 2.0](LICENSE). SciPy and NumPy are installed as separate dependencies and retain their own licenses; their source is not included here.

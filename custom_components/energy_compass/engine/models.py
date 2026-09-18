@@ -62,6 +62,12 @@ class Problem:
     terminal_value_per_kwh: float
     remaining_daily_throughput_kwh: tuple[tuple[str, float], ...]
     timezone: str
+    minimum_mode_minutes: float = 60
+    limit_export_to_pv: bool = True
+    initial_battery_mode: Literal["charge", "discharge"] | None = None
+    initial_battery_mode_since: datetime | None = None
+    pv_generated_today_kwh: float = 0.0
+    grid_exported_today_kwh: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -72,6 +78,7 @@ class Flow:
     discharge_kwh: float
     curtail_kwh: float
     end_soc_kwh: float
+    battery_mode: Literal["charge", "discharge"] | None = None
 
 
 @dataclass(frozen=True)

@@ -30,7 +30,8 @@
           "source_inventory": "Review and edit sources",
           "source_add": "Add source",
           "menu": "Main menu"
-        }
+        },
+        "description": "Review or add buy, sell, load, enabled PV and SOC sources. Append a today/tomorrow continuation; PV groups represent independent arrays. Sell only PV requires pv_energy_today (generation since local midnight) and grid_export_energy_today (export since local midnight) in kWh or Wh, resetting each local day. throughput_today constrains battery cycles; other measurements are diagnostic."
       },
       "source_entity": {
         "title": "Source entity",
@@ -181,9 +182,15 @@
           "horizon_hours": "Horizon hours",
           "refresh_minutes": "Refresh minutes",
           "terminal_value_per_kwh": "Terminal value per kwh",
-          "terminal_mode": "Terminal mode"
+          "terminal_mode": "Terminal mode",
+          "minimum_mode_minutes": "Minimum battery direction duration",
+          "limit_export_to_pv": "Sell only PV"
         },
-        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+        "description": "Edit fixed values or use the numeric helper editor. {detail}",
+        "data_description": {
+          "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
+          "limit_export_to_pv": "Enabled by default. Solar and battery export cannot exceed PV generation on the same local calendar day. Combines observed totals since midnight with the remaining forecast; no credit carries between days. Select pv_energy_today and grid_export_energy_today daily counters in Sources. Off removes this budget; other limits remain active."
+        }
       },
       "compass": {
         "title": "Consumption outlook",
@@ -384,7 +391,8 @@
           "source_inventory": "Review and edit sources",
           "source_add": "Add source",
           "menu": "Main menu"
-        }
+        },
+        "description": "Review or add buy, sell, load, enabled PV and SOC sources. Append a today/tomorrow continuation; PV groups represent independent arrays. Sell only PV requires pv_energy_today (generation since local midnight) and grid_export_energy_today (export since local midnight) in kWh or Wh, resetting each local day. throughput_today constrains battery cycles; other measurements are diagnostic."
       },
       "source_entity": {
         "title": "Source entity",
@@ -535,9 +543,15 @@
           "horizon_hours": "Horizon hours",
           "refresh_minutes": "Refresh minutes",
           "terminal_value_per_kwh": "Terminal value per kwh",
-          "terminal_mode": "Terminal mode"
+          "terminal_mode": "Terminal mode",
+          "minimum_mode_minutes": "Minimum battery direction duration",
+          "limit_export_to_pv": "Sell only PV"
         },
-        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+        "description": "Edit fixed values or use the numeric helper editor. {detail}",
+        "data_description": {
+          "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
+          "limit_export_to_pv": "Enabled by default. Solar and battery export cannot exceed PV generation on the same local calendar day. Combines observed totals since midnight with the remaining forecast; no credit carries between days. Select pv_energy_today and grid_export_energy_today daily counters in Sources. Off removes this budget; other limits remain active."
+        }
       },
       "compass": {
         "title": "Consumption outlook",

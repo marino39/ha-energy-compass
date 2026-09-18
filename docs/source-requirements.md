@@ -57,3 +57,7 @@ The selected entity must be available, within the chosen age limit, and have `la
 Daily cap: `2 × battery capacity kWh × daily_cycles`. Remaining today: `max(0, daily cap − measured throughput)`. Preview shows the selected entity/attribute, resolved throughput, cap and remaining today. A cycle limit of zero disables this constraint, and a battery-disabled installation does not require this source.
 
 The existing optimizer budgets charge plus discharge on its AC-side flow basis; it accounts for SOC efficiency separately. A DC counter needs an upstream conversion that accounts for charging and discharging losses before selection here. Energy Compass does not infer or apply that conversion.
+
+## Daily PV and grid export counters
+
+When **Planning → Sell only PV** is enabled and grid export capacity is above zero, add **pv_energy_today** and **grid_export_energy_today** through **Sources → Add source → measurement**. Select kWh or Wh entities or attributes that count generation and grid export since local midnight, reset daily and never go negative. These roles accept measurements only, with a default maximum age of 86400 seconds; a recorder statistic or lifetime total cannot replace them. Both counters must report on the current local date. The policy combines observed totals with the forecast for each local day, as described in the [dispatch model](model.md#battery-direction-duration-and-pv-export-budget).

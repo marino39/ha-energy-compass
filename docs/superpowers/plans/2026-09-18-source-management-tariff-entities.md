@@ -69,7 +69,7 @@
 14. Include synthetic examples of numeric state, numeric attribute and structured forecast records with value/start/end and a today/tomorrow continuation. Explain timestamp-map support, timezone-aware ISO8601, DST ambiguity rejection, positive duration, matching values on duplicate intervals, conflicting overlaps, and shortened coverage when tomorrow is unpublished. HA state strings containing JSON are not silently parsed as forecasts. Do not claim tariff group labels or provider schedules are inferred.
 15. Document throughput as daily AC-side charge PLUS discharge matching the existing solver flow basis, reset at local midnight, current local-date timestamp, nonnegative kWh/Wh and not a net/lifetime/grid/SOC/power value; explain cap/remaining formulas and the unsupported recorder-statistic mode. Update the main guide and installation examples that previously required the generic Sources detour.
 
-- [ ] **Step 1: Write behavior tests before production changes.** Use native HA config/options flow fixtures and literal synthetic sources. Every test names the actual bug it catches; no tests that grep prose/source or only assert mocks. At minimum cover two PV groups with two continuations, price today/tomorrow edits/removals, cancellation, saved mapping defaults including absent legacy optional fields, invalid modes, supported throughput, Tariffs state/attribute/forecast flows, switching modes, conversion and final saved configuration. Use real runtime `build_problem` for resolved prices/budgets and keep data/options atomic on failures.
+- [x] **Step 1: Write behavior tests before production changes.** Use native HA config/options flow fixtures and literal synthetic sources. Every test names the actual bug it catches; no tests that grep prose/source or only assert mocks. At minimum cover two PV groups with two continuations, price today/tomorrow edits/removals, cancellation, saved mapping defaults including absent legacy optional fields, invalid modes, supported throughput, Tariffs state/attribute/forecast flows, switching modes, conversion and final saved configuration. Use real runtime `build_problem` for resolved prices/budgets and keep data/options atomic on failures.
 
   Hand-checked numerical cases:
   ```python
@@ -83,12 +83,12 @@
   ```
   Assert the public resulting budget, not a duplicated calculation.
 
-- [ ] **Step 2: Observe RED on the pinned HA image before implementation.** Ask the controller to run focused commands if Docker approval in the child is unavailable. Record failures caused by absent behavior, not syntax/fixture errors. Do not change tests to hide established valid semantics.
+- [x] **Step 2: Observe RED on the pinned HA image before implementation.** Ask the controller to run focused commands if Docker approval in the child is unavailable. Record failures caused by absent behavior, not syntax/fixture errors. Do not change tests to hide established valid semantics.
   ```bash
   docker run --rm -v /Users/marcin/Prywatne/ha-recovery/worktrees/energy-compass-source-management:/workspace:ro ha-energy-compass-test:2026.9.1 -m pytest -p no:cacheprovider -q tests/test_source_management.py tests/test_tariff_entities.py --tb=short --show-capture=no
   ```
 
-- [ ] **Step 3: Implement the smallest coherent source transaction layer, shared throughput resolver and tariff entry points.** Preserve the existing serializer and solver. Extract the inventory/management concern into the planned module rather than growing SourceEditor with a second copy of parsing logic. Reuse existing entity/mapping/numeric resolution. Copy saved mappings before applying user changes; replace a selected list index rather than rebuilding its entire collection.
+- [x] **Step 3: Implement the smallest coherent source transaction layer, shared throughput resolver and tariff entry points.** Preserve the existing serializer and solver. Extract the inventory/management concern into the planned module rather than growing SourceEditor with a second copy of parsing logic. Reuse existing entity/mapping/numeric resolution. Copy saved mappings before applying user changes; replace a selected list index rather than rebuilding its entire collection.
   ```python
   candidate = deepcopy(self._draft)
   # Validate the selected source and edited data first.
@@ -97,9 +97,9 @@
   ```
   For numeric tariffs, store the binding in the existing rate helper and preserve the chosen rate's source unit and conversion multiplier. Keep the forecast and fixed-price representations valid when mode changes. Validation failures must return a form with useful translated error/detail, not throw a traceback.
 
-- [ ] **Step 4: Observe GREEN, add translations and documentation, then self-review.** Verify complete source transactions through final preview/save for new setup and existing options/reconfigure. Test registry renames and own-output refusal using native HA registry. Include loop cases edit→back/change role→edit and remove group→edit remaining group. Add human docs; do not write tests for prose. The controller has supplementary audited contracts and draft doc text under `.superpowers/source-management-notes/`.
+- [x] **Step 4: Observe GREEN, add translations and documentation, then self-review.** Verify complete source transactions through final preview/save for new setup and existing options/reconfigure. Test registry renames and own-output refusal using native HA registry. Include loop cases edit→back/change role→edit and remove group→edit remaining group. Add human docs; do not write tests for prose. The controller has supplementary audited contracts and draft doc text under `.superpowers/source-management-notes/`.
 
-- [ ] **Step 5: Verify regression tests discriminate, then the exact final CI checks.** Revert only relevant production behavior in an isolated temporary copy or restore with try/finally; keep tests unchanged. Each new bug repro must fail for the intended reason. Cover the original group-wide deletion bug and unsupported-throughput-statistic acceptance, plus stale mapping/price-helper regressions introduced by this task. Coordinate with controller so no source mutation overlaps tests or review. Final production must be byte-identical to the green snapshot afterward.
+- [x] **Step 5: Verify regression tests discriminate, then the exact final CI checks.** Revert only relevant production behavior in an isolated temporary copy or restore with try/finally; keep tests unchanged. Each new bug repro must fail for the intended reason. Cover the original group-wide deletion bug and unsupported-throughput-statistic acceptance, plus stale mapping/price-helper regressions introduced by this task. Coordinate with controller so no source mutation overlaps tests or review. Final production must be byte-identical to the green snapshot afterward.
   ```bash
   docker run --rm -v /Users/marcin/Prywatne/ha-recovery/worktrees/energy-compass-source-management:/workspace:ro ha-energy-compass-test:2026.9.1 -m pytest -p no:cacheprovider -q
   docker run --rm -v /Users/marcin/Prywatne/ha-recovery/worktrees/energy-compass-source-management:/workspace:ro ha-energy-compass-test:2026.9.1 -m ruff check --no-cache .
@@ -108,6 +108,8 @@
   ```
   Run hassfest on the final translations/manifest; controller handles publishing a feature branch/PR and remote CI after independent review. No merge/release/live deployment from this task.
 
-- [ ] **Step 6: Commit and report.** Commit only this task's files. Report RED/GREEN commands and evidence, changed files, all validation results, remaining concerns and exact commit. The controller performs independent task and whole-branch review; do not spawn reviewers or other agents.
+- [x] **Step 6: Commit and report.** Commit only this task's files. Report RED/GREEN commands and evidence, changed files, all validation results, remaining concerns and exact commit. The controller performs independent task and whole-branch review; do not spawn reviewers or other agents.
 
 Throughput basis clarification: the existing solver budgets charge + discharge on its AC-side flow basis; SOC efficiency is accounted for separately. The selected measurement must use the same basis. DC counters require upstream conversion accounting for the respective charging/discharging losses; Energy Compass does not infer or apply that conversion. Solver mathematics remain unchanged.
+
+Execution record: Task 1 was implemented and reviewed in commits `b5a859e` and `8270198`, with focused RED/GREEN and narrow regression-discrimination evidence in the local SDD report. The original product base remains `00b28108617057dc2d6c97c20f1209ad9ee13613`. The subsequent feature-branch integration base is published `origin/main` at `f88d9d4e9f914a279f8be4be9cf9026d39ea45b4` (v0.1.3); its dispatch policy, daily export counters, dependencies and version are preserved during the branch merge. This is not a release or a merge of the feature branch into main.

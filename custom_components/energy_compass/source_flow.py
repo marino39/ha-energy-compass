@@ -9,6 +9,7 @@ from homeassistant.helpers import selector
 from homeassistant.util import dt as dt_util
 
 from .config_models import LoadSource, NumericSetting, resolve_numeric
+from .daily_export import DAILY_EXPORT_MEASUREMENTS
 from .engine.models import InputError
 from .flow_schema import entity_binding, number, select, snapshot
 from .presets import PRESETS
@@ -43,6 +44,7 @@ MEASUREMENTS = (
     "grid_import_energy",
     "grid_export_energy",
     "throughput_today",
+    *DAILY_EXPORT_MEASUREMENTS,
 )
 TARGETS = ("buy", "sell", "pv", "load", "soc", "bms_soc", *MEASUREMENTS)
 
@@ -157,7 +159,7 @@ class SourceEditor:
             return ["forecast"]
         if target == "load":
             return ["fixed", "forecast", "statistic", "power_history"]
-        if target in ("soc", "bms_soc", "throughput_today"):
+        if target in ("soc", "bms_soc", "throughput_today", *DAILY_EXPORT_MEASUREMENTS):
             return ["measurement"]
         return ["measurement", "statistic"]
 
@@ -229,7 +231,8 @@ class SourceEditor:
                 if ref.role in ("buy", "sell")
                 and self._draft["helpers"].get(f"{ref.role}_rate")
                 else "measurement"
-                if ref.role == "throughput_today" and ref.kind == "statistic"
+                if ref.role in ("throughput_today", *DAILY_EXPORT_MEASUREMENTS)
+                and ref.kind == "statistic"
                 else "statistic"
                 if ref.kind == "statistic"
                 or ref.role == "load"
@@ -387,7 +390,11 @@ class SourceEditor:
     async def async_step_source_statistic(self, user_input=None):
         if self._source["target"] not in (
             "load",
-            *(name for name in MEASUREMENTS if name != "throughput_today"),
+            *(
+                name
+                for name in MEASUREMENTS
+                if name not in ("throughput_today", *DAILY_EXPORT_MEASUREMENTS)
+            ),
         ):
             return self.async_show_form(
                 step_id="source_statistic",
@@ -864,7 +871,7 @@ class SourceEditor:
                         * (0.001 if unit in ("W", "Wh") else 1),
                         max_age_seconds=user_input["max_age_seconds"],
                         minimum=0
-                        if target == "throughput_today"
+                        if target in ("throughput_today", *DAILY_EXPORT_MEASUREMENTS)
                         else current.get("minimum"),
                         maximum=current.get("maximum"),
                     ).to_dict()
@@ -919,6 +926,8 @@ class SourceEditor:
                 if soc_source
                 else selected_age
                 if selected_age is not None
+                else 86400
+                if target in DAILY_EXPORT_MEASUREMENTS
                 else 600,
             ): number(1, 86400, "s"),
         }

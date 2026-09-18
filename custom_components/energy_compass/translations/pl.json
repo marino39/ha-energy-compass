@@ -30,7 +30,8 @@
           "source_inventory": "Przeglądaj i edytuj źródła",
           "source_add": "Dodaj źródło",
           "menu": "Menu główne"
-        }
+        },
+        "description": "Przeglądaj lub dodawaj źródła zakupu, sprzedaży, zużycia oraz włączonego PV i SOC. Kontynuacja łączy dane dziś/jutro; grupy PV oznaczają niezależne instalacje. Sell only PV wymaga pv_energy_today (produkcji od lokalnej północy) i grid_export_energy_today (eksportu od lokalnej północy) w kWh lub Wh, zerowanych każdej doby. throughput_today ogranicza cykle baterii; pozostałe pomiary są diagnostyczne."
       },
       "source_entity": {
         "title": "Source entity",
@@ -181,9 +182,15 @@
           "horizon_hours": "Horyzont planowania",
           "refresh_minutes": "Okres przeliczania",
           "terminal_value_per_kwh": "Wartość energii na końcu planu",
-          "terminal_mode": "Polityka końcowego SOC"
+          "terminal_mode": "Polityka końcowego SOC",
+          "minimum_mode_minutes": "Minimalny czas kierunku baterii",
+          "limit_export_to_pv": "Sell only PV"
         },
-        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}",
+        "data_description": {
+          "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza blokadę. Ładowanie i rozładowanie to kierunki. Postój oraz zmiana źródła PV/sieć są dozwolone. Blokada dotyczy opublikowanego planu i przetrwa przeliczenie oraz restart.",
+          "limit_export_to_pv": "Domyślnie włączone. Eksport z paneli i baterii nie może przekroczyć generacji PV tej samej doby w strefie czasowej instalacji. Uwzględnia pomiary od północy i pozostałą prognozę, bez przenoszenia limitu między dniami. W Źródłach wybierz liczniki pv_energy_today i grid_export_energy_today. Wyłączenie usuwa ten limit; pozostałe limity nadal obowiązują."
+        }
       },
       "compass": {
         "title": "Prognoza kosztu zużycia",
@@ -384,7 +391,8 @@
           "source_inventory": "Przeglądaj i edytuj źródła",
           "source_add": "Dodaj źródło",
           "menu": "Menu główne"
-        }
+        },
+        "description": "Przeglądaj lub dodawaj źródła zakupu, sprzedaży, zużycia oraz włączonego PV i SOC. Kontynuacja łączy dane dziś/jutro; grupy PV oznaczają niezależne instalacje. Sell only PV wymaga pv_energy_today (produkcji od lokalnej północy) i grid_export_energy_today (eksportu od lokalnej północy) w kWh lub Wh, zerowanych każdej doby. throughput_today ogranicza cykle baterii; pozostałe pomiary są diagnostyczne."
       },
       "source_entity": {
         "title": "Source entity",
@@ -535,9 +543,15 @@
           "horizon_hours": "Horyzont planowania",
           "refresh_minutes": "Okres przeliczania",
           "terminal_value_per_kwh": "Wartość energii na końcu planu",
-          "terminal_mode": "Polityka końcowego SOC"
+          "terminal_mode": "Polityka końcowego SOC",
+          "minimum_mode_minutes": "Minimalny czas kierunku baterii",
+          "limit_export_to_pv": "Sell only PV"
         },
-        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}",
+        "data_description": {
+          "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza blokadę. Ładowanie i rozładowanie to kierunki. Postój oraz zmiana źródła PV/sieć są dozwolone. Blokada dotyczy opublikowanego planu i przetrwa przeliczenie oraz restart.",
+          "limit_export_to_pv": "Domyślnie włączone. Eksport z paneli i baterii nie może przekroczyć generacji PV tej samej doby w strefie czasowej instalacji. Uwzględnia pomiary od północy i pozostałą prognozę, bez przenoszenia limitu między dniami. W Źródłach wybierz liczniki pv_energy_today i grid_export_energy_today. Wyłączenie usuwa ten limit; pozostałe limity nadal obowiązują."
+        }
       },
       "compass": {
         "title": "Prognoza kosztu zużycia",

@@ -15,6 +15,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .config_models import SourceConfig
+from .daily_export import (
+    DAILY_EXPORT_MEASUREMENTS,
+    daily_export_active,
+    daily_export_observations,
+)
 from .engine.models import InputError, SolveError
 from .flow_schema import entity_ids, rebind_configuration, snapshot
 from .runtime import (
@@ -53,11 +58,14 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._previous_soc = None
         self._anchors = {}
         self._store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.anchors")
+        self._battery_commitment = None
+        self._dispatch_store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.dispatch")
         self.previous_plan = None
 
     async def async_start(self):
         """Restore small observation anchors and attach only this entry's listeners."""
         self._anchors = await self._store.async_load() or {}
+        self._battery_commitment = await self._dispatch_store.async_load()
         self._registry_unsub = self.hass.bus.async_listen(
             er.EVENT_ENTITY_REGISTRY_UPDATED, self._registry_changed
         )
@@ -154,6 +162,11 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         planning_inputs = {"helpers": self.configuration["helpers"]}
         if source.soc:
             planning_inputs["soc"] = source.soc.to_dict()
+        if daily_export_active(values):
+            for name in DAILY_EXPORT_MEASUREMENTS:
+                planning_inputs[name] = self.configuration.get("measurements", {}).get(
+                    name
+                )
         if source.battery_enabled and values["daily_cycles"]:
             planning_inputs["throughput_today"] = self.configuration.get(
                 "measurements", {}
@@ -188,6 +201,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         states = snapshot(self.hass, config)
         now = dt_util.utcnow()
         values = validate_configuration(config, states, now)
+        daily_export_observations(config, states, values, now)
         source, _ = available_forecasts(
             SourceConfig.from_dict(config["sources"]), states
         )
@@ -374,6 +388,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                             states,
                             now,
                             previous_soc=self._previous_soc,
+                            battery_commitment=deepcopy(self._battery_commitment),
                             **history,
                         )
                     )
@@ -396,6 +411,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                             "soc_observation", None
                         )
                         self._anchor_windows(result)
+                        self._commit_battery_direction(result)
                         self.async_set_updated_data(result)
                 except InputError as err:
                     if not self._closed and generation == self._generation:
@@ -419,6 +435,18 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         finally:
             self._runner = None
 
+    def _commit_battery_direction(self, result):
+        """Persist published advice, never pretend forecast energy was measured."""
+        rows = result.get("intervals", [])
+        mode = rows[0].get("battery_mode") if rows else None
+        if mode is None or not result.get("dispatch_policy", {}).get(
+            "minimum_mode_minutes"
+        ):
+            self._battery_commitment = None
+        elif not self._battery_commitment or self._battery_commitment["mode"] != mode:
+            self._battery_commitment = {"mode": mode, "since": result["generated_at"]}
+        self._dispatch_store.async_delay_save(lambda: self._battery_commitment, 1)
+
     async def async_stop(self):
         """Detach listeners and prevent late worker results from owning entities."""
         self._closed = True
@@ -439,3 +467,4 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                     "Discarded failed advisory worker during unload", exc_info=True
                 )
         await self._store.async_save(self._anchors)
+        await self._dispatch_store.async_save(self._battery_commitment)
