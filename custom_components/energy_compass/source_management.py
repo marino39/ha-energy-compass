@@ -36,6 +36,8 @@ _LABELS = {
         "attribute": "attribute",
         "value": "value",
         "start": "start",
+        "end": "end",
+        "duration": "duration",
         "unit": "unit",
         "missing": "missing selection",
         "daily_estimate": "daily estimate",
@@ -70,6 +72,8 @@ _LABELS = {
         "attribute": "atrybut",
         "value": "wartość",
         "start": "początek",
+        "end": "koniec",
+        "duration": "czas trwania",
         "unit": "jednostka",
         "missing": "brak wyboru",
         "daily_estimate": "szacunek dzienny",
@@ -148,6 +152,12 @@ def _binding_label(binding, registry, labels):
         label += f" · {labels['value']} {binding['value_path']}"
         if binding.get("start_path"):
             label += f" · {labels['start']} {binding['start_path']}"
+        if binding.get("end_path"):
+            label += f" · {labels['end']} {binding['end_path']}"
+        elif binding.get("duration_path"):
+            label += f" · {labels['duration']} {binding['duration_path']}"
+        elif binding.get("interval_minutes") is not None:
+            label += f" · {labels['duration']} {binding['interval_minutes']:g} min"
         label += f" · {labels['unit']} {binding.get('unit', '')}"
     return label
 
@@ -275,6 +285,9 @@ def remove_source(config, ref, original, *, cycles_active=False):
     assert_selected(config, ref, original)
     candidate = deepcopy(config)
     sources = candidate["sources"]
+    if ref.role == "soc" and not sources["battery_enabled"]:
+        sources["soc"] = None
+        return candidate
     if ref.role in ("buy", "sell", "load", "soc"):
         if ref.role in ("buy", "sell") and ref.kind == "interval":
             rows = sources[ref.role]["forecast"]

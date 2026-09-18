@@ -2,13 +2,17 @@ from copy import deepcopy
 
 import pytest
 import voluptuous as vol
+from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.energy_compass.config_models import NumericSetting
+from custom_components.energy_compass.flow_schema import snapshot
 from custom_components.energy_compass.settings import default_configuration
 from custom_components.energy_compass.sources.bindings import (
     EntityBinding,
     IntervalBinding,
 )
+from custom_components.energy_compass.sources.throughput import resolve_daily_throughput
 
 
 def _forecast(entity_id, attribute):
@@ -40,6 +44,8 @@ async def test_sources_inventory_exposes_each_price_continuation_for_precise_edi
     config = default_configuration("EUR", "UTC")
     today = _forecast("sensor.market_today", "prices")
     tomorrow = _forecast("sensor.market_tomorrow", "prices")
+    tomorrow["end_path"] = None
+    tomorrow["interval_minutes"] = 60
     config["sources"]["buy"].update(
         mode="forecast", fixed=None, forecast=[today, tomorrow]
     )
@@ -65,6 +71,13 @@ async def test_sources_inventory_exposes_each_price_continuation_for_precise_edi
     )
     labels = [choice["label"] for choice in choices]
     assert any("sensor.market_today" in label and "prices" in label for label in labels)
+    assert any(
+        "sensor.market_today" in label and "end end" in label for label in labels
+    )
+    assert any(
+        "sensor.market_tomorrow" in label and "duration 60 min" in label
+        for label in labels
+    )
     assert any(
         "sensor.market_tomorrow" in label and "prices" in label for label in labels
     )
@@ -251,6 +264,166 @@ async def test_forged_incompatible_source_modes_leave_saved_entry_intact(
     assert rejected["errors"] == {"base": "invalid_input"}
     assert flow._draft == config
     assert entry.data == before
+
+
+async def test_forged_throughput_statistic_submission_with_active_battery_is_rejected(
+    recorder_mock, hass, enable_custom_integrations
+):
+    config = default_configuration("EUR", "UTC")
+    config["sources"].update(
+        battery_enabled=True, soc=EntityBinding("sensor.soc").to_dict()
+    )
+    entry = MockConfigEntry(domain="energy_compass", data=config, version=2)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    flow = hass.config_entries.options._progress[result["flow_id"]]
+    flow._source = {"target": "throughput_today", "mode": "statistic"}
+
+    rejected = await flow.async_step_source_statistic(
+        {"statistic_id": "sensor.battery_energy", "unit": "kWh", "sign": 1}
+    )
+
+    assert rejected["step_id"] == "source_statistic"
+    assert rejected["errors"] == {"base": "invalid_input"}
+    assert flow._draft == config
+    assert dict(entry.data) == config
+
+
+async def test_legacy_throughput_statistic_can_be_replaced_and_saved_as_measurement(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    freezer.move_to("2026-09-18T10:00:00+00:00")
+    config = default_configuration("EUR", "UTC")
+    config["sources"].update(
+        battery_enabled=True, soc=EntityBinding("sensor.soc").to_dict()
+    )
+    config["settings"].update(
+        capacity_kwh=20,
+        daily_cycles=1,
+        horizon_hours=1,
+        display_horizon_hours=1,
+        reference_horizon_hours=1,
+    )
+    legacy = {
+        "statistic_id": "sensor.legacy_battery_energy",
+        "unit": "kWh",
+        "sign": 1,
+        "usage": "diagnostic_only",
+        "maximum": 100,
+    }
+    config["measurements"]["throughput_today"] = legacy
+    hass.states.async_set("sensor.soc", "50", {"unit_of_measurement": "%"})
+    hass.states.async_set(
+        "sensor.daily_throughput", "4", {"unit_of_measurement": "kWh"}
+    )
+    entry = MockConfigEntry(domain="energy_compass", data=config, version=2)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fid = result["flow_id"]
+    await hass.config_entries.options.async_configure(fid, {"next_step_id": "sources"})
+    inventory = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "source_inventory"}
+    )
+    await hass.config_entries.options.async_configure(
+        fid, {"source": _source_value(inventory, "legacy_battery_energy")}
+    )
+    result = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "source_edit"}
+    )
+    assert result["step_id"] == "source_entity"
+    await hass.config_entries.options.async_configure(
+        fid, {"entity_id": "sensor.daily_throughput"}
+    )
+    await hass.config_entries.options.async_configure(fid, {})
+    result = await hass.config_entries.options.async_configure(
+        fid,
+        {
+            "unit": "kWh",
+            "sign": 1,
+            "timestamp_path": "last_updated",
+            "max_age_seconds": 3600,
+        },
+    )
+    assert result["step_id"] == "sources"
+    flow = hass.config_entries.options._progress[fid]
+    repaired = flow._draft["measurements"]["throughput_today"]
+    assert not ({"statistic_id", "usage", "sign"} & repaired.keys())
+    assert repaired["maximum"] == 100
+    NumericSetting.from_dict(repaired)
+    assert resolve_daily_throughput(
+        flow._draft, {}, snapshot(hass, flow._draft), dt_util.utcnow()
+    ) == pytest.approx(4)
+    assert entry.data["measurements"]["throughput_today"] == legacy
+
+    await hass.config_entries.options.async_configure(fid, {"next_step_id": "menu"})
+    preview = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "preview"}
+    )
+    assert not preview["errors"]
+    saved = await hass.config_entries.options.async_configure(fid, {"confirm": True})
+    assert saved["type"] == "create_entry"
+    assert (
+        entry.options["configuration"]["measurements"]["throughput_today"] == repaired
+    )
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_disabled_battery_allows_removing_unused_soc_source(
+    recorder_mock, hass, enable_custom_integrations
+):
+    config = default_configuration("EUR", "UTC")
+    config["sources"]["soc"] = EntityBinding("sensor.retired_soc").to_dict()
+    entry = MockConfigEntry(domain="energy_compass", data=config, version=2)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fid = result["flow_id"]
+    await hass.config_entries.options.async_configure(fid, {"next_step_id": "sources"})
+    inventory = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "source_inventory"}
+    )
+    await hass.config_entries.options.async_configure(
+        fid, {"source": _source_value(inventory, "retired_soc")}
+    )
+    removal = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "source_remove"}
+    )
+    assert "sensor.retired_soc" in removal["description_placeholders"]["target"]
+    result = await hass.config_entries.options.async_configure(fid, {"confirm": True})
+    assert result["step_id"] == "sources"
+    flow = hass.config_entries.options._progress[fid]
+    assert flow._draft["sources"]["soc"] is None
+    assert entry.data["sources"]["soc"] == config["sources"]["soc"]
+
+
+async def test_enabled_battery_still_requires_replacement_before_soc_removal(
+    recorder_mock, hass, enable_custom_integrations
+):
+    config = default_configuration("EUR", "UTC")
+    config["sources"].update(
+        battery_enabled=True, soc=EntityBinding("sensor.required_soc").to_dict()
+    )
+    entry = MockConfigEntry(domain="energy_compass", data=config, version=2)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fid = result["flow_id"]
+    await hass.config_entries.options.async_configure(fid, {"next_step_id": "sources"})
+    inventory = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "source_inventory"}
+    )
+    await hass.config_entries.options.async_configure(
+        fid, {"source": _source_value(inventory, "required_soc")}
+    )
+    await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "source_remove"}
+    )
+    rejected = await hass.config_entries.options.async_configure(fid, {"confirm": True})
+    assert rejected["step_id"] == "source_remove"
+    assert rejected["errors"] == {"base": "invalid_source"}
+    assert "replace or disable" in rejected["description_placeholders"]["detail"]
+    flow = hass.config_entries.options._progress[fid]
+    assert flow._draft == config
+    assert dict(entry.data) == config
 
 
 async def test_unchanged_soc_edit_preserves_existing_age_helper(

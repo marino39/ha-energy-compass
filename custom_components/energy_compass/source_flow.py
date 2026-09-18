@@ -855,6 +855,7 @@ class SourceEditor:
                 ):
                     errors["base"] = "invalid_input"
                 elif not errors:
+                    current = candidate["measurements"].get(target, {})
                     replacement = NumericSetting(
                         entity=self._binding,
                         unit=output_unit,
@@ -862,12 +863,12 @@ class SourceEditor:
                         multiplier=user_input["sign"]
                         * (0.001 if unit in ("W", "Wh") else 1),
                         max_age_seconds=user_input["max_age_seconds"],
-                        minimum=0 if target == "throughput_today" else None,
+                        minimum=0
+                        if target == "throughput_today"
+                        else current.get("minimum"),
+                        maximum=current.get("maximum"),
                     ).to_dict()
-                    candidate["measurements"][target] = {
-                        **candidate["measurements"].get(target, {}),
-                        **replacement,
-                    }
+                    candidate["measurements"][target] = replacement
                     if target == "throughput_today":
                         try:
                             from .flow_schema import snapshot
