@@ -21,6 +21,8 @@ Read the [published entity and calculation guide](https://marino39.github.io/ha-
 
 The integration creates current consumption level and extra-kWh cost sensors, optimized machine state and cost sensors, next change and next `BOOST`/`CHEAP`/`LIMIT` window timestamps, a plan with a bounded outlook, optimizer status, and a forecast-valid binary sensor. Native entity names, diagnostics, and reasons are translated into English and Polish. Automations should compare level and machine state values using their stable uppercase names.
 
+Coordinator updates skip state writes for entities whose value, availability, and attributes are unchanged. Changes to forecast validity, plan attributes, refresh status, or window timing still publish even when the primary sensor value stays the same.
+
 Window alerts require **Notify enabled** in integration options and a nonempty action selected in the [optional blueprint](docs/installation.md#opt-in-notifications). The blueprint uses live integration preferences unless its override toggle is on. It handles favorable and `LIMIT` windows only. The integration does not execute actions.
 
 The extra-kWh estimate assumes the optimizer's proposed plan. Until a controller follows that plan, actual consumption savings can differ under existing automation. A forecast-dependent recommendation is not a measurement of savings. See [model and limitations](docs/model.md) for energy balance, coverage, battery assumptions, and solver behavior.
