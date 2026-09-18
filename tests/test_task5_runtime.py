@@ -38,6 +38,8 @@ def battery_configuration():
         wear_per_kwh=0.04,
         allow_grid_charge=True,
         allow_battery_export=True,
+        # These fixtures isolate SOC/hardware behavior, without daily counters.
+        limit_export_to_pv=False,
     )
     return config
 

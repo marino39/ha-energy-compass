@@ -66,6 +66,8 @@ class Problem:
     limit_export_to_pv: bool = True
     initial_battery_mode: Literal["charge", "discharge"] | None = None
     initial_battery_mode_since: datetime | None = None
+    pv_generated_today_kwh: float = 0.0
+    grid_exported_today_kwh: float = 0.0
 
 
 @dataclass(frozen=True)

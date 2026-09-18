@@ -145,6 +145,9 @@ def validate_problem(problem: Problem) -> None:
     finite(problem.terminal_value_per_kwh, "terminal value")
     if type(problem.limit_export_to_pv) is not bool:
         raise InputError("PV export limit must be boolean")
+    for name in ("pv_generated_today_kwh", "grid_exported_today_kwh"):
+        if finite(getattr(problem, name), name) < 0:
+            raise InputError(f"{name} must be nonnegative")
     if not 0 <= finite(problem.minimum_mode_minutes, "minimum_mode_minutes") <= 1440:
         raise InputError("minimum_mode_minutes must be in [0, 1440]")
     if problem.initial_battery_mode not in (None, "charge", "discharge"):

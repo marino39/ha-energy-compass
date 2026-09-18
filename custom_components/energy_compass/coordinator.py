@@ -15,6 +15,11 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from .config_models import SourceConfig
+from .daily_export import (
+    DAILY_EXPORT_MEASUREMENTS,
+    daily_export_active,
+    daily_export_observations,
+)
 from .engine.models import InputError, SolveError
 from .flow_schema import entity_ids, rebind_configuration, snapshot
 from .runtime import (
@@ -157,6 +162,11 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         planning_inputs = {"helpers": self.configuration["helpers"]}
         if source.soc:
             planning_inputs["soc"] = source.soc.to_dict()
+        if daily_export_active(values):
+            for name in DAILY_EXPORT_MEASUREMENTS:
+                planning_inputs[name] = self.configuration.get("measurements", {}).get(
+                    name
+                )
         if source.battery_enabled and values["daily_cycles"]:
             planning_inputs["throughput_today"] = self.configuration.get(
                 "measurements", {}
@@ -191,6 +201,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         states = snapshot(self.hass, config)
         now = dt_util.utcnow()
         values = validate_configuration(config, states, now)
+        daily_export_observations(config, states, values, now)
         source, _ = available_forecasts(
             SourceConfig.from_dict(config["sources"]), states
         )

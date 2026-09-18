@@ -107,12 +107,61 @@ def test_policy_can_be_explicitly_disabled():
     assert solve(source).flows[1].grid_export_kwh > 0
 
 
-def test_initial_soc_can_be_exported_against_horizon_pv_generation():
+def test_initial_soc_can_be_exported_against_same_day_pv_generation():
     source = dispatch(((1, 10, 0, 0), (1, 0, 2, 2)), minutes=60)
     source = replace(source, battery=replace(source.battery, initial_kwh=5))
     result = solve(source)
     assert result.flows[0].grid_export_kwh == pytest.approx(2)
     assert sum(f.grid_export_kwh for f in result.flows) == pytest.approx(2)
+
+
+def test_tomorrows_pv_cannot_fund_todays_export():
+    source = dispatch(((1, 10, 0, 0), (1, 0, 2, 2)), minutes=60)
+    shift = timedelta(hours=23)
+    source = replace(
+        source,
+        battery=replace(source.battery, initial_kwh=5),
+        slots=tuple(
+            replace(s, start=s.start + shift, end=s.end + shift) for s in source.slots
+        ),
+    )
+    result = solve(source)
+    assert result.flows[0].grid_export_kwh == pytest.approx(0)
+
+
+def test_today_credit_cannot_carry_to_tomorrow():
+    source = dispatch(((1, 0, 2, 2), (1, 10, 0, 0)), minutes=60)
+    shift = timedelta(hours=23)
+    source = replace(
+        source,
+        battery=replace(source.battery, initial_kwh=5),
+        slots=tuple(
+            replace(s, start=s.start + shift, end=s.end + shift) for s in source.slots
+        ),
+    )
+    assert solve(source).flows[1].grid_export_kwh == pytest.approx(0)
+
+
+def test_observed_pv_minus_export_sets_remaining_today_credit():
+    source = dispatch(((1, 10, 0, 0),), minutes=60)
+    source = replace(
+        source,
+        battery=replace(source.battery, initial_kwh=5),
+        pv_generated_today_kwh=8,
+        grid_exported_today_kwh=6,
+    )
+    assert solve(source).flows[0].grid_export_kwh == pytest.approx(2)
+
+
+def test_observed_deficit_is_not_reset_to_zero():
+    source = dispatch(((1, 10, 1, 1),), minutes=60)
+    source = replace(
+        source,
+        battery=replace(source.battery, initial_kwh=5),
+        pv_generated_today_kwh=5,
+        grid_exported_today_kwh=6,
+    )
+    assert solve(source).flows[0].grid_export_kwh == pytest.approx(0)
 
 
 def test_direct_pv_export_and_battery_export_share_one_budget():

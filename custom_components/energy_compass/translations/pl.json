@@ -32,7 +32,7 @@
           "operation": "Operacja",
           "group": "Numer niezależnej grupy PV"
         },
-        "description": "Dodaj osobno zakup, sprzedaż, zużycie oraz włączone PV i SOC. Append łączy dziś/jutro; kolejny numer grupy PV oznacza sumowanie niezależnych instalacji. Pomiary opcjonalne służą diagnostyce; throughput_today ogranicza dzienną pracę baterii."
+        "description": "Dodaj zakup, sprzedaż, zużycie oraz włączone PV i SOC. Append łączy dziś/jutro; grupy PV sumują niezależne instalacje. Sell only PV wymaga pomiarów pv_energy_today (produkcja od północy) i grid_export_energy_today (eksport od północy), w kWh lub Wh, zerowanych według strefy instalacji. throughput_today ogranicza dzienną pracę baterii; pozostałe pomiary są diagnostyczne."
       },
       "source_entity": {
         "title": "Source entity",
@@ -193,7 +193,7 @@
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}",
         "data_description": {
           "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza blokadę. Ładowanie i rozładowanie to kierunki. Postój oraz zmiana źródła PV/sieć są dozwolone. Blokada dotyczy opublikowanego planu i przetrwa przeliczenie oraz restart.",
-          "limit_export_to_pv": "Domyślnie włączone. Włączone: suma eksportu do sieci w horyzoncie planu nie przekracza sumy generacji PV po ograniczeniu produkcji. Wyłączone: brak tego limitu. Limit obejmuje eksport z paneli i baterii, bez śledzenia pochodzenia energii; początkowy SoC może zasilać eksport. Pozostałe limity baterii i sieci nadal obowiązują."
+          "limit_export_to_pv": "Domyślnie włączone. Eksport z paneli i baterii nie może przekroczyć generacji PV tej samej doby w strefie czasowej instalacji. Uwzględnia pomiary od północy i pozostałą prognozę, bez przenoszenia limitu między dniami. W Źródłach wybierz liczniki pv_energy_today i grid_export_energy_today. Wyłączenie usuwa ten limit; pozostałe limity nadal obowiązują."
         }
       },
       "compass": {
@@ -331,7 +331,7 @@
           "operation": "Operacja",
           "group": "Numer niezależnej grupy PV"
         },
-        "description": "Dodaj osobno zakup, sprzedaż, zużycie oraz włączone PV i SOC. Append łączy dziś/jutro; kolejny numer grupy PV oznacza sumowanie niezależnych instalacji. Pomiary opcjonalne służą diagnostyce; throughput_today ogranicza dzienną pracę baterii."
+        "description": "Dodaj zakup, sprzedaż, zużycie oraz włączone PV i SOC. Append łączy dziś/jutro; grupy PV sumują niezależne instalacje. Sell only PV wymaga pomiarów pv_energy_today (produkcja od północy) i grid_export_energy_today (eksport od północy), w kWh lub Wh, zerowanych według strefy instalacji. throughput_today ogranicza dzienną pracę baterii; pozostałe pomiary są diagnostyczne."
       },
       "source_entity": {
         "title": "Source entity",
@@ -492,7 +492,7 @@
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}",
         "data_description": {
           "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza blokadę. Ładowanie i rozładowanie to kierunki. Postój oraz zmiana źródła PV/sieć są dozwolone. Blokada dotyczy opublikowanego planu i przetrwa przeliczenie oraz restart.",
-          "limit_export_to_pv": "Domyślnie włączone. Włączone: suma eksportu do sieci w horyzoncie planu nie przekracza sumy generacji PV po ograniczeniu produkcji. Wyłączone: brak tego limitu. Limit obejmuje eksport z paneli i baterii, bez śledzenia pochodzenia energii; początkowy SoC może zasilać eksport. Pozostałe limity baterii i sieci nadal obowiązują."
+          "limit_export_to_pv": "Domyślnie włączone. Eksport z paneli i baterii nie może przekroczyć generacji PV tej samej doby w strefie czasowej instalacji. Uwzględnia pomiary od północy i pozostałą prognozę, bez przenoszenia limitu między dniami. W Źródłach wybierz liczniki pv_energy_today i grid_export_energy_today. Wyłączenie usuwa ten limit; pozostałe limity nadal obowiązują."
         }
       },
       "compass": {

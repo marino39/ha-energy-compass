@@ -1,6 +1,6 @@
 """Bounded advisory dispatch for grid, solar, and optional battery energy."""
 
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC
 from math import isfinite
 from zoneinfo import ZoneInfo
 
@@ -8,6 +8,7 @@ import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import coo_matrix
 
+from .daily_energy import daily_export_rows, day_fractions
 from .dispatch_policy import constrain_directions, validate_directions
 from .models import Flow, InputError, Plan, Problem, SolveError
 from .normalize import validate_problem
@@ -68,28 +69,6 @@ class _Model:
                 reasons.get(result.status, "solver_failure"), result.message
             )
         return np.asarray(result.x)
-
-
-def _day_fractions(start: datetime, end: datetime, zone: ZoneInfo) -> dict[str, float]:
-    start_utc = start.astimezone(_UTC)
-    end_utc = end.astimezone(_UTC)
-    elapsed = (end_utc - start_utc).total_seconds()
-    fractions: dict[str, float] = {}
-    cursor = start_utc
-    while cursor < end_utc:
-        local_day = cursor.astimezone(zone).date()
-        following_midnight = datetime.combine(
-            local_day + timedelta(days=1), time.min, tzinfo=zone
-        ).astimezone(_UTC)
-        boundary = min(end_utc, following_midnight)
-        if boundary <= cursor:
-            raise InputError("invalid local-day boundary")
-        key = local_day.isoformat()
-        fractions[key] = (
-            fractions.get(key, 0.0) + (boundary - cursor).total_seconds() / elapsed
-        )
-        cursor = boundary
-    return fractions
 
 
 def _check(condition: bool, detail: str) -> None:
@@ -238,11 +217,16 @@ def _validate_solution(
                 if day in spent:
                     spent[day] += fraction * (charge + discharge)
     if problem.limit_export_to_pv:
-        _check(
-            sum(float(values[v["gout"]]) + float(values[v["curt"]]) for v in vectors)
-            <= sum(slot.pv_kwh for slot in problem.slots) + _TOL,
-            "horizon export exceeds PV generation",
-        )
+        for row in daily_export_rows(problem):
+            planned = sum(
+                fraction.get(row["date"], 0)
+                * (float(values[v["gout"]]) + float(values[v["curt"]]))
+                for v, fraction in zip(vectors, daily_fractions, strict=True)
+            )
+            _check(
+                planned <= row["remaining_export_kwh"] + _TOL,
+                f"daily export exceeds PV generation: {row['date']}",
+            )
     if battery:
         validate_directions(
             problem,
@@ -399,16 +383,20 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
         model.constrain(load, slot.load_kwh, slot.load_kwh)
         model.constrain(export, 0, 0)
         vectors.append(variables)
-        daily_fractions.append(_day_fractions(slot.start, slot.end, zone))
+        daily_fractions.append(day_fractions(slot.start, slot.end, zone))
 
     if problem.limit_export_to_pv:
-        # One energy budget for all grid export, regardless of battery origin.
-        # Curtailed PV was not generated and cannot fund export.
-        model.constrain(
-            {v[name]: 1 for v in vectors for name in ("gout", "curt")},
-            -np.inf,
-            sum(slot.pv_kwh for slot in problem.slots),
-        )
+        for row in daily_export_rows(problem):
+            model.constrain(
+                {
+                    v[name]: fraction[row["date"]]
+                    for v, fraction in zip(vectors, daily_fractions, strict=True)
+                    if row["date"] in fraction
+                    for name in ("gout", "curt")
+                },
+                -np.inf,
+                row["remaining_export_kwh"],
+            )
     if battery:
         constrain_directions(model, problem, vectors)
         if problem.terminal_mode == "preserve_initial":
