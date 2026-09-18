@@ -8,6 +8,7 @@ import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import coo_matrix
 
+from .charge_price import price_allows_grid_charge
 from .daily_energy import daily_export_rows, day_fractions
 from .dispatch_policy import MODES, constrain_modes, validate_modes
 from .export_benefit import constrain_export_benefit, validate_export_benefit
@@ -201,11 +202,18 @@ def _validate_solution(
                 "discharge direction",
             )
             _check(min(charge, discharge) <= _TOL, "simultaneous battery directions")
-            if not battery.allow_grid_charge:
+            if not battery.allow_grid_charge or not price_allows_grid_charge(
+                problem, slot
+            ):
                 _check(value("grid_battery") <= _TOL, "grid charging capability")
                 _check(
                     charge <= max(slot.pv_kwh - slot.load_kwh, 0) + _TOL,
                     "solar surplus charging",
+                )
+            if not price_allows_grid_charge(problem, slot):
+                _check(
+                    charge <= max(slot.pv_kwh - curt - slot.load_kwh, 0) + _TOL,
+                    "price ceiling after curtailment",
                 )
             if not battery.allow_battery_export:
                 _check(value("battery_grid") <= _TOL, "battery export capability")
@@ -305,6 +313,7 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
                     "grid_battery": model.variable(
                         upper=problem.site.grid_import_kw * duration
                         if battery.allow_grid_charge
+                        and price_allows_grid_charge(problem, slot)
                         else 0
                     ),
                     "battery_load": model.variable(
@@ -374,9 +383,22 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
             initial = battery.initial_kwh if previous_energy_index is None else 0
             model.constrain(energy, initial, initial)
             previous_energy_index = v["energy"]
-            if not battery.allow_grid_charge:
+            if not battery.allow_grid_charge or not price_allows_grid_charge(
+                problem, slot
+            ):
                 model.constrain(
                     {v["bc"]: 1}, -np.inf, max(slot.pv_kwh - slot.load_kwh, 0)
+                )
+            if (
+                not price_allows_grid_charge(problem, slot)
+                and problem.site.allow_curtailment
+            ):
+                # Curtailing solar cannot create an apparent surplus for charging.
+                # With no charge, the idle/discharge direction permits curtailment.
+                model.constrain(
+                    {v["bc"]: 1, v["curt"]: 1, v["battery_mode"]: slot.pv_kwh},
+                    -np.inf,
+                    max(slot.pv_kwh - slot.load_kwh, 0) + slot.pv_kwh,
                 )
             if not battery.allow_battery_export:
                 model.constrain(

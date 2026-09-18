@@ -509,6 +509,9 @@ def build_problem(
         budgets,
         config["timezone"],
         minimum_export_episode_benefit=values["minimum_export_episode_benefit"],
+        maximum_grid_charge_price=values["maximum_grid_charge_price"]
+        if values["limit_grid_charge_price"]
+        else None,
         initial_export_active=bool(
             battery and restore_export_commitment(export_commitment, now)
         ),
@@ -700,6 +703,8 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
         "monthly_charge_reporting_only": values["monthly_charge"],
         "quality": quality,
         "dispatch_policy": {
+            "limit_grid_charge_price": values["limit_grid_charge_price"],
+            "maximum_grid_charge_price": problem.maximum_grid_charge_price,
             "minimum_export_episode_benefit": values["minimum_export_episode_benefit"],
             "new_export_episodes": plan.new_export_episodes,
             "export_episode_reserve": plan.export_episode_reserve,
