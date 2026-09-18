@@ -4,12 +4,111 @@ import pytest
 from homeassistant import config_entries
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.energy_compass.config_models import NumericSetting
 from custom_components.energy_compass.flow_schema import snapshot
 from custom_components.energy_compass.runtime import build_problem
 from custom_components.energy_compass.settings import (
     default_configuration,
     merged_configuration,
 )
+from custom_components.energy_compass.sources.bindings import EntityBinding
+
+
+async def _edit_buy_entity(hass, config):
+    entry = MockConfigEntry(domain="energy_compass", data=config, version=2)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fid = result["flow_id"]
+    await hass.config_entries.options.async_configure(fid, {"next_step_id": "tariffs"})
+    result = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "tariff_buy"}
+    )
+    result = await hass.config_entries.options.async_configure(
+        fid, result["data_schema"]({})
+    )
+    assert result["step_id"] == "source_entity"
+    return entry, fid, result
+
+
+@pytest.mark.parametrize("change_entity", [False, True])
+async def test_tariff_attribute_defaults_follow_only_the_same_entity(
+    recorder_mock, hass, enable_custom_integrations, freezer, change_entity
+):
+    freezer.move_to("2026-09-18T10:00:00+00:00")
+    config = default_configuration("EUR", "UTC")
+    config["settings"].update(
+        horizon_hours=1, display_horizon_hours=1, reference_horizon_hours=1
+    )
+    config["helpers"]["buy_rate"] = NumericSetting(
+        entity=EntityBinding("sensor.tariff", attribute="rate"),
+        unit="EUR/kWh",
+        source_unit="EUR/kWh",
+        minimum=-1000,
+        maximum=1000,
+        max_age_seconds=None,
+    ).to_dict()
+    hass.states.async_set("sensor.tariff", "9", {"rate": 0.3})
+    hass.states.async_set(
+        "sensor.replacement", "0.4", {"unit_of_measurement": "EUR/kWh"}
+    )
+    entry, fid, result = await _edit_buy_entity(hass, config)
+    await hass.config_entries.options.async_configure(
+        fid,
+        {"entity_id": "sensor.replacement"}
+        if change_entity
+        else result["data_schema"]({}),
+    )
+    result = await hass.config_entries.options.async_configure(fid, {})
+    result = await hass.config_entries.options.async_configure(
+        fid, result["data_schema"]({})
+    )
+    assert result["step_id"] == "tariffs"
+    flow = hass.config_entries.options._progress[fid]
+    saved_binding = flow._draft["helpers"]["buy_rate"]["entity"]
+    assert saved_binding["attribute"] == (None if change_entity else "rate")
+    problem, _, _ = build_problem(
+        flow._draft, snapshot(hass, flow._draft), datetime(2026, 9, 18, 10, tzinfo=UTC)
+    )
+    assert problem.slots[0].buy_per_kwh == pytest.approx(0.4 if change_entity else 0.3)
+    assert dict(entry.data) == config
+
+
+async def test_rejected_tariff_unit_change_keeps_retry_default_rate_unchanged(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    freezer.move_to("2026-09-18T10:00:00+00:00")
+    config = default_configuration("EUR", "UTC")
+    config["settings"].update(
+        horizon_hours=1, display_horizon_hours=1, reference_horizon_hours=1
+    )
+    config["helpers"]["buy_rate"] = NumericSetting(
+        entity=EntityBinding("sensor.tariff"),
+        unit="EUR/kWh",
+        source_unit="EUR/kWh",
+        minimum=-1000,
+        maximum=1000,
+        max_age_seconds=None,
+    ).to_dict()
+    hass.states.async_set("sensor.tariff", "0.3", {"unit_of_measurement": "EUR/kWh"})
+    entry, fid, result = await _edit_buy_entity(hass, config)
+    await hass.config_entries.options.async_configure(fid, result["data_schema"]({}))
+    result = await hass.config_entries.options.async_configure(fid, {})
+    submitted = result["data_schema"]({})
+    submitted.update(source_unit="EUR/MWh", source_scale=1)
+    rejected = await hass.config_entries.options.async_configure(fid, submitted)
+    assert rejected["errors"] == {"base": "invalid_source"}
+    flow = hass.config_entries.options._progress[fid]
+    assert flow._draft == config
+    result = await hass.config_entries.options.async_configure(
+        fid, rejected["data_schema"]({})
+    )
+    assert result["step_id"] == "tariffs"
+    problem, _, _ = build_problem(
+        flow._draft, snapshot(hass, flow._draft), datetime(2026, 9, 18, 10, tzinfo=UTC)
+    )
+    assert problem.slots[0].buy_per_kwh == pytest.approx(0.3)
+    assert flow._draft["helpers"]["buy_rate"] == config["helpers"]["buy_rate"]
+    assert dict(entry.data) == config
 
 
 async def test_tariffs_menu_offers_independent_buy_and_sell_sources(

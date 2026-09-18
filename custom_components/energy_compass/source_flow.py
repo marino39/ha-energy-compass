@@ -226,7 +226,7 @@ class SourceEditor:
                 raise InputError("select a PV continuation to edit")
             mode = (
                 "forecast"
-                if ref.kind == "interval"
+                if ref.kind in ("interval", "forecast")
                 else "entity"
                 if ref.role in ("buy", "sell")
                 and self._draft["helpers"].get(f"{ref.role}_rate")
@@ -463,7 +463,15 @@ class SourceEditor:
         errors = {}
         if user_input is not None:
             try:
-                self._binding = entity_binding(self.hass, user_input["entity_id"])
+                attribute = (
+                    self._binding.attribute
+                    if self._binding
+                    and self._binding.entity_id == user_input["entity_id"]
+                    else None
+                )
+                self._binding = entity_binding(
+                    self.hass, user_input["entity_id"], attribute
+                )
                 if self.hass.states.get(self._binding.entity_id) is None:
                     raise InputError("missing entity")
                 return await self.async_step_source_attribute()
@@ -561,7 +569,7 @@ class SourceEditor:
         if (
             self._source.get("operation") == "edit"
             and self._source_ref
-            and self._source_ref.kind == "interval"
+            and self._source_ref.kind in ("interval", "forecast")
         ):
             selected = selected_source(self._draft, self._source_ref)
             saved = selected.get("forecast") if target == "load" else selected
@@ -863,13 +871,23 @@ class SourceEditor:
                     errors["base"] = "invalid_input"
                 elif not errors:
                     current = candidate["measurements"].get(target, {})
+                    current_unit = current.get("source_unit") or current.get("unit")
+                    source_scale = (
+                        abs(current.get("multiplier", 1))
+                        / (0.001 if current_unit in ("W", "Wh") else 1)
+                        if current.get("entity") and not current.get("statistic_id")
+                        else 1
+                    )
                     replacement = NumericSetting(
                         entity=self._binding,
                         unit=output_unit,
                         source_unit=unit,
                         multiplier=user_input["sign"]
+                        * source_scale
                         * (0.001 if unit in ("W", "Wh") else 1),
-                        max_age_seconds=user_input["max_age_seconds"],
+                        max_age_seconds=user_input.get(
+                            "max_age_seconds", current.get("max_age_seconds")
+                        ),
                         minimum=0
                         if target in ("throughput_today", *DAILY_EXPORT_MEASUREMENTS)
                         else current.get("minimum"),
@@ -899,6 +917,26 @@ class SourceEditor:
         selected_unit = selected.get("source_unit")
         selected_age = selected.get("max_age_seconds")
         selected_sign = -1 if selected.get("multiplier", 1) < 0 else 1
+        if target == "load":
+            load = self._draft["sources"]["load"]
+            selected_unit = load.get("history_unit") if load.get("power") else None
+            selected_sign = load.get("history_sign", 1) if load.get("power") else 1
+        age_marker = (
+            vol.Optional("max_age_seconds")
+            if selected.get("entity")
+            and "max_age_seconds" in selected
+            and selected_age is None
+            else vol.Required(
+                "max_age_seconds",
+                default=age_default
+                if soc_source
+                else selected_age
+                if selected_age is not None
+                else 86400
+                if target in DAILY_EXPORT_MEASUREMENTS
+                else 600,
+            )
+        )
         fields = {
             vol.Required(
                 "unit",
@@ -920,16 +958,7 @@ class SourceEditor:
                 if soc_source
                 else "last_updated",
             ): selector.TextSelector(),
-            vol.Required(
-                "max_age_seconds",
-                default=age_default
-                if soc_source
-                else selected_age
-                if selected_age is not None
-                else 86400
-                if target in DAILY_EXPORT_MEASUREMENTS
-                else 600,
-            ): number(1, 86400, "s"),
+            age_marker: number(1, 86400, "s"),
         }
         if soc_source:
             fields[
@@ -970,12 +999,12 @@ class SourceEditor:
                     raise InputError(
                         "price source must be a sensor, number or input_number"
                     )
-                factor = 0.001 if chosen_unit.endswith("/MWh") else 1
+                chosen_factor = 0.001 if chosen_unit.endswith("/MWh") else 1
                 selected = NumericSetting(
                     entity=self._binding,
                     unit=f"{currency}/kWh",
                     source_unit=chosen_unit,
-                    multiplier=factor * user_input["source_scale"],
+                    multiplier=chosen_factor * user_input["source_scale"],
                     minimum=-1000,
                     maximum=1000,
                     max_age_seconds=user_input["max_age_hours"] * 3600

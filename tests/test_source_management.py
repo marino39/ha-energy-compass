@@ -5,12 +5,16 @@ import voluptuous as vol
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.energy_compass.config_models import NumericSetting
+from custom_components.energy_compass.config_models import (
+    NumericSetting,
+    resolve_numeric,
+)
 from custom_components.energy_compass.flow_schema import snapshot
 from custom_components.energy_compass.settings import default_configuration
 from custom_components.energy_compass.sources.bindings import (
     EntityBinding,
     IntervalBinding,
+    parse_intervals,
 )
 from custom_components.energy_compass.sources.throughput import resolve_daily_throughput
 
@@ -36,6 +40,179 @@ def _source_value(result, entity_id):
     matches = [choice["value"] for choice in choices if entity_id in choice["label"]]
     assert matches, f"No source inventory entry for {entity_id}"
     return matches[0]
+
+
+async def _edit_inventory_source(hass, config, entity_id):
+    entry = MockConfigEntry(domain="energy_compass", data=config, version=2)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fid = result["flow_id"]
+    await hass.config_entries.options.async_configure(fid, {"next_step_id": "sources"})
+    inventory = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "source_inventory"}
+    )
+    await hass.config_entries.options.async_configure(
+        fid, {"source": _source_value(inventory, entity_id)}
+    )
+    result = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "source_edit"}
+    )
+    return entry, fid, result
+
+
+async def test_load_forecast_edit_accepts_saved_mapping_defaults(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    freezer.move_to("2026-09-18T10:00:00+00:00")
+    config = default_configuration("EUR", "UTC")
+    forecast = IntervalBinding(
+        EntityBinding("sensor.load_forecast", attribute="schedule"),
+        value_path="energy.amount",
+        start_path="begin",
+        end_path="finish",
+        duration_path="minutes",
+        interval_minutes=30,
+        unit="Wh",
+        unit_path="energy.unit",
+        value_kind="energy",
+        value_sign=-1,
+        source_timezone="Europe/Warsaw",
+        published_path="attributes.issued",
+        max_age_seconds=7200,
+    ).to_dict()
+    config["sources"]["load"].update(
+        mode="forecast", forecast=forecast, daily_estimate=None
+    )
+    hass.states.async_set(
+        "sensor.load_forecast",
+        "ready",
+        {
+            "issued": "2026-09-18T09:00:00+00:00",
+            "schedule": [
+                {
+                    "energy": {"amount": -500, "unit": "Wh"},
+                    "begin": "2026-09-18T12:00:00+02:00",
+                    "finish": "2026-09-18T13:00:00+02:00",
+                    "minutes": 60,
+                }
+            ],
+        },
+    )
+    entry, fid, result = await _edit_inventory_source(
+        hass, config, "sensor.load_forecast"
+    )
+    assert result["step_id"] == "source_entity"
+    result = await hass.config_entries.options.async_configure(
+        fid, result["data_schema"]({})
+    )
+    assert result["step_id"] == "source_attribute"
+    result = await hass.config_entries.options.async_configure(fid, {})
+    assert result["step_id"] == "source_mapping"
+    result = await hass.config_entries.options.async_configure(
+        fid, result["data_schema"]({})
+    )
+    assert result["step_id"] == "sources"
+    flow = hass.config_entries.options._progress[fid]
+    assert flow._draft == config
+    assert dict(entry.data) == config
+    rows = parse_intervals(
+        snapshot(hass, flow._draft),
+        IntervalBinding.from_dict(flow._draft["sources"]["load"]["forecast"]),
+        dt_util.utcnow(),
+    )
+    assert rows[0].value == pytest.approx(0.5)
+
+
+@pytest.mark.parametrize("change_entity", [False, True])
+async def test_measurement_attribute_defaults_follow_only_the_same_entity(
+    recorder_mock, hass, enable_custom_integrations, change_entity
+):
+    config = default_configuration("EUR", "UTC")
+    config["measurements"]["pv_power"] = NumericSetting(
+        entity=EntityBinding("sensor.pv_meter", attribute="power"),
+        unit="kW",
+        source_unit="kW",
+        max_age_seconds=600,
+    ).to_dict()
+    hass.states.async_set("sensor.pv_meter", "9", {"power": 0.4})
+    hass.states.async_set("sensor.replacement", "0.7", {"unit_of_measurement": "kW"})
+    entry, fid, result = await _edit_inventory_source(hass, config, "sensor.pv_meter")
+    await hass.config_entries.options.async_configure(
+        fid,
+        {"entity_id": "sensor.replacement"}
+        if change_entity
+        else result["data_schema"]({}),
+    )
+    result = await hass.config_entries.options.async_configure(fid, {})
+    result = await hass.config_entries.options.async_configure(
+        fid, result["data_schema"]({})
+    )
+    assert result["step_id"] == "sources"
+    flow = hass.config_entries.options._progress[fid]
+    setting = NumericSetting.from_dict(flow._draft["measurements"]["pv_power"])
+    assert setting.entity.attribute == (None if change_entity else "power")
+    assert resolve_numeric(
+        setting, snapshot(hass, flow._draft), dt_util.utcnow()
+    ) == pytest.approx(0.7 if change_entity else 0.4)
+    assert dict(entry.data) == config
+
+
+async def test_load_power_history_edit_preserves_saved_unit_and_sign_defaults(
+    recorder_mock, hass, enable_custom_integrations
+):
+    config = default_configuration("EUR", "UTC")
+    config["sources"]["load"].update(
+        mode="recorder",
+        power=EntityBinding("sensor.load_power").to_dict(),
+        daily_estimate=None,
+        history_unit="kW",
+        history_sign=-1,
+        power_max_gap_minutes=17,
+    )
+    hass.states.async_set("sensor.load_power", "-0.4", {"unit_of_measurement": "kW"})
+    entry, fid, result = await _edit_inventory_source(hass, config, "sensor.load_power")
+    await hass.config_entries.options.async_configure(fid, result["data_schema"]({}))
+    result = await hass.config_entries.options.async_configure(fid, {})
+    result = await hass.config_entries.options.async_configure(
+        fid, result["data_schema"]({})
+    )
+    assert result["step_id"] == "sources"
+    flow = hass.config_entries.options._progress[fid]
+    assert flow._draft == config
+    assert dict(entry.data) == config
+
+
+async def test_optional_measurement_edit_preserves_custom_scale_and_disabled_age(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    freezer.move_to("2026-09-18T10:00:00+00:00")
+    config = default_configuration("EUR", "UTC")
+    config["measurements"]["pv_power"] = NumericSetting(
+        entity=EntityBinding("sensor.pv_meter"),
+        unit="kW",
+        source_unit="kW",
+        multiplier=2,
+        minimum=-5,
+        maximum=50,
+        max_age_seconds=None,
+    ).to_dict()
+    hass.states.async_set("sensor.pv_meter", "0.4", {"unit_of_measurement": "kW"})
+    entry, fid, result = await _edit_inventory_source(hass, config, "sensor.pv_meter")
+    await hass.config_entries.options.async_configure(fid, result["data_schema"]({}))
+    result = await hass.config_entries.options.async_configure(fid, {})
+    result = await hass.config_entries.options.async_configure(
+        fid, result["data_schema"]({})
+    )
+    assert result["step_id"] == "sources"
+    flow = hass.config_entries.options._progress[fid]
+    assert flow._draft == config
+    assert dict(entry.data) == config
+    freezer.move_to("2026-09-18T12:00:00+00:00")
+    assert resolve_numeric(
+        NumericSetting.from_dict(flow._draft["measurements"]["pv_power"]),
+        snapshot(hass, flow._draft),
+        dt_util.utcnow(),
+    ) == pytest.approx(0.8)
 
 
 async def test_sources_inventory_exposes_each_price_continuation_for_precise_edit(
@@ -289,8 +466,9 @@ async def test_forged_throughput_statistic_submission_with_active_battery_is_rej
     assert dict(entry.data) == config
 
 
+@pytest.mark.parametrize("unit, raw_total", [("kWh", "4"), ("Wh", "4000")])
 async def test_legacy_throughput_statistic_can_be_replaced_and_saved_as_measurement(
-    recorder_mock, hass, enable_custom_integrations, freezer
+    recorder_mock, hass, enable_custom_integrations, freezer, unit, raw_total
 ):
     freezer.move_to("2026-09-18T10:00:00+00:00")
     config = default_configuration("EUR", "UTC")
@@ -306,7 +484,7 @@ async def test_legacy_throughput_statistic_can_be_replaced_and_saved_as_measurem
     )
     legacy = {
         "statistic_id": "sensor.legacy_battery_energy",
-        "unit": "kWh",
+        "unit": unit,
         "sign": 1,
         "usage": "diagnostic_only",
         "maximum": 100,
@@ -314,7 +492,7 @@ async def test_legacy_throughput_statistic_can_be_replaced_and_saved_as_measurem
     config["measurements"]["throughput_today"] = legacy
     hass.states.async_set("sensor.soc", "50", {"unit_of_measurement": "%"})
     hass.states.async_set(
-        "sensor.daily_throughput", "4", {"unit_of_measurement": "kWh"}
+        "sensor.daily_throughput", raw_total, {"unit_of_measurement": unit}
     )
     entry = MockConfigEntry(domain="energy_compass", data=config, version=2)
     entry.add_to_hass(hass)
@@ -338,7 +516,7 @@ async def test_legacy_throughput_statistic_can_be_replaced_and_saved_as_measurem
     result = await hass.config_entries.options.async_configure(
         fid,
         {
-            "unit": "kWh",
+            "unit": unit,
             "sign": 1,
             "timestamp_path": "last_updated",
             "max_age_seconds": 3600,
