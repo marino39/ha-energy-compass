@@ -4,6 +4,7 @@ from datetime import UTC, timedelta
 
 import numpy as np
 
+from .charge_price import price_allows_grid_charge
 from .machine_state import machine_state
 from .models import Problem, SolveError
 
@@ -19,7 +20,7 @@ ACTIVE = frozenset(MODES[:4])
 
 
 def safety_exception(problem: Problem) -> dict | None:
-    """Permit idle advice only for an already observed bound during an active lock."""
+    """Pause an active lock at an observed SOC bound or conflicting price ceiling."""
     battery = problem.battery
     mode = problem.initial_dispatch_mode
     if not battery or not problem.minimum_mode_minutes or mode not in ACTIVE:
@@ -33,10 +34,19 @@ def safety_exception(problem: Problem) -> dict | None:
     bound = battery.capacity_kwh * (
         battery.maximum_soc_fraction if charging else battery.minimum_soc_fraction
     )
-    if abs(battery.initial_kwh - bound) > 1e-9:
+    reason = None
+    if abs(battery.initial_kwh - bound) <= 1e-9:
+        reason = "observed_soc_maximum" if charging else "observed_soc_minimum"
+    elif mode == "CHARGE_GRID" and any(
+        not price_allows_grid_charge(problem, slot)
+        for slot in problem.slots
+        if slot.start.astimezone(UTC) < deadline
+    ):
+        reason = "grid_charge_price_limit"
+    if reason is None:
         return None
     return {
-        "reason": "observed_soc_maximum" if charging else "observed_soc_minimum",
+        "reason": reason,
         "interrupted_mode": mode,
         "deadline": deadline.isoformat(),
     }
@@ -82,6 +92,7 @@ def constrain_modes(model, problem: Problem, vectors) -> None:
         curt_max = model.upper[v["curt"]]
         available = {
             "CHARGE_GRID": battery.allow_grid_charge
+            and price_allows_grid_charge(problem, slot)
             and charge_max >= surplus + activity,
             "CHARGE_PV": pv_max >= activity,
             "DISCHARGE_GRID": battery.allow_battery_export

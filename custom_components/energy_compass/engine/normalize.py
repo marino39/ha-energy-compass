@@ -143,6 +143,12 @@ def validate_problem(problem: Problem) -> None:
     if problem.terminal_mode not in ("preserve_initial", "value"):
         raise InputError("invalid terminal mode")
     finite(problem.terminal_value_per_kwh, "terminal value")
+    ceiling = problem.maximum_grid_charge_price
+    if ceiling is not None and (
+        isinstance(ceiling, bool)
+        or not -1000 <= finite(ceiling, "maximum_grid_charge_price") <= 1000
+    ):
+        raise InputError("maximum_grid_charge_price must be in [-1000, 1000] or null")
     if (
         not 0
         <= finite(

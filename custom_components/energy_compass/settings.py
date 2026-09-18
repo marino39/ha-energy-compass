@@ -55,6 +55,7 @@ NUMBERS = {
     "minimum_mode_minutes": ("planning", 60, 0, 1440, "min"),
     "minimum_mode_power_kw": ("planning", 0.1, 0.001, 1000, "kW"),
     "minimum_export_episode_benefit": ("planning", 1, 0, 1000, "currency"),
+    "maximum_grid_charge_price": ("planning", 0, -1000, 1000, "currency/kWh"),
     "terminal_value_per_kwh": ("planning", 0, -1000, 1000, "currency/kWh"),
     "display_horizon_hours": ("compass", 24, 1, 48, "h"),
     "reference_horizon_hours": ("compass", 24, 1, 48, "h"),
@@ -90,6 +91,7 @@ BOOLEANS = {
     "allow_grid_charge": ("hardware", False),
     "allow_battery_export": ("hardware", False),
     "limit_export_to_pv": ("planning", True),
+    "limit_grid_charge_price": ("planning", False),
     "allow_curtailment": ("hardware", False),
     "buy_apply_vat": ("tariffs", False),
     "sell_apply_vat": ("tariffs", False),
@@ -205,6 +207,8 @@ def validate_configuration(
                 )
             value = resolve_numeric(selected, states, now)
         else:
+            if key == "maximum_grid_charge_price" and isinstance(values.get(key), bool):
+                raise InputError("maximum_grid_charge_price must be numeric")
             value = finite(values.get(key, default), key)
         if not low <= value <= high:
             raise InputError(f"{key} outside supported bounds [{low}, {high}]")

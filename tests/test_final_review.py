@@ -104,6 +104,7 @@ MONETARY_VALUES = {
     "terminal_value_per_kwh": 0.3,
     "monthly_charge": 25,
     "minimum_export_episode_benefit": 1,
+    "maximum_grid_charge_price": 0.61,
 }
 
 

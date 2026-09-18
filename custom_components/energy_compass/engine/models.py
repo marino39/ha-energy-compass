@@ -73,6 +73,7 @@ class Problem:
     initial_dispatch_mode_since: datetime | None = None
     minimum_export_episode_benefit: float = 1.0
     initial_export_active: bool = False
+    maximum_grid_charge_price: float | None = None
 
 
 @dataclass(frozen=True)
