@@ -4,7 +4,7 @@
 
 The energy balance is `PV - curtailment + grid import + battery discharge = load + grid export + battery charge`. Battery energy advances by `charge efficiency × charge - discharge ÷ discharge efficiency`. Every slot observes minimum and maximum stored energy, energy limits from charge and discharge power multiplied by elapsed hours, and the import and export connection limits. Binary direction choices prevent simultaneous grid import/export and battery charge/discharge. The inverter limits the magnitude of `PV - curtailment + battery discharge - battery charge`; it is separate from the whole-house grid connection limits. Curtailment is fixed to zero if the site cannot curtail.
 
-Nonnegative source allocations split solar among load, battery and export; grid import among load and battery; and battery discharge among load and export. The `Flow` reports grid import/export, charge/discharge, curtailment, final stored energy, planned battery direction. A display can infer charging, discharging, grid exchange and curtailment from those aggregate values. Charging beyond `max(PV - load, 0)` identifies grid-fed charging. When grid charging is disabled, its allocation is zero and charge cannot exceed that solar surplus. When battery export is disabled, its export allocation is zero and discharge cannot exceed `max(load - PV, 0)`. These conservative bounds use forecast input values and prevent source relabeling from bypassing capability restrictions.
+Nonnegative source allocations split solar among load, battery and export; grid import among load and battery; and battery discharge among load and export. The `Flow` reports grid import/export, charge/discharge, curtailment, final stored energy, a verified `dispatch_mode`, and the legacy `battery_mode` direction diagnostic. A display can infer charging, discharging, grid exchange and curtailment from those aggregate values. Charging beyond `max(PV - load, 0)` identifies grid-fed charging. When grid charging is disabled, its allocation is zero and charge cannot exceed that solar surplus. When battery export is disabled, its export allocation is zero and discharge cannot exceed `max(load - PV, 0)`. These conservative bounds use forecast input values and prevent source relabeling from bypassing capability restrictions.
 
 The objective is `sum(buy × import - sell × export + wear × (charge + discharge) ÷ 2) - terminal credit`. Wear is charged per kWh of average charge/discharge throughput, so a complete 1 kWh charge/discharge cycle incurs one wear unit. The default `preserve_initial` mode requires final stored energy at least the initial energy and has no terminal credit. The explicit `value` mode credits final stored energy at `terminal_value_per_kwh`; its `Plan.terminal_credit` and `Plan.objective` expose this choice to diagnostics. A battery-free plan has no terminal credit or throughput charge.
 
@@ -12,11 +12,30 @@ The objective is `sum(buy × import - sell × export + wear × (charge + dischar
 
 The model uses AC-equivalent PV and battery flows. This approximation must be checked against measured energy, battery energy changes, and inverter behavior before any control work. The solver is advisory: it never writes device controls. SciPy HiGHS must report an optimum within the time limit; timeout, infeasibility, unboundedness and solver failure raise `SolveError`. The returned variables are independently checked against every interval balance, capability, direction and bound within an absolute 1e-6 kWh tolerance.
 
-## Battery direction duration and PV export budget
+## Operating-mode duration and PV export budget
 
-The Planning setting `minimum_mode_minutes` defaults to 60; zero disables it. It holds the battery's charging or discharging direction, using elapsed UTC time across native settlement slots. Zero power is allowed at any time, including at SOC limits. `CHARGE_PV` and `CHARGE_GRID` share a charging direction; `SELF_CONSUME` and `DISCHARGE_GRID` share a discharging direction. `HOLD` does not cancel the direction commitment. These display states can therefore have shorter durations. A shortened first interval counts only its actual duration. A final direction may extend beyond available forecast coverage; no flows are invented after coverage ends.
+The Planning setting `minimum_mode_minutes` defaults to 60; zero disables both duration and minimum-active-power restrictions. `minimum_mode_power_kw` defaults to 0.1 kW (100 W), accepts finite values from 0.001 to 1000 kW, and permits variable power above that floor. Restrictions apply only with a battery. Native source and settlement slots remain unchanged; all timing uses elapsed UTC time, including partial first slots and DST.
 
-Each flow exposes `battery_mode`. The coordinator persists the first published direction and when it was first published, keeping the remaining hold across recalculation, reload and restart. This is a commitment of advisory output, not a measurement or control of the inverter. A changed direction starts a new hold; recalculating the same direction does not restart its clock. Hardware and SOC constraints stay hard; an impossible combination produces an infeasible plan rather than violating limits.
+For each interval of `h` hours, `activity = minimum_mode_power_kw × h` and `surplus = max(PV - load, 0)`. Exactly one physical mode is selected:
+
+| Mode | Actual required flows |
+| --- | --- |
+| CHARGE_GRID | Charge at least surplus + activity; discharge and curtailment zero |
+| CHARGE_PV | Charge between activity and surplus; discharge and curtailment zero |
+| DISCHARGE_GRID | Discharge and grid export each at least activity; charge and curtailment zero |
+| SELF_CONSUME | Discharge at least activity; charge, grid export and curtailment zero |
+| HOLD | Charge, discharge and curtailment zero |
+| CURTAIL | Curtailment at least activity; charge and discharge zero |
+
+The CURTAIL restriction is deliberately conservative: curtailment cannot mask a battery mode transition. Duration zero retains the previous simultaneous-curtailment behavior. Tiny intervals whose activity is at or below 2e-6 kWh cannot carry a material mode because the classifier cannot reliably resolve it; only truthful HOLD is available, or the plan is infeasible.
+
+Each newly started mode lasts at least the configured duration. A source or destination change starts a distinct clock; idle HOLD cannot fund an active run. New active modes must have a full duration of forecast coverage remaining. Final passive HOLD/CURTAIL runs and the remaining part of a carried commitment may be clipped by coverage. The solver never invents future flows.
+
+The coordinator persists the first accepted, flow-verified named mode and its timezone-aware start. Recalculation of the same mode preserves its clock; a changed normal mode starts a new clock. Superseded and failed calculations do not modify it. Invalid or future stored clocks are discarded. Legacy `charge`/`discharge` records preserve their remaining direction guard but donate no age: the first named publication starts a fresh clock. The `battery_mode` field is only a legacy diagnostic, not the public duration policy.
+
+Hardware and SoC limits stay hard. The sole safety exception applies when the current observed SoC is already at the relevant bound during an unexpired carried active commitment. Rows then truthfully say HOLD, while persistence retains the interrupted mode and original expiry. No other mode can start before that deadline. `dispatch_policy.safety_exception` exposes the reason, interrupted mode and deadline. A forecast burst to a future bound cannot use this exception; future active runs must sustain their duration or the plan is infeasible. This remains advisory output, not inverter control.
+
+The physical classifier and validator independently check the chosen states, floor, transitions and coverage. `dispatch_policy` reports `mode_scope: actual_operating_mode`, `enabled`, minimum duration and minimum power. All existing balance, capacity, tariff, wear, terminal and daily-throughput constraints remain in force.
 
 **Sell only PV** (`limit_export_to_pv`) is available under **Planning** and defaults to on. The rule applies separately to every **local calendar day in the installation timezone**:
 
@@ -26,9 +45,9 @@ Direct solar and battery export share that day's budget. Household consumption i
 
 When enabled with nonzero grid export capacity, **Sources** must include daily energy counters `pv_energy_today` and `grid_export_energy_today`. Select entity measurements in kWh or Wh that reset at midnight in the same timezone. These are required planning inputs, not lifetime totals or optional diagnostics. Each calculation reads them again, so refresh and restart never reset the used budget. Missing, unavailable, negative, stale or previous-day observations make advice unavailable. Fresh native `last_reported` timestamps support unchanged totals; the configurable age bound defaults to 86400 seconds for these daily counters. Validity ends at local midnight and waits for current-day reports. Disabling Sell only PV, or setting grid export capacity to zero, removes this counter requirement.
 
-Battery provenance is not tracked. Initial SOC and grid-charged energy may be exported within the current day's generation budget, including before forecast production later that same day. This remains an aggregate energy rule and advisory output, not an inverter control or a guarantee about exported energy's origin. Existing battery export capability, SOC, power, wear and direction-hold constraints remain unchanged.
+Battery provenance is not tracked. Initial SOC and grid-charged energy may be exported within the current day's generation budget, including before forecast production later that same day. This remains an aggregate energy rule and advisory output, not an inverter control or a guarantee about exported energy's origin. Existing battery export capability, SOC, power, wear and operating-mode constraints remain unchanged.
 
-The plan's `dispatch_policy` exposes `export_limit_scope: local_day`, `timezone` and `daily_balances`. Each date reports `observed_pv_kwh`, `observed_export_kwh`, `forecast_pv_kwh` (after curtailment), `forecast_export_kwh`, and the unused `remaining_export_kwh`. Interval rows expose `battery_mode`. Every extra-consumption probe uses the same observed totals and daily constraints.
+The plan's `dispatch_policy` exposes `export_limit_scope: local_day`, `timezone` and `daily_balances`. Each date reports `observed_pv_kwh`, `observed_export_kwh`, `forecast_pv_kwh` (after curtailment), `forecast_export_kwh`, and the unused `remaining_export_kwh`. Interval rows expose verified `dispatch_mode` alongside the legacy direction diagnostic. Every extra-consumption probe uses the same observed totals and daily constraints.
 
 ## Incremental consumption guidance
 

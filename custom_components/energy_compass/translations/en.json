@@ -183,13 +183,15 @@
           "refresh_minutes": "Refresh minutes",
           "terminal_value_per_kwh": "Terminal value per kwh",
           "terminal_mode": "Terminal mode",
-          "minimum_mode_minutes": "Minimum battery direction duration",
-          "limit_export_to_pv": "Sell only PV"
+          "minimum_mode_minutes": "Minimum operating-mode duration",
+          "limit_export_to_pv": "Sell only PV",
+          "minimum_mode_power_kw": "Minimum active-mode power"
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}",
         "data_description": {
-          "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
-          "limit_export_to_pv": "Enabled by default. Solar and battery export cannot exceed PV generation on the same local calendar day. Combines observed totals since midnight with the remaining forecast; no credit carries between days. Select pv_energy_today and grid_export_energy_today daily counters in Sources. Off removes this budget; other limits remain active."
+          "minimum_mode_minutes": "Default 60 min; 0 disables duration and minimum power. Holds actual PV/grid charge, export, self-consumption, HOLD and CURTAIL modes. A source or sink change starts a new period. Exception: an observed SoC bound during an active commitment.",
+          "limit_export_to_pv": "Enabled by default. Solar and battery export cannot exceed PV generation on the same local calendar day. Combines observed totals since midnight with the remaining forecast; no credit carries between days. Select pv_energy_today and grid_export_energy_today daily counters in Sources. Off removes this budget; other limits remain active.",
+          "minimum_mode_power_kw": "Default 0.1 kW (100 W); range 0.001–1000 kW. Minimum active power, not constant power. CURTAIL excludes battery charge and discharge while the duration policy is enabled."
         }
       },
       "compass": {
@@ -544,13 +546,15 @@
           "refresh_minutes": "Refresh minutes",
           "terminal_value_per_kwh": "Terminal value per kwh",
           "terminal_mode": "Terminal mode",
-          "minimum_mode_minutes": "Minimum battery direction duration",
-          "limit_export_to_pv": "Sell only PV"
+          "minimum_mode_minutes": "Minimum operating-mode duration",
+          "limit_export_to_pv": "Sell only PV",
+          "minimum_mode_power_kw": "Minimum active-mode power"
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}",
         "data_description": {
-          "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
-          "limit_export_to_pv": "Enabled by default. Solar and battery export cannot exceed PV generation on the same local calendar day. Combines observed totals since midnight with the remaining forecast; no credit carries between days. Select pv_energy_today and grid_export_energy_today daily counters in Sources. Off removes this budget; other limits remain active."
+          "minimum_mode_minutes": "Default 60 min; 0 disables duration and minimum power. Holds actual PV/grid charge, export, self-consumption, HOLD and CURTAIL modes. A source or sink change starts a new period. Exception: an observed SoC bound during an active commitment.",
+          "limit_export_to_pv": "Enabled by default. Solar and battery export cannot exceed PV generation on the same local calendar day. Combines observed totals since midnight with the remaining forecast; no credit carries between days. Select pv_energy_today and grid_export_energy_today daily counters in Sources. Off removes this budget; other limits remain active.",
+          "minimum_mode_power_kw": "Default 0.1 kW (100 W); range 0.001–1000 kW. Minimum active power, not constant power. CURTAIL excludes battery charge and discharge while the duration policy is enabled."
         }
       },
       "compass": {

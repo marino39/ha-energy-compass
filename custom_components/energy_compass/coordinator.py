@@ -29,6 +29,7 @@ from .runtime import (
     available_forecasts,
     compute,
     measurement_diagnostics,
+    restore_commitment,
 )
 from .settings import DOMAIN, merged_configuration, validate_configuration
 from .sources.bindings import merge_continuations, parse_intervals, parse_timestamp
@@ -65,7 +66,9 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
     async def async_start(self):
         """Restore small observation anchors and attach only this entry's listeners."""
         self._anchors = await self._store.async_load() or {}
-        self._battery_commitment = await self._dispatch_store.async_load()
+        self._battery_commitment = restore_commitment(
+            await self._dispatch_store.async_load(), dt_util.utcnow()
+        )
         self._registry_unsub = self.hass.bus.async_listen(
             er.EVENT_ENTITY_REGISTRY_UPDATED, self._registry_changed
         )
@@ -436,15 +439,22 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             self._runner = None
 
     def _commit_battery_direction(self, result):
-        """Persist published advice, never pretend forecast energy was measured."""
         rows = result.get("intervals", [])
-        mode = rows[0].get("battery_mode") if rows else None
-        if mode is None or not result.get("dispatch_policy", {}).get(
-            "minimum_mode_minutes"
-        ):
+        policy = result.get("dispatch_policy", {})
+        mode = rows[0].get("dispatch_mode") if rows else None
+        if mode is None or not policy.get("enabled"):
             self._battery_commitment = None
+        elif policy.get("safety_exception"):
+            return
         elif not self._battery_commitment or self._battery_commitment["mode"] != mode:
+            previous = self._battery_commitment
             self._battery_commitment = {"mode": mode, "since": result["generated_at"]}
+            if previous and previous["mode"] in ("charge", "discharge"):
+                self._battery_commitment["legacy_direction"] = previous
+            elif previous and previous.get("legacy_direction"):
+                self._battery_commitment["legacy_direction"] = previous[
+                    "legacy_direction"
+                ]
         self._dispatch_store.async_delay_save(lambda: self._battery_commitment, 1)
 
     async def async_stop(self):

@@ -68,6 +68,9 @@ class Problem:
     initial_battery_mode_since: datetime | None = None
     pv_generated_today_kwh: float = 0.0
     grid_exported_today_kwh: float = 0.0
+    minimum_mode_power_kw: float = 0.1
+    initial_dispatch_mode: MachineState | None = None
+    initial_dispatch_mode_since: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +82,7 @@ class Flow:
     curtail_kwh: float
     end_soc_kwh: float
     battery_mode: Literal["charge", "discharge"] | None = None
+    dispatch_mode: MachineState | None = None
 
 
 @dataclass(frozen=True)
