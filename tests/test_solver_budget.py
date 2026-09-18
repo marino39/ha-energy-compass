@@ -127,3 +127,33 @@ def test_base_budget_above_supported_limit_is_rejected():
     config["settings"]["solve_time_limit_s"] = 31
     with pytest.raises(InputError, match="solve_time_limit_s outside"):
         validate_configuration(config, {}, datetime(2026, 9, 18, tzinfo=UTC))
+
+
+def test_five_minute_budget_supports_longer_consumption_probes(monkeypatch):
+    now = datetime(2026, 9, 18, tzinfo=UTC)
+    config = default_configuration("PLN", "UTC")
+    config["settings"].update(
+        total_time_limit_s=300,
+        solve_time_limit_s=30,
+        probe_time_limit_s=30,
+        refresh_minutes=60,
+        horizon_hours=2,
+        display_horizon_hours=2,
+        reference_horizon_hours=2,
+    )
+    clock = [0.0]
+    original = consumption.solve
+
+    def slow_probe(problem, *, time_limit_s):
+        assert time_limit_s > 20
+        result = original(problem, time_limit_s=time_limit_s)
+        clock[0] += 20
+        return result
+
+    monkeypatch.setattr(runtime, "perf_counter", lambda: clock[0])
+    monkeypatch.setattr(consumption, "perf_counter", lambda: clock[0])
+    monkeypatch.setattr(consumption, "solve", slow_probe)
+    result = runtime.compute(config, {}, now)
+    assert result["valid"]
+    assert result["coverage_reason"] == "complete"
+    assert all(row["cost_per_kwh"] == pytest.approx(0) for row in result["outlook"])

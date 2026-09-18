@@ -191,8 +191,8 @@
           <li>Extra-energy probe: 1 kWh; UI range 0.01–5 kWh.</li>
           <li>BOOST ceiling: 0 currency/kWh. LIMIT floor: 1 currency/kWh. CHEAP/LIMIT percentiles: 25th/75th.</li>
           <li>Short reference coverage: <code>absolute_fallback</code>. Grid charging, battery export and curtailment: disabled.</li>
-          <li>Base solve budget: 10 seconds. Per-probe budget: 2 seconds. Total budget: 60 seconds. Probes share the time remaining after the base calculation.</li>
-          <li>Refresh setting: 15 minutes. Input changes and validity boundaries can trigger earlier recalculation.</li>
+          <li>Default budgets: 10 seconds for the base plan, 2 seconds per probe and 60 seconds overall. Performance allows up to 30 seconds for each solve and 300 seconds overall. Probes share the remaining time after the base calculation and a one-second finishing reserve.</li>
+          <li>Default periodic refresh: 15 minutes, configurable up to one hour. Significant source changes can trigger earlier recalculation; validity boundaries only validate sources and advance cached advice.</li>
         </ul>
       </details>
     </section>
@@ -409,7 +409,7 @@
         <h3>Forecast valid</h3>
         <p class="entity-meta"><code>forecast_valid</code> · <span lang="pl">Poprawna prognoza</span> · Binary sensor</p>
         <p><strong>on:</strong> a valid baseline exists and current UTC time is strictly before <code>valid_until</code>. <strong>off:</strong> calculation is pending, inputs or baseline failed, or the generation has expired. This entity remains available to report that condition.</p>
-        <p><code>valid_until</code> is the earliest of the first native interval's end, the configured refresh deadline and applicable required-source freshness deadlines. An unchanged numeric SOC still needs a trustworthy report timestamp; availability is not established by its percentage alone. The default <code>auto</code> policy uses Home Assistant’s native <code>last_reported</code> for native SOC and BMS timestamp paths, including older saved <code>last_updated</code> paths. An identical fresh report therefore stays fresh. Custom timestamp paths retain their exact meaning; <code>exact_path</code> also preserves literal native-field selection.</p>
+        <p>Published <code>valid_until</code> is bounded by the next periodic recalculation, forecast coverage and applicable required-source freshness deadlines. Native interval boundaries advance current advice and commitment clocks without a new optimization. Fresh reports of unchanged inputs can extend freshness within those bounds; significant changes still request an earlier solve. An unchanged numeric SOC still needs a trustworthy report timestamp; availability is not established by its percentage alone. The default <code>auto</code> policy uses Home Assistant’s native <code>last_reported</code> for native SOC and BMS timestamp paths, including older saved <code>last_updated</code> paths. An identical fresh report therefore stays fresh. Custom timestamp paths retain their exact meaning; <code>exact_path</code> also preserves literal native-field selection.</p>
         <dl>
           <dt><code>current_guidance_valid</code></dt><dd>Whether the current consumption outlook has a known level. Use it together with the binary sensor's on state; it is generation metadata and is not itself a clock-based freshness check.</dd>
           <dt><code>coverage_end</code>, <code>requested_end</code>, <code>coverage_complete</code></dt><dd>Actual source horizon, requested planning end, and whether that entire requested horizon is covered. These are distinct from reference-horizon classification.</dd>

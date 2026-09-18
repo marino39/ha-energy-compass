@@ -73,11 +73,11 @@ def _settings(settings: CompassSettings, budget_s: float) -> float:
     if settings.short_coverage not in ("absolute_fallback", "unavailable"):
         raise InputError("invalid short-coverage policy")
     probe_time = _finite(settings.probe_time_limit_s, "probe_time_limit_s")
-    if not 0 < probe_time <= 10:
-        raise InputError("probe_time_limit_s must be in (0, 10]")
+    if not 0 < probe_time <= 30:
+        raise InputError("probe_time_limit_s must be in (0, 30]")
     budget = _finite(budget_s, "budget_s")
-    if not 0 <= budget <= 60:
-        raise InputError("budget_s must be in [0, 60]")
+    if not 0 <= budget <= 300:
+        raise InputError("budget_s must be in [0, 300]")
     return budget
 
 

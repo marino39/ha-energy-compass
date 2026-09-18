@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 from copy import deepcopy
+from datetime import timedelta
 from functools import partial
 
 from homeassistant.core import callback
@@ -28,6 +29,7 @@ from .runtime import (
     async_history,
     available_forecasts,
     compute,
+    freshness_deadline,
     measurement_diagnostics,
     restore_commitment,
     restore_export_commitment,
@@ -53,6 +55,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._worker = None
         self._debounce = None
         self._boundary = None
+        self._refresh_due = None
         self._source_unsub = None
         self._registry_unsub = None
         self._fingerprint = None
@@ -253,16 +256,10 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             self._invalidate("invalid_input", str(err))
             self._schedule(0)
             return
-        if content == self._fingerprint:
+        if content == self._fingerprint and self.data.get("status") != "invalid_input":
             if self.data.get("valid"):
-                self.async_set_updated_data(
-                    {
-                        **self.data,
-                        "measurements": measurement_diagnostics(
-                            self.configuration, states, dt_util.utcnow()
-                        ),
-                    }
-                )
+                self._publish_current(self.data, states, values, dt_util.utcnow())
+                self._next_boundary(values)
             return
         self._fingerprint = content
         self._generation += 1
@@ -289,9 +286,8 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         if self._boundary:
             self._boundary.cancel()
         now = dt_util.utcnow()
-        seconds = values.get("refresh_minutes", 15) * 60
-        delay = seconds - now.timestamp() % seconds
-        if self.data.get("valid_until"):
+        delay = max(0.1, (self._refresh_due - now).total_seconds())
+        if self.data.get("valid") and self.data.get("valid_until"):
             delay = min(
                 delay,
                 max(
@@ -299,6 +295,12 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                     (parse_timestamp(self.data["valid_until"]) - now).total_seconds(),
                 ),
             )
+        for key in ("intervals", "outlook"):
+            for row in self.data.get(key, []):
+                end = parse_timestamp(row["end"])
+                if end > now:
+                    delay = min(delay, (end - now).total_seconds())
+                    break
         source = SourceConfig.from_dict(self.configuration["sources"])
         freshness = (
             [values.get("soc_max_age_seconds", 600)] if source.battery_enabled else []
@@ -314,11 +316,117 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         @callback
         def refresh():
             self._boundary = None
-            self._generation += 1
-            self._invalidate("calculating", "interval_boundary")
-            self._schedule(0)
+            now = dt_util.utcnow()
+            if now >= self._refresh_due:
+                self._generation += 1
+                self._invalidate("calculating", "interval_boundary")
+                self._schedule(0)
+                return
+            try:
+                _, states, now, current_values = self._inputs()
+                if self.data.get("valid"):
+                    self._publish_current(self.data, states, current_values, now)
+                elif self.data.get("status") == "invalid_input":
+                    # Identical SOC reports refresh last_reported without emitting
+                    # state_changed. A health tick must recover those inputs too.
+                    self._generation += 1
+                    self._fingerprint = None
+                    self._invalidate("calculating", "inputs_recovered")
+                    self._schedule(0)
+                    return
+            except (InputError, KeyError, ValueError) as err:
+                self._generation += 1
+                self._fingerprint = None
+                self._invalidate("invalid_input", str(err))
+            self._next_boundary(values)
 
         self._boundary = self.hass.loop.call_later(delay, refresh)
+
+    def _publish_current(self, result, states, values, now):
+        """Advance an existing plan and its clocks without invoking the solver."""
+        rows = result.get("intervals", [])
+        current = next(
+            (
+                i
+                for i, row in enumerate(rows)
+                if parse_timestamp(row["start"]) <= now < parse_timestamp(row["end"])
+            ),
+            None,
+        )
+        if current is None:
+            self._invalidate("invalid_input", "no_current_interval")
+            return
+        deadline = min(
+            self._refresh_due,
+            parse_timestamp(rows[-1]["end"]),
+            freshness_deadline(self.configuration, states, values, now),
+        )
+        if deadline <= now:
+            self._invalidate("invalid_input", "expired_inputs")
+            return
+        mode_start = current
+        while mode_start and rows[mode_start - 1].get("dispatch_mode") == rows[
+            current
+        ].get("dispatch_mode"):
+            mode_start -= 1
+        policy = dict(result.get("dispatch_policy", {}))
+        exception = policy.get("safety_exception")
+        if exception and now >= parse_timestamp(exception["deadline"]):
+            policy["safety_exception"] = None
+        self._commit_battery_direction(
+            {
+                **result,
+                "dispatch_policy": policy,
+                "intervals": rows[mode_start:],
+                "generated_at": rows[mode_start]["start"],
+            }
+        )
+        export_start = current
+        if min(rows[current]["discharge_kwh"], rows[current]["grid_export_kwh"]) > 1e-6:
+            while (
+                export_start
+                and min(
+                    rows[export_start - 1]["discharge_kwh"],
+                    rows[export_start - 1]["grid_export_kwh"],
+                )
+                > 1e-6
+            ):
+                export_start -= 1
+        self._commit_current_export(
+            {
+                **result,
+                "intervals": rows[export_start:],
+                "generated_at": rows[export_start]["start"],
+            }
+        )
+        outlook = [
+            row
+            for row in result.get("outlook", [])
+            if parse_timestamp(row["end"]) > now
+        ]
+        guidance = bool(
+            outlook
+            and parse_timestamp(outlook[0]["start"]) <= now
+            and outlook[0]["level"] is not None
+        )
+        quality = dict(result.get("quality", {}))
+        quality["warnings"] = [
+            warning
+            for warning in quality.get("warnings", [])
+            if warning != "current_guidance_unavailable"
+        ] + ([] if guidance else ["current_guidance_unavailable"])
+        current_result = {
+            **result,
+            "intervals": rows[current:],
+            "outlook": outlook,
+            "guidance_valid": guidance,
+            "quality": quality,
+            "valid_until": deadline.isoformat(),
+            "dispatch_policy": policy,
+            "measurements": measurement_diagnostics(self.configuration, states, now),
+        }
+        self._anchor_windows({**current_result, "generated_at": now.isoformat()})
+        self.async_set_updated_data(current_result)
 
     def _invalidate(self, status, reason):
         """Revoke advice validity; keep its display only while a replacement runs."""
@@ -377,14 +485,26 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         if self._runner is not None:
             self._pending = True
             return
+        if self._boundary:
+            self._boundary.cancel()
+            self._boundary = None
         self._runner = asyncio.current_task()
         try:
             while not self._closed:
                 self._pending = False
                 generation = self._generation
                 values = self.configuration["settings"]
+                now = dt_util.utcnow()
+                seconds = values.get("refresh_minutes", 15) * 60
+                self._refresh_due = now + timedelta(
+                    seconds=seconds - now.timestamp() % seconds
+                )
                 try:
                     config, states, now, values = self._inputs()
+                    seconds = values["refresh_minutes"] * 60
+                    self._refresh_due = now + timedelta(
+                        seconds=seconds - now.timestamp() % seconds
+                    )
                     self._fingerprint = self._content(states, values)
                     self._invalidate("calculating", "calculating")
                     history, _ = await async_history(self.hass, config, states, now)
@@ -420,10 +540,10 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                         self._previous_soc = result["quality"].pop(
                             "soc_observation", None
                         )
-                        self._anchor_windows(result)
-                        self._commit_battery_direction(result)
-                        self._commit_current_export(result)
-                        self.async_set_updated_data(result)
+                        _, current_states, published_at, current_values = self._inputs()
+                        self._publish_current(
+                            result, current_states, current_values, published_at
+                        )
                 except InputError as err:
                     if not self._closed and generation == self._generation:
                         self._invalidate("invalid_input", str(err))
