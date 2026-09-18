@@ -60,9 +60,9 @@ class EnergyCompassEntity(CoordinatorEntity):
             return self._window() is not None
         return True
 
-    def _window(self):
+    def _window(self, kind=None):
         data = self.coordinator.data
-        kind = self.key.removeprefix("next_").removesuffix("_start")
+        kind = kind or self.key.removeprefix("next_").removesuffix("_start")
         now = dt_util.utcnow()
         return next(
             (
@@ -108,17 +108,17 @@ class EnergyCompassEntity(CoordinatorEntity):
                     )
                 }
             )
-            attrs["window_status"] = {
-                key: "active"
-                if rows
-                and parse_timestamp(rows[0]["start"])
-                <= dt_util.utcnow()
-                < parse_timestamp(rows[0]["end"])
-                else "upcoming"
-                if rows
-                else "none_in_coverage"
-                for key, rows in data.get("windows", {}).items()
-            }
+            window_status = {}
+            for kind in data.get("windows", {}):
+                window = self._window(kind)
+                window_status[kind] = (
+                    "none_in_coverage"
+                    if window is None
+                    else "active"
+                    if parse_timestamp(window["start"]) <= dt_util.utcnow()
+                    else "upcoming"
+                )
+            attrs["window_status"] = window_status
             attrs["attribute_schema_version"] = 1
             attrs["monthly_charge_reporting_only"] = data.get(
                 "monthly_charge_reporting_only"

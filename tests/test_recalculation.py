@@ -257,3 +257,33 @@ async def test_expired_snapshot_without_refresh_remains_unavailable(
     assert all(
         state.state == "unavailable" for state in recommendation_states(hass).values()
     )
+
+
+async def test_ended_window_is_not_upcoming_in_retained_plan(
+    published_entry, hass, freezer
+):
+    """The retained plan must agree with the timestamp entity after a window ends."""
+    started, release = threading.Event(), threading.Event()
+    original = module.compute
+
+    def delayed(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return original(*args, **kwargs)
+
+    freezer.move_to("2026-09-17T11:00:00+00:00")
+    with patch.object(module, "compute", new=delayed):
+        job = hass.async_create_task(published_entry.runtime_data.async_recalculate())
+        try:
+            assert await hass.async_add_executor_job(started.wait, 2)
+            assert (
+                hass.states.get("sensor.refresh_next_boost_start").state
+                == "unavailable"
+            )
+            status = hass.states.get("sensor.refresh_plan").attributes["window_status"]
+            assert status["boost"] == "none_in_coverage"
+            assert status["cheap"] == "active"
+            assert status["limit"] == "upcoming"
+        finally:
+            release.set()
+            await job
