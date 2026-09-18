@@ -1,0 +1,259 @@
+"""Keep published values visible while replacing an advisory generation."""
+
+import asyncio
+import threading
+from datetime import timedelta
+from unittest.mock import patch
+
+import pytest
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
+
+from custom_components.energy_compass import coordinator as module
+from custom_components.energy_compass.config_models import PriceSource
+from custom_components.energy_compass.engine.models import SolveError
+from custom_components.energy_compass.sensor import SENSOR_KEYS
+from custom_components.energy_compass.settings import default_configuration
+from custom_components.energy_compass.sources.bindings import (
+    EntityBinding,
+    IntervalBinding,
+)
+
+
+@pytest.fixture
+async def published_entry(recorder_mock, hass, enable_custom_integrations, freezer):
+    freezer.move_to("2026-09-17T10:00:00+00:00")
+    config = default_configuration("EUR", "UTC")
+    config["settings"].update(
+        horizon_hours=4,
+        display_horizon_hours=4,
+        reference_horizon_hours=4,
+        cheap_percentile=50,
+    )
+    config["helpers"]["grid_import_kw"] = {
+        "entity": {"entity_id": "input_number.limit"},
+        "unit": "kW",
+        "max_age_seconds": None,
+    }
+    config["sources"]["buy"] = PriceSource(
+        "forecast",
+        (
+            IntervalBinding(
+                EntityBinding("sensor.market", attribute="rows"),
+                start_path="start",
+                interval_minutes=60,
+                value_path="price",
+                unit="EUR/kWh",
+                value_kind="price",
+            ),
+        ),
+    ).to_dict()
+    hass.states.async_set("input_number.limit", "5", {"unit_of_measurement": "kW"})
+    now = dt_util.utcnow()
+    hass.states.async_set(
+        "sensor.market",
+        "ok",
+        {
+            "rows": [
+                {"start": now + timedelta(hours=index), "price": price}
+                for index, price in enumerate((0, 0.1, 0.5, 1.5))
+            ]
+        },
+    )
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Refresh", version=2
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    yield entry
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+def recommendation_states(hass):
+    return {
+        key: hass.states.get(f"sensor.refresh_{key}")
+        for key in SENSOR_KEYS
+        if key != "optimizer_status"
+    }
+
+
+@pytest.mark.parametrize("trigger", ["manual", "source", "boundary"])
+async def test_recalculation_keeps_published_values_until_replacement(
+    published_entry, hass, freezer, trigger
+):
+    """Starting or queueing a solve must not erase a displayed generation."""
+    before = recommendation_states(hass)
+    assert all(
+        state.state not in ("unavailable", "unknown") for state in before.values()
+    )
+    assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "on"
+    started, release = threading.Event(), threading.Event()
+    original = module.compute
+    job = None
+
+    def delayed(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return original(*args, **kwargs)
+
+    def assert_previous_visible():
+        assert hass.states.get("sensor.refresh_optimizer_status").state == "calculating"
+        assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "off"
+        assert (
+            hass.states.get("binary_sensor.refresh_forecast_valid").attributes[
+                "missing_sources"
+            ]
+            == []
+        )
+        for key, previous in before.items():
+            current = hass.states.get(previous.entity_id)
+            assert current.state == previous.state, key
+            assert (
+                current.attributes["generated_at"]
+                == previous.attributes["generated_at"]
+            )
+            assert (
+                current.attributes["valid_until"] == previous.attributes["valid_until"]
+            )
+            assert current.attributes["refreshing"] is True
+        assert (
+            hass.states.get("sensor.refresh_plan").attributes["intervals"]
+            == before["plan"].attributes["intervals"]
+        )
+
+    with patch.object(module, "compute", new=delayed):
+        try:
+            if trigger == "boundary":
+                freezer.move_to(before["plan"].attributes["valid_until"])
+                async_fire_time_changed(hass, dt_util.utcnow())
+            else:
+                freezer.tick(timedelta(seconds=1))
+                if trigger == "manual":
+                    job = hass.async_create_task(
+                        published_entry.runtime_data.async_recalculate()
+                    )
+                else:
+                    hass.states.async_set(
+                        "input_number.limit", "6", {"unit_of_measurement": "kW"}
+                    )
+                    await hass.async_block_till_done()
+                    assert not started.is_set()
+                    assert_previous_visible()
+                    freezer.tick(timedelta(seconds=5))
+                    async_fire_time_changed(hass, dt_util.utcnow())
+            # Yield to timer callbacks before waiting on the executor thread.
+            await asyncio.sleep(0)
+            assert await hass.async_add_executor_job(started.wait, 2)
+            assert_previous_visible()
+        finally:
+            release.set()
+            if job is not None:
+                await job
+            await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.refresh_optimizer_status").state == "ready"
+    assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "on"
+    plan = hass.states.get("sensor.refresh_plan")
+    assert plan.state != before["plan"].state
+    assert plan.attributes["refreshing"] is False
+
+
+@pytest.mark.parametrize("failure", ["timeout", "infeasible", "error"])
+async def test_failed_refresh_clears_retained_values(published_entry, hass, failure):
+    """A failed replacement must not leave the previous plan available."""
+    error = RuntimeError("worker failed") if failure == "error" else SolveError(failure)
+    with patch.object(module, "compute", side_effect=error):
+        await published_entry.runtime_data.async_recalculate()
+    assert hass.states.get("sensor.refresh_optimizer_status").state == failure
+    assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "off"
+    assert all(
+        state.state == "unavailable" for state in recommendation_states(hass).values()
+    )
+    # Retrying must not revive a snapshot that the failure already discarded.
+    started, release = threading.Event(), threading.Event()
+    original = module.compute
+
+    def delayed(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return original(*args, **kwargs)
+
+    with patch.object(module, "compute", new=delayed):
+        job = hass.async_create_task(published_entry.runtime_data.async_recalculate())
+        try:
+            assert await hass.async_add_executor_job(started.wait, 2)
+            assert (
+                hass.states.get("sensor.refresh_optimizer_status").state
+                == "calculating"
+            )
+            assert (
+                hass.states.get("binary_sensor.refresh_forecast_valid").state == "off"
+            )
+            assert all(
+                state.state == "unavailable"
+                for state in recommendation_states(hass).values()
+            )
+        finally:
+            release.set()
+            await job
+    assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "on"
+
+
+async def test_source_loss_during_refresh_discards_retained_values(
+    published_entry, hass
+):
+    """Source validation still revokes the display before a pending solve ends."""
+    coordinator = published_entry.runtime_data
+    started, release = threading.Event(), threading.Event()
+    invalidated = asyncio.Event()
+    original = module.compute
+
+    def delayed(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return original(*args, **kwargs)
+
+    def updated():
+        if coordinator.data["status"] == "invalid_input":
+            invalidated.set()
+
+    unsubscribe = coordinator.async_add_listener(updated)
+    with patch.object(module, "compute", new=delayed):
+        job = hass.async_create_task(coordinator.async_recalculate())
+        try:
+            assert await hass.async_add_executor_job(started.wait, 2)
+            hass.states.async_set("input_number.limit", "unavailable")
+            await asyncio.wait_for(invalidated.wait(), 2)
+            assert (
+                hass.states.get("binary_sensor.refresh_forecast_valid").state == "off"
+            )
+            assert all(
+                state.state == "unavailable"
+                for state in recommendation_states(hass).values()
+            )
+        finally:
+            release.set()
+            await job
+            await hass.async_block_till_done()
+            unsubscribe()
+    assert hass.states.get("sensor.refresh_optimizer_status").state == "invalid_input"
+    assert all(
+        state.state == "unavailable" for state in recommendation_states(hass).values()
+    )
+
+
+async def test_expired_snapshot_without_refresh_remains_unavailable(
+    published_entry, hass, freezer
+):
+    """Retaining a pending display must not relax normal freshness checks."""
+    coordinator = published_entry.runtime_data
+    freezer.move_to(coordinator.data["valid_until"])
+    coordinator.async_set_updated_data(coordinator.data)
+    assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "off"
+    assert all(
+        state.state == "unavailable" for state in recommendation_states(hass).values()
+    )

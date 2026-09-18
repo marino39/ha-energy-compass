@@ -50,7 +50,7 @@ class EnergyCompassEntity(CoordinatorEntity):
             and data.get("valid_until")
             and dt_util.utcnow() < parse_timestamp(data["valid_until"])
         )
-        if not fresh:
+        if not fresh and not data.get("refreshing"):
             return False
         if self.key in ("consumption_compass", "consumption_cost"):
             return data.get("guidance_valid", False)
@@ -80,6 +80,7 @@ class EnergyCompassEntity(CoordinatorEntity):
         attrs = {
             "generated_at": data.get("generated_at"),
             "valid_until": data.get("valid_until"),
+            "refreshing": data.get("refreshing", False),
             "reasons": quality.get("warnings", [])
             + (
                 [data["coverage_reason"]]
@@ -155,7 +156,8 @@ class EnergyCompassEntity(CoordinatorEntity):
                 coverage_complete=quality.get("coverage_complete", False),
                 input_ages=quality.get("input_ages", {}),
                 missing_sources=[data["reason"]]
-                if not data.get("valid") and data.get("reason")
+                if not (data.get("valid") or data.get("refreshing"))
+                and data.get("reason")
                 else quality.get("missing_sources", []),
             )
         elif self.key in ("expected_net_cost", "expected_wear_cost"):
