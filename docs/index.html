@@ -192,7 +192,7 @@
           <li>BOOST ceiling: 0 currency/kWh. LIMIT floor: 1 currency/kWh. CHEAP/LIMIT percentiles: 25th/75th.</li>
           <li>Short reference coverage: <code>absolute_fallback</code>. Grid charging, battery export and curtailment: disabled.</li>
           <li>Default budgets: 10 seconds for the base plan, 2 seconds per probe and 60 seconds overall. Performance allows up to 30 seconds for each solve and 300 seconds overall. Probes share the remaining time after the base calculation and a one-second finishing reserve.</li>
-          <li>Refresh setting: 15 minutes. Input changes and validity boundaries can trigger earlier recalculation.</li>
+          <li>Default periodic refresh: 15 minutes, configurable up to one hour. Significant source changes can trigger earlier recalculation; validity boundaries only validate sources and advance cached advice.</li>
         </ul>
       </details>
     </section>

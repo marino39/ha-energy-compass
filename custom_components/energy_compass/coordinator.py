@@ -256,7 +256,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             self._invalidate("invalid_input", str(err))
             self._schedule(0)
             return
-        if content == self._fingerprint:
+        if content == self._fingerprint and self.data.get("status") != "invalid_input":
             if self.data.get("valid"):
                 self._publish_current(self.data, states, values, dt_util.utcnow())
                 self._next_boundary(values)
@@ -326,6 +326,14 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                 _, states, now, current_values = self._inputs()
                 if self.data.get("valid"):
                     self._publish_current(self.data, states, current_values, now)
+                elif self.data.get("status") == "invalid_input":
+                    # Identical SOC reports refresh last_reported without emitting
+                    # state_changed. A health tick must recover those inputs too.
+                    self._generation += 1
+                    self._fingerprint = None
+                    self._invalidate("calculating", "inputs_recovered")
+                    self._schedule(0)
+                    return
             except (InputError, KeyError, ValueError) as err:
                 self._generation += 1
                 self._fingerprint = None

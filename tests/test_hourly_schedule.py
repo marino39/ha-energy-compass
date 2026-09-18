@@ -109,12 +109,13 @@ async def test_hourly_plan_advances_quarters_without_new_solve(
     assert hourly_entry.runtime_data.data["generated_at"] != first
 
 
+@pytest.mark.parametrize("expired_at", ["10:10:00", "10:10:01"])
 async def test_stale_helper_invalidates_without_running_optimizer(
-    hourly_entry, hass, freezer
+    hourly_entry, hass, freezer, expired_at
 ):
     coordinator = hourly_entry.runtime_data
     first = coordinator.data["generated_at"]
-    await advance(hass, freezer, "2026-09-18T10:10:01+00:00", refresh_helper=False)
+    await advance(hass, freezer, f"2026-09-18T{expired_at}+00:00", refresh_helper=False)
     assert coordinator.data["status"] == "invalid_input"
     assert coordinator._runner is None and coordinator._worker is None
     assert coordinator.previous_plan["generated_at"] == first
@@ -249,3 +250,23 @@ async def test_late_result_publishes_current_mode_not_finished_first_interval(
     assert coordinator.data["intervals"][0]["start"] == "2026-09-18T10:15:00+00:00"
     assert hass.states.get("sensor.switching_energy_compass").state == "DISCHARGE_GRID"
     assert coordinator._battery_commitment["since"] == "2026-09-18T10:15:00+00:00"
+
+
+async def test_identical_fresh_soc_report_recovers_on_health_tick(switching_entry, hass, freezer):
+    from copy import deepcopy
+
+    coordinator = switching_entry.runtime_data
+    config = deepcopy(dict(switching_entry.data))
+    config["settings"]["soc_max_age_seconds"] = 600
+    hass.config_entries.async_update_entry(switching_entry, data=config)
+    await coordinator.async_recalculate()
+    first = coordinator.data["generated_at"]
+    await advance(hass, freezer, "2026-09-18T10:10:01+00:00", refresh_helper=False)
+    assert coordinator.data["status"] == "invalid_input"
+    freezer.move_to("2026-09-18T10:11:00+00:00")
+    hass.states.async_set("sensor.soc", "50")
+    await hass.async_block_till_done()
+    assert coordinator.data["status"] == "invalid_input"
+    await advance(hass, freezer, "2026-09-18T10:16:00+00:00", refresh_helper=False)
+    assert coordinator.data["valid"], coordinator.data
+    assert coordinator.data["generated_at"] != first
