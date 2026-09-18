@@ -412,7 +412,6 @@ def build_problem(
             values["wear_per_kwh"],
             values["allow_grid_charge"],
             values["allow_battery_export"],
-            values["prevent_grid_energy_export"],
         )
         if values["daily_cycles"]:
             selected = config.get("measurements", {}).get("throughput_today")
@@ -454,6 +453,7 @@ def build_problem(
         budgets,
         config["timezone"],
         minimum_mode_minutes=values["minimum_mode_minutes"],
+        limit_export_to_pv=values["limit_export_to_pv"],
         initial_battery_mode=battery_commitment["mode"]
         if battery and battery_commitment
         else None,
@@ -640,11 +640,13 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
         "quality": quality,
         "dispatch_policy": {
             "minimum_mode_minutes": values["minimum_mode_minutes"],
-            "prevent_grid_energy_export": values["prevent_grid_energy_export"],
-            "initial_energy_origin": "unknown_non_exportable"
-            if values["prevent_grid_energy_export"]
-            else "unrestricted",
-            "origin_scope": "current_plan",
+            "limit_export_to_pv": values["limit_export_to_pv"],
+            "export_limit_scope": "planning_horizon",
+            "pv_generation_kwh": sum(
+                slot.pv_kwh - flow.curtail_kwh
+                for slot, flow in zip(problem.slots, plan.flows, strict=True)
+            ),
+            "grid_export_kwh": sum(flow.grid_export_kwh for flow in plan.flows),
         },
         "measurements": measurement_diagnostics(config, states, now),
         "presentation": {

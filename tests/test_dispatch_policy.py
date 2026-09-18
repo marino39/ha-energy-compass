@@ -1,4 +1,4 @@
-"""Physical proofs for direction dwell and origin-restricted battery export."""
+"""Physical proofs for direction dwell and the simplified PV export budget."""
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -47,21 +47,21 @@ def dispatch(rows, *, minutes=15, **changes):
 def test_defaults_reach_existing_entry_and_engine():
     config = default_configuration("PLN", "UTC")
     assert config["settings"]["minimum_mode_minutes"] == 60
-    assert config["settings"]["prevent_grid_energy_export"] is True
+    assert config["settings"]["limit_export_to_pv"] is True
     del config["settings"]["minimum_mode_minutes"]
-    del config["settings"]["prevent_grid_energy_export"]
+    del config["settings"]["limit_export_to_pv"]
     config["sources"].update(
         battery_enabled=True, soc=EntityBinding("sensor.soc").to_dict()
     )
     now = datetime(2026, 9, 18, tzinfo=UTC)
     states = {"sensor.soc": {"state": "50", "attributes": {}, "last_updated": now}}
     source, values, _ = build_problem(config, states, now)
-    assert values["prevent_grid_energy_export"] is True
+    assert values["limit_export_to_pv"] is True
     assert source.minimum_mode_minutes == 60
-    assert source.battery.prevent_grid_energy_export is True
+    assert source.limit_export_to_pv is True
 
 
-def test_grid_charge_can_supply_home_but_never_export():
+def test_zero_pv_means_zero_export_but_grid_charge_can_supply_home():
     source = dispatch(((0.1, 0, 0, 0), (2, 5, 0, 1)), minutes=60)
     result = solve(source)
     assert result.flows[0].charge_kwh == pytest.approx(1)
@@ -75,38 +75,65 @@ def test_solar_can_be_stored_and_exported_with_losses():
         source, battery=replace(source.battery, eta_charge=0.9, eta_discharge=0.8)
     )
     result = solve(source)
-    assert result.flows[0].end_pv_soc_kwh == pytest.approx(3.6)
+    assert result.flows[0].end_soc_kwh == pytest.approx(3.6)
     assert result.flows[1].grid_export_kwh == pytest.approx(2.88)
-    assert result.flows[1].end_pv_soc_kwh == pytest.approx(0)
+    assert result.flows[1].end_soc_kwh == pytest.approx(0)
 
 
-def test_unknown_initial_energy_is_not_exportable():
+def test_initial_soc_does_not_create_an_extra_export_budget():
     source = dispatch(((1, 5, 0, 0),), minutes=60)
     source = replace(source, battery=replace(source.battery, initial_kwh=5))
     assert solve(source).flows[0].grid_export_kwh == pytest.approx(0)
 
 
-def test_grid_energy_cannot_displace_solar_load_into_export():
+def test_export_budget_uses_gross_pv_generation_not_surplus_or_origin():
     source = dispatch(((1, 5, 1, 1),), minutes=60)
     source = replace(source, battery=replace(source.battery, initial_kwh=5))
     result = solve(source)
-    assert result.flows[0].discharge_kwh == pytest.approx(0)
-    assert result.flows[0].grid_export_kwh == pytest.approx(0)
+    assert result.flows[0].discharge_kwh == pytest.approx(1)
+    assert result.flows[0].grid_export_kwh == pytest.approx(1)
 
 
-def test_solar_charge_cannot_be_relabelled_from_grid_fed_load():
+def test_grid_charged_energy_can_be_exported_within_pv_budget():
     source = dispatch(((0, 0, 1, 1), (1, 5, 0, 0)), minutes=60)
     result = solve(source)
-    assert result.flows[0].pv_charge_kwh == pytest.approx(0)
-    assert result.flows[1].grid_export_kwh == pytest.approx(0)
+    assert result.flows[0].grid_import_kwh == pytest.approx(1)
+    assert result.flows[1].grid_export_kwh == pytest.approx(1)
 
 
 def test_policy_can_be_explicitly_disabled():
     source = dispatch(((0.1, 0, 0, 0), (1, 5, 0, 0)), minutes=60)
-    source = replace(
-        source, battery=replace(source.battery, prevent_grid_energy_export=False)
-    )
+    source = replace(source, limit_export_to_pv=False)
     assert solve(source).flows[1].grid_export_kwh > 0
+
+
+def test_initial_soc_can_be_exported_against_horizon_pv_generation():
+    source = dispatch(((1, 10, 0, 0), (1, 0, 2, 2)), minutes=60)
+    source = replace(source, battery=replace(source.battery, initial_kwh=5))
+    result = solve(source)
+    assert result.flows[0].grid_export_kwh == pytest.approx(2)
+    assert sum(f.grid_export_kwh for f in result.flows) == pytest.approx(2)
+
+
+def test_direct_pv_export_and_battery_export_share_one_budget():
+    source = dispatch(((1, 100, 2, 0), (1, 10, 0, 0)), minutes=60)
+    source = replace(source, battery=replace(source.battery, initial_kwh=5))
+    result = solve(source)
+    assert result.flows[0].grid_export_kwh == pytest.approx(2)
+    assert result.flows[1].grid_export_kwh == pytest.approx(0)
+
+
+def test_curtailed_pv_cannot_increase_the_export_budget():
+    source = dispatch(((1, 100, 10, 0), (1, 10, 0, 0)), minutes=60)
+    source = replace(
+        source,
+        site=replace(source.site, inverter_kw=1),
+        battery=replace(source.battery, initial_kwh=5, charge_kw=0),
+    )
+    result = solve(source)
+    assert result.flows[0].curtail_kwh == pytest.approx(9)
+    assert result.flows[0].grid_export_kwh == pytest.approx(1)
+    assert result.flows[1].grid_export_kwh == pytest.approx(0)
 
 
 def test_minimum_direction_duration_stops_quarter_hour_arbitrage():

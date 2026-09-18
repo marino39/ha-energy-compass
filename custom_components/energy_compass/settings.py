@@ -87,7 +87,7 @@ INTEGERS = {
 BOOLEANS = {
     "allow_grid_charge": ("hardware", False),
     "allow_battery_export": ("hardware", False),
-    "prevent_grid_energy_export": ("planning", True),
+    "limit_export_to_pv": ("planning", True),
     "allow_curtailment": ("hardware", False),
     "buy_apply_vat": ("tariffs", False),
     "sell_apply_vat": ("tariffs", False),

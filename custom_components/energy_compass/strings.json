@@ -188,12 +188,12 @@
           "terminal_value_per_kwh": "Terminal value per kwh",
           "terminal_mode": "Terminal mode",
           "minimum_mode_minutes": "Minimum battery direction duration",
-          "prevent_grid_energy_export": "Prevent resale of grid energy"
+          "limit_export_to_pv": "Limit grid export to PV generation"
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}",
         "data_description": {
           "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
-          "prevent_grid_energy_export": "Enabled by default. Battery export uses only surplus PV stored within the current plan. Initial SOC has unknown origin and can serve residual household load but cannot be exported. Does not control the inverter."
+          "limit_export_to_pv": "Enabled by default. Total grid export over the planning horizon cannot exceed total PV generation after curtailment. Direct solar and battery export share this budget. Battery origin is not tracked; initial SOC can fund export within the budget."
         }
       },
       "compass": {
@@ -487,12 +487,12 @@
           "terminal_value_per_kwh": "Terminal value per kwh",
           "terminal_mode": "Terminal mode",
           "minimum_mode_minutes": "Minimum battery direction duration",
-          "prevent_grid_energy_export": "Prevent resale of grid energy"
+          "limit_export_to_pv": "Limit grid export to PV generation"
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}",
         "data_description": {
           "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
-          "prevent_grid_energy_export": "Enabled by default. Battery export uses only surplus PV stored within the current plan. Initial SOC has unknown origin and can serve residual household load but cannot be exported. Does not control the inverter."
+          "limit_export_to_pv": "Enabled by default. Total grid export over the planning horizon cannot exceed total PV generation after curtailment. Direct solar and battery export share this budget. Battery origin is not tracked; initial SOC can fund export within the budget."
         }
       },
       "compass": {

@@ -143,6 +143,8 @@ def validate_problem(problem: Problem) -> None:
     if problem.terminal_mode not in ("preserve_initial", "value"):
         raise InputError("invalid terminal mode")
     finite(problem.terminal_value_per_kwh, "terminal value")
+    if type(problem.limit_export_to_pv) is not bool:
+        raise InputError("PV export limit must be boolean")
     if not 0 <= finite(problem.minimum_mode_minutes, "minimum_mode_minutes") <= 1440:
         raise InputError("minimum_mode_minutes must be in [0, 1440]")
     if problem.initial_battery_mode not in (None, "charge", "discharge"):
@@ -186,8 +188,6 @@ def validate_problem(problem: Problem) -> None:
             battery.allow_battery_export, bool
         ):
             raise InputError("battery capabilities must be boolean")
-        if type(battery.prevent_grid_energy_export) is not bool:
-            raise InputError("grid energy export policy must be boolean")
     for day, value in problem.remaining_daily_throughput_kwh:
         try:
             canonical = date.fromisoformat(day).isoformat()

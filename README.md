@@ -25,7 +25,7 @@ Window alerts require **Notify enabled** in integration options and a nonempty a
 
 The extra-kWh estimate assumes the optimizer's proposed plan. Until a controller follows that plan, actual consumption savings can differ under existing automation. A forecast-dependent recommendation is not a measurement of savings. See [model and limitations](docs/model.md) for energy balance, coverage, battery assumptions, and solver behavior.
 
-Planning options default to a **60-minute battery direction hold** and **no resale of grid-charged battery energy**. A hold allows idle periods and switching between PV and grid charging. Unknown initial battery energy is conservatively excluded from export on every plan; only surplus PV stored within that plan is exportable. See [policy details and limitations](docs/model.md#battery-direction-duration-and-grid-energy-resale).
+Planning options default to a **60-minute battery direction hold** and **total grid export no greater than total PV generation over the planning horizon**. A hold allows idle periods and switching between PV and grid charging. The export budget includes direct solar and battery export; battery provenance is not tracked and initial SOC is eligible within the budget. See [policy details and limitations](docs/model.md#battery-direction-duration-and-pv-export-budget).
 
 ## License
 
