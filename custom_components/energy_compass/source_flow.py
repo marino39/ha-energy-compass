@@ -406,6 +406,14 @@ class SourceEditor:
                     self._draft["soc_options"][prefix + "timestamp_path"] = user_input[
                         "timestamp_path"
                     ]
+                    self._draft["soc_options"][prefix + "timestamp_policy"] = (
+                        user_input.get(
+                            "timestamp_policy",
+                            self._draft["soc_options"].get(
+                                prefix + "timestamp_policy", "auto"
+                            ),
+                        )
+                    )
             elif target == "load":
                 if user_input["unit"] not in ("W", "kW"):
                     errors["base"] = "invalid_input"
@@ -433,25 +441,46 @@ class SourceEditor:
                     ).to_dict()
             if not errors:
                 return await self.async_step_menu()
+        soc_source = target in ("soc", "bms_soc")
+        prefix = "bms_" if target == "bms_soc" else ""
+        options = self._draft["soc_options"]
+        fields = {
+            vol.Required(
+                "unit",
+                default=options.get(prefix + "unit", "%")
+                if soc_source
+                else "kWh"
+                if "energy" in target or target == "throughput_today"
+                else "W",
+            ): select(["%", "fraction", "kWh", "Wh", "kW", "W"]),
+            vol.Required(
+                "sign", default=options.get(prefix + "sign", 1) if soc_source else 1
+            ): number(-1, 1, step=2),
+            vol.Required(
+                "timestamp_path",
+                default=options.get(prefix + "timestamp_path", "last_updated")
+                if soc_source
+                else "last_updated",
+            ): selector.TextSelector(),
+            vol.Required(
+                "max_age_seconds",
+                default=self._draft["settings"][
+                    "bms_max_age_seconds" if prefix else "soc_max_age_seconds"
+                ]
+                if soc_source
+                else 600,
+            ): number(1, 86400, "s"),
+        }
+        if soc_source:
+            fields[
+                vol.Required(
+                    "timestamp_policy",
+                    default=options.get(prefix + "timestamp_policy", "auto"),
+                )
+            ] = select(["auto", "exact_path"])
         return self.async_show_form(
             step_id="source_measurement",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        "unit",
-                        default="%"
-                        if target in ("soc", "bms_soc")
-                        else "kWh"
-                        if "energy" in target or target == "throughput_today"
-                        else "W",
-                    ): select(["%", "fraction", "kWh", "Wh", "kW", "W"]),
-                    vol.Required("sign", default=1): number(-1, 1, step=2),
-                    vol.Required(
-                        "timestamp_path", default="last_updated"
-                    ): selector.TextSelector(),
-                    vol.Required("max_age_seconds", default=600): number(1, 86400, "s"),
-                }
-            ),
+            data_schema=vol.Schema(fields),
             errors=errors,
         )
 

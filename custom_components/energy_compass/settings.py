@@ -153,8 +153,10 @@ def default_configuration(currency: str, timezone: str) -> dict:
         "soc_options": {
             "unit": "%",
             "bms_unit": "%",
-            "timestamp_path": "last_updated",
-            "bms_timestamp_path": "last_updated",
+            "timestamp_path": "last_reported",
+            "bms_timestamp_path": "last_reported",
+            "timestamp_policy": "auto",
+            "bms_timestamp_policy": "auto",
         },
     }
 
@@ -177,6 +179,14 @@ def validate_configuration(
     except (KeyError, ZoneInfoNotFoundError) as err:
         raise InputError("invalid timezone") from err
     values = dict(config["settings"])
+    for prefix in ("", "bms_"):
+        if config.get("soc_options", {}).get(
+            prefix + "timestamp_policy", "auto"
+        ) not in (
+            "auto",
+            "exact_path",
+        ):
+            raise InputError("invalid SOC timestamp policy")
     for key, (_, default, low, high, unit) in NUMBERS.items():
         if key in config.get("helpers", {}):
             selected = NumericSetting.from_dict(config["helpers"][key])

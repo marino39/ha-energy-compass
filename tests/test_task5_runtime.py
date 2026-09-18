@@ -5,7 +5,11 @@ import pytest
 
 from custom_components.energy_compass.config_models import PriceSource
 from custom_components.energy_compass.engine.models import InputError
-from custom_components.energy_compass.runtime import build_problem, compute
+from custom_components.energy_compass.runtime import (
+    build_problem,
+    compute,
+    freshness_deadline,
+)
 from custom_components.energy_compass.settings import default_configuration
 from custom_components.energy_compass.sources.bindings import (
     EntityBinding,
@@ -55,6 +59,40 @@ def test_all_physical_values_reach_engine():
     assert problem.site.grid_import_kw == 7
     assert problem.site.grid_export_kw == 2
     assert "unvalidated_capacity" in quality["warnings"]
+
+
+def test_load_quality_distinguishes_daily_estimate_from_missing_recorder_history():
+    now = datetime(2026, 9, 17, 10, tzinfo=UTC)
+    config = default_configuration("EUR", "UTC")
+    config["settings"].update(
+        horizon_hours=2, display_horizon_hours=2, reference_horizon_hours=2
+    )
+    _, _, daily_quality = build_problem(config, {}, now)
+    assert daily_quality["load"]["source_mode"] == "daily_estimate"
+    assert daily_quality["load"]["method"] == "daily_estimate"
+    assert daily_quality["load"]["insufficient_history_hours"] is None
+    assert "load_history_fallback" not in daily_quality["warnings"]
+    config["sources"]["load"] = {
+        "mode": "recorder",
+        "statistic_id": "sensor.household",
+        "history_unit": "kWh",
+    }
+    config["settings"].update(allow_fallback=True, fallback_daily_kwh=0)
+    _, _, fallback_quality = build_problem(config, {}, now)
+    load = fallback_quality["load"]
+    assert (load["source_mode"], load["method"]) == ("recorder", "fallback")
+    assert (
+        load["coverage_hours"],
+        load["fallback_coverage_hours"],
+        load["fallback_fraction"],
+    ) == (2, 2, 1)
+    assert load["insufficient_history_hours"] == 2
+    assert all(
+        row["samples_available"] == 0 and row["samples_required"] == 2
+        for row in load["coverage"]
+    )
+    assert "load_history_fallback" in fallback_quality["warnings"]
+    assert "load_history_fallback" in compute(config, {}, now)["quality"]["warnings"]
 
 
 def test_short_next_day_coverage_does_not_invent_prices():
@@ -206,6 +244,71 @@ def test_soc_attribute_unit_is_independent_of_entity_state(target):
     )
     problem, _, _ = build_problem(config, states, now)
     assert problem.battery.initial_kwh == 10
+
+
+@pytest.mark.parametrize("target", ["soc", "bms_soc"])
+@pytest.mark.parametrize("path", ["last_reported", "last_updated"])
+def test_native_report_timestamp_controls_soc_validation_and_expiry(target, path):
+    config = battery_configuration()
+    config["sources"]["bms_soc"] = EntityBinding("sensor.bms_soc").to_dict()
+    config["soc_options"].update(timestamp_path=path, bms_timestamp_path=path)
+    config["soc_options"].pop("timestamp_policy", None)
+    config["soc_options"].pop("bms_timestamp_policy", None)
+    now = datetime(2026, 9, 17, 10, 11, tzinfo=UTC)
+    states = {
+        name: {
+            "state": "50",
+            "attributes": {},
+            "last_updated": now - timedelta(minutes=11),
+            "last_reported": now - timedelta(minutes=1),
+        }
+        for name in ("sensor.soc", "sensor.bms_soc")
+    }
+    problem, values, _ = build_problem(config, states, now)
+    assert problem.battery.initial_kwh == 10
+    assert freshness_deadline(config, states, values, now) == now + timedelta(minutes=9)
+    states[f"sensor.{target}"]["last_reported"] = now - timedelta(minutes=11)
+    with pytest.raises(InputError, match="stale"):
+        build_problem(config, states, now)
+
+
+@pytest.mark.parametrize("stamp", ["stale", "future", "invalid"])
+def test_custom_soc_measurement_timestamp_never_uses_recent_receipt(stamp):
+    config = battery_configuration()
+    config["soc_options"]["timestamp_path"] = "attributes.reported_at"
+    now = datetime(2026, 9, 17, 10, tzinfo=UTC)
+    observed = {
+        "stale": now - timedelta(minutes=11),
+        "future": now + timedelta(minutes=11),
+        "invalid": "bad timestamp",
+    }[stamp]
+    states = {
+        "sensor.soc": {
+            "state": "50",
+            "attributes": {"reported_at": observed},
+            "last_updated": now,
+            "last_reported": now,
+        }
+    }
+    with pytest.raises(InputError):
+        build_problem(config, states, now)
+
+
+def test_exact_native_last_updated_keeps_change_time_semantics():
+    config = battery_configuration()
+    config["soc_options"]["timestamp_policy"] = "exact_path"
+    config["soc_options"]["timestamp_path"] = "last_updated"
+    now = datetime(2026, 9, 17, 10, tzinfo=UTC)
+    states = {
+        "sensor.soc": {
+            "state": "50",
+            "attributes": {},
+            "last_updated": now - timedelta(minutes=11),
+            "last_reported": now,
+        }
+    }
+    with pytest.raises(InputError, match="stale"):
+        build_problem(config, states, now)
 
 
 @pytest.mark.parametrize("role", ["buy", "pv"])

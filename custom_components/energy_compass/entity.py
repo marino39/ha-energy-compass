@@ -16,6 +16,7 @@ PLAN_ATTRIBUTES = frozenset(
         "windows",
         "input_ages",
         "measurements",
+        "load_quality",
     }
 )
 
@@ -122,6 +123,7 @@ class EnergyCompassEntity(CoordinatorEntity):
             attrs["monthly_charge_reporting_only"] = data.get(
                 "monthly_charge_reporting_only"
             )
+            attrs["load_quality"] = quality.get("load")
         elif self.key == "consumption_cost":
             attrs.update(method="finite_difference", probe_kwh=data.get("probe_kwh"))
         elif self.key == "energy_compass" and data.get("intervals"):
@@ -157,6 +159,7 @@ class EnergyCompassEntity(CoordinatorEntity):
                 missing_sources=[data["reason"]]
                 if not data.get("valid") and data.get("reason")
                 else quality.get("missing_sources", []),
+                load_quality=quality.get("load"),
             )
         elif self.key in ("expected_net_cost", "expected_wear_cost"):
             attrs["coverage_hours"] = data.get("cost_coverage_hours")

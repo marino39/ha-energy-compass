@@ -16,7 +16,12 @@ def test_public_contract():
         "expected_wear_cost",
         "optimizer_status",
     }
-    assert {"intervals", "outlook", "favorable_windows"} <= PLAN_ATTRIBUTES
+    assert {
+        "intervals",
+        "outlook",
+        "favorable_windows",
+        "load_quality",
+    } <= PLAN_ATTRIBUTES
 
 
 async def test_absent_window_is_unavailable_with_coverage_status(
@@ -100,6 +105,10 @@ async def test_unknown_current_probe_keeps_known_future_advice(
     validity = hass.states.get("binary_sensor.future_forecast_valid")
     assert validity.state == "on"
     assert validity.attributes["current_guidance_valid"] is False
+    plan_quality = hass.states.get("sensor.future_plan").attributes["load_quality"]
+    assert plan_quality == validity.attributes["load_quality"]
+    assert plan_quality["source_mode"] == "forecast"
+    assert plan_quality["method"] == "forecast"
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 

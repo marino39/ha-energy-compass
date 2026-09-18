@@ -1,11 +1,16 @@
 from collections.abc import Mapping
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from typing import Any
 
 from ..config_models import LoadSource, resolve_numeric
-from ..engine.forecast import forecast_load
-from ..engine.models import ForecastSettings, InputError
+from ..engine.forecast import forecast_load_with_quality
+from ..engine.models import (
+    ForecastSettings,
+    InputError,
+    LoadCoverageSegment,
+    LoadForecastResult,
+)
 from ..engine.normalize import aware, finite, resample_energy
 from .bindings import parse_intervals, parse_timestamp
 
@@ -152,22 +157,64 @@ def load_for_slots(
     fallback_daily_kwh: float | None = None,
 ) -> tuple[float, ...]:
     """Forecast from the explicitly selected load source and fallback policy."""
+    return load_for_slots_with_quality(
+        source,
+        states,
+        now,
+        slots,
+        timezone,
+        settings,
+        statistics=statistics,
+        power_samples=power_samples,
+        fallback_daily_kwh=fallback_daily_kwh,
+    ).values
+
+
+def load_for_slots_with_quality(
+    source: LoadSource,
+    states: Mapping[str, Any],
+    now: datetime,
+    slots: tuple[tuple[datetime, datetime], ...],
+    timezone: str,
+    settings: ForecastSettings,
+    *,
+    statistics: tuple[Mapping[str, Any], ...] = (),
+    power_samples: tuple[tuple[Any, Any], ...] = (),
+    fallback_daily_kwh: float | None = None,
+) -> LoadForecastResult:
+    """Return the source's selected values and their actual coverage method."""
     aware(now, "now")
+
+    def selected_coverage(method):
+        coverage = []
+        for start, end in slots:
+            begin = aware(start, "slot start").astimezone(UTC)
+            finish = aware(end, "slot end").astimezone(UTC)
+            if finish <= begin:
+                raise InputError("slot end must follow start")
+            coverage.append(LoadCoverageSegment(begin, finish, method, None, None))
+        return tuple(coverage)
+
     if source.mode == "forecast":
         if source.forecast is None:
             raise InputError("forecast load source missing")
         series = parse_intervals(states, source.forecast, now)
         if any(row.value < 0 for row in series):
             raise InputError("household load cannot be negative")
-        return resample_energy(series, slots)
+        return LoadForecastResult(
+            resample_energy(series, slots), selected_coverage("forecast")
+        )
     if source.mode == "daily_estimate":
         if source.daily_estimate is None:
             raise InputError("daily estimate missing")
         daily = resolve_numeric(source.daily_estimate, states, now)
         if daily < 0:
             raise InputError("daily load must be nonnegative")
-        return tuple(
-            daily * (end - start).total_seconds() / 86400 for start, end in slots
+        return LoadForecastResult(
+            tuple(
+                daily * (end - start).total_seconds() / 86400 for start, end in slots
+            ),
+            selected_coverage("daily_estimate"),
         )
     if source.mode == "recorder":
         if source.statistic_id:
@@ -187,5 +234,7 @@ def load_for_slots(
             )
         else:
             raise InputError("recorder load source missing")
-        return forecast_load(history, slots, timezone, fallback_daily_kwh, settings)
+        return forecast_load_with_quality(
+            history, slots, timezone, fallback_daily_kwh, settings
+        )
     raise InputError("invalid load source mode")

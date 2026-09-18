@@ -1,3 +1,4 @@
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
@@ -49,6 +50,39 @@ async def test_migration_preserves_choices(hass):
     assert await async_migrate_entry(hass, entry)
     assert entry.version == 2
     assert entry.data["settings"]["operating_floor"] == 20
+
+
+@pytest.mark.parametrize(
+    "path,policy",
+    [
+        ("last_updated", None),
+        ("attributes.reported_at", None),
+        ("last_updated", "exact_path"),
+    ],
+)
+async def test_version_one_migration_retains_soc_timestamp_paths_in_data_and_options(
+    hass, path, policy
+):
+    config = default_configuration("EUR", "UTC")
+    config["soc_options"] = {"timestamp_path": path, "bms_timestamp_path": path}
+    if policy:
+        config["soc_options"].update(
+            timestamp_policy=policy, bms_timestamp_policy=policy
+        )
+    options_config = deepcopy(config)
+    entry = MockConfigEntry(
+        domain="energy_compass",
+        data=config,
+        options={"configuration": options_config},
+        version=1,
+    )
+    entry.add_to_hass(hass)
+    assert await async_migrate_entry(hass, entry)
+    for stored in (entry.data, entry.options["configuration"]):
+        assert stored["soc_options"]["timestamp_path"] == path
+        assert stored["soc_options"]["bms_timestamp_path"] == path
+        assert stored["soc_options"]["timestamp_policy"] == (policy or "auto")
+        assert stored["soc_options"]["bms_timestamp_policy"] == (policy or "auto")
 
 
 async def test_two_entries_unload(recorder_mock, hass, enable_custom_integrations):
