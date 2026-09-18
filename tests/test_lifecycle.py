@@ -205,9 +205,10 @@ async def test_source_disappears_and_recovers(
     )
     hass.states.async_set("input_number.limit", "unavailable")
     await hass.async_block_till_done()
-    assert hass.states.get("binary_sensor.synthetic_forecast_valid").state == "off"
+    assert hass.states.get("binary_sensor.synthetic_forecast_valid").state == "on"
+    assert hass.states.get("binary_sensor.synthetic_alert").state == "on"
     assert (
-        hass.states.get("sensor.synthetic_consumption_compass").state == "unavailable"
+        hass.states.get("sensor.synthetic_consumption_compass").state != "unavailable"
     )
     hass.states.async_set("input_number.limit", "5", {"unit_of_measurement": "kW"})
     await hass.async_block_till_done()
@@ -295,7 +296,8 @@ async def test_rapid_updates_serialize_jobs_and_discard_old_generation(
                     "input_number.limit", value, {"unit_of_measurement": "kW"}
                 )
                 await asyncio.sleep(0)
-            assert not entry.runtime_data.data["valid"]
+            assert entry.runtime_data.data["valid"]
+            assert entry.runtime_data.data["refreshing"]
         finally:
             release.set()
         await job
@@ -349,7 +351,8 @@ async def test_registry_rename_follows_identity_and_removal_requires_reconfigure
     registry.async_remove("sensor.renamed_limit")
     hass.states.async_set("sensor.renamed_limit", "9", {"unit_of_measurement": "kW"})
     await hass.async_block_till_done()
-    assert not entry.runtime_data.data["valid"]
+    assert entry.runtime_data.data["valid"]
+    assert entry.runtime_data.data["alert"]["code"] == "invalid_input"
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 
@@ -632,6 +635,7 @@ async def test_missing_future_continuation_recovers_without_losing_current(
         assert entry.runtime_data.data["quality"]["missing_sources"] == []
         hass.states.async_set("sensor.today", "unavailable")
         await hass.async_block_till_done()
-        assert not entry.runtime_data.data["valid"]
+        assert entry.runtime_data.data["valid"]
+        assert entry.runtime_data.data["alert"]["code"] == "invalid_input"
     finally:
         await hass.config_entries.async_unload(entry.entry_id)

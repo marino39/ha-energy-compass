@@ -42,7 +42,7 @@ class EnergyCompassEntity(CoordinatorEntity):
             manufacturer="Energy Compass",
             model="Advisory",
         )
-        if key == "optimizer_status":
+        if key in ("optimizer_status", "alert"):
             self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def _publication_data(self):
@@ -68,7 +68,7 @@ class EnergyCompassEntity(CoordinatorEntity):
 
     @property
     def available(self):
-        if self.key in ("forecast_valid", "optimizer_status"):
+        if self.key in ("forecast_valid", "optimizer_status", "alert"):
             return True
         data = self.coordinator.data
         fresh = bool(
@@ -107,6 +107,7 @@ class EnergyCompassEntity(CoordinatorEntity):
             "generated_at": data.get("generated_at"),
             "valid_until": data.get("valid_until"),
             "refreshing": data.get("refreshing", False),
+            "plan_retained": data.get("plan_retained", False),
             "reasons": quality.get("warnings", [])
             + (
                 [data["coverage_reason"]]

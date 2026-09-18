@@ -110,7 +110,7 @@ async def test_hourly_plan_advances_quarters_without_new_solve(
 
 
 @pytest.mark.parametrize("expired_at", ["10:10:00", "10:10:01"])
-async def test_stale_helper_invalidates_without_running_optimizer(
+async def test_stale_helper_alerts_and_retains_without_running_optimizer(
     hourly_entry, hass, freezer, expired_at
 ):
     coordinator = hourly_entry.runtime_data
@@ -118,8 +118,9 @@ async def test_stale_helper_invalidates_without_running_optimizer(
     await advance(hass, freezer, f"2026-09-18T{expired_at}+00:00", refresh_helper=False)
     assert coordinator.data["status"] == "invalid_input"
     assert coordinator._runner is None and coordinator._worker is None
-    assert coordinator.previous_plan["generated_at"] == first
-    assert hass.states.get("binary_sensor.hourly_forecast_valid").state == "off"
+    assert coordinator.data["generated_at"] == first
+    assert hass.states.get("binary_sensor.hourly_forecast_valid").state == "on"
+    assert hass.states.get("binary_sensor.hourly_alert").state == "on"
     await advance(hass, freezer, "2026-09-18T10:11:00+00:00")
     assert coordinator.data["valid"]
     assert coordinator.data["generated_at"] != first

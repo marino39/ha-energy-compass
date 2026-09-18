@@ -1034,6 +1034,33 @@
             "name": "Current consumption guidance valid"
           }
         }
+      },
+      "alert": {
+        "name": "Alert",
+        "state_attributes": {
+          "code": {
+            "name": "Code",
+            "state": {
+              "soc_measurement_jump": "SOC measurement jump",
+              "invalid_input": "Invalid input",
+              "timeout": "Calculation timeout",
+              "infeasible": "No feasible plan",
+              "error": "Calculation error"
+            }
+          },
+          "reason": {
+            "name": "Reason"
+          },
+          "since": {
+            "name": "Since"
+          },
+          "plan_retained": {
+            "name": "Previous plan retained"
+          },
+          "last_successful_plan_at": {
+            "name": "Last successful plan"
+          }
+        }
       }
     }
   },

@@ -477,6 +477,7 @@ async def test_native_failed_and_superseded_results_preserve_clock(
     monkeypatch.setattr(module, "compute", compute)
     hass.states.async_set("sensor.soc", "unavailable")
     await coordinator.async_recalculate()
-    assert not coordinator.data["valid"]
+    assert coordinator.data["valid"]
+    assert coordinator.data["alert"]["code"] == "invalid_input"
     assert coordinator._battery_commitment == original
     assert await hass.config_entries.async_unload(entry.entry_id)

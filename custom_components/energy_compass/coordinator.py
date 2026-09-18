@@ -61,6 +61,9 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._fingerprint = None
         self._soc_reference = None
         self._previous_soc = None
+        self._soc_recovery = None
+        self._soc_recovery_last = None
+        self.last_successful_plan_at = None
         self._anchors = {}
         self._store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.anchors")
         self._battery_commitment = None
@@ -225,6 +228,8 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                 "unknown",
                 "unavailable",
             ):
+                if source.soc and entity_id == source.soc.entity_id:
+                    self._soc_recovery = self._soc_recovery_last = None
                 raise InputError(f"missing or unavailable source: {entity_id}")
         groups = [
             price.forecast
@@ -240,8 +245,44 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             )
             _coverage(rows, now)
         if source.battery_enabled:
-            _soc(config, source, values, states, now, self._previous_soc)
+            self._validate_soc(config, source, values, states, now)
         return config, states, now, values
+
+    def _validate_soc(self, config, source, values, states, now):
+        """Rebase a corrected SOC only after fresh plausible reports span a minute."""
+        try:
+            _soc(config, source, values, states, now, self._previous_soc)
+        except InputError as err:
+            if str(err) != "SOC measurement jump":
+                self._soc_recovery = self._soc_recovery_last = None
+                raise
+            # Range, age, unit and optional BMS agreement still apply independently.
+            try:
+                _, observation = _soc(config, source, values, states, now)
+            except InputError:
+                self._soc_recovery = self._soc_recovery_last = None
+                raise
+            if observation[0] <= self._previous_soc[0]:
+                self._soc_recovery = self._soc_recovery_last = None
+                raise
+            candidate = self._soc_recovery
+            if candidate:
+                try:
+                    _soc(config, source, values, states, now, candidate)
+                    _soc(config, source, values, states, now, self._soc_recovery_last)
+                except InputError:
+                    candidate = None
+                else:
+                    if (observation[0] - candidate[0]).total_seconds() >= 60:
+                        self._previous_soc = observation
+                        self._soc_reference = None
+                        self._soc_recovery = self._soc_recovery_last = None
+                        return
+            if candidate is None:
+                self._soc_recovery = observation
+            self._soc_recovery_last = observation
+            raise
+        self._soc_recovery = self._soc_recovery_last = None
 
     @callback
     def _source_changed(self, event):
@@ -286,7 +327,11 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         if self._boundary:
             self._boundary.cancel()
         now = dt_util.utcnow()
-        delay = max(0.1, (self._refresh_due - now).total_seconds())
+        delay = (
+            max(0.1, (self._refresh_due - now).total_seconds())
+            if self._refresh_due and self._runner is None
+            else 300
+        )
         if self.data.get("valid") and self.data.get("valid_until"):
             delay = min(
                 delay,
@@ -317,16 +362,14 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         def refresh():
             self._boundary = None
             now = dt_util.utcnow()
-            if now >= self._refresh_due:
+            if self._refresh_due and now >= self._refresh_due and self._runner is None:
                 self._generation += 1
                 self._invalidate("calculating", "interval_boundary")
                 self._schedule(0)
                 return
             try:
                 _, states, now, current_values = self._inputs()
-                if self.data.get("valid"):
-                    self._publish_current(self.data, states, current_values, now)
-                elif self.data.get("status") == "invalid_input":
+                if self.data.get("alert") and self._runner is None:
                     # Identical SOC reports refresh last_reported without emitting
                     # state_changed. A health tick must recover those inputs too.
                     self._generation += 1
@@ -334,6 +377,8 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                     self._invalidate("calculating", "inputs_recovered")
                     self._schedule(0)
                     return
+                if self.data.get("valid"):
+                    self._publish_current(self.data, states, current_values, now)
             except (InputError, KeyError, ValueError) as err:
                 self._generation += 1
                 self._fingerprint = None
@@ -356,11 +401,14 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         if current is None:
             self._invalidate("invalid_input", "no_current_interval")
             return
-        deadline = min(
-            self._refresh_due,
-            parse_timestamp(rows[-1]["end"]),
-            freshness_deadline(self.configuration, states, values, now),
-        )
+        retained = result.get("plan_retained", False)
+        deadline = parse_timestamp(rows[-1]["end"])
+        if not retained:
+            deadline = min(
+                self._refresh_due,
+                deadline,
+                freshness_deadline(self.configuration, states, values, now),
+            )
         if deadline <= now:
             self._invalidate("invalid_input", "expired_inputs")
             return
@@ -417,33 +465,69 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         ] + ([] if guidance else ["current_guidance_unavailable"])
         current_result = {
             **result,
+            "valid": True,
+            "plan_retained": retained,
+            "alert": result.get("alert"),
             "intervals": rows[current:],
             "outlook": outlook,
             "guidance_valid": guidance,
             "quality": quality,
             "valid_until": deadline.isoformat(),
             "dispatch_policy": policy,
-            "measurements": measurement_diagnostics(self.configuration, states, now),
+            "measurements": result.get("measurements", {})
+            if retained
+            else measurement_diagnostics(self.configuration, states, now),
         }
+        if not retained:
+            self.last_successful_plan_at = result["generated_at"]
         self._anchor_windows({**current_result, "generated_at": now.isoformat()})
         self.async_set_updated_data(current_result)
 
     def _invalidate(self, status, reason):
-        """Revoke advice validity; keep its display only while a replacement runs."""
-        retained = (
-            self.data
-            if status == "calculating"
-            and (self.data.get("valid") or self.data.get("refreshing"))
-            else {}
+        """Report a refresh problem and keep advancing the last covered plan."""
+        now = dt_util.utcnow()
+        alert = self.data.get("alert")
+        if status != "calculating" and (
+            not alert or (alert["status"], alert["reason"]) != (status, reason)
+        ):
+            alert = {
+                "code": "soc_measurement_jump"
+                if reason == "SOC measurement jump"
+                else status,
+                "status": status,
+                "reason": reason,
+                "since": now.isoformat(),
+            }
+        covered = any(
+            parse_timestamp(row["start"]) <= now < parse_timestamp(row["end"])
+            for row in self.data.get("intervals", [])
         )
+        if covered:
+            self._publish_current(
+                {
+                    **self.data,
+                    "status": status,
+                    "reason": reason,
+                    "alert": alert,
+                    "plan_retained": True,
+                    "refreshing": status == "calculating",
+                    "expired_previous_generated_at": None,
+                },
+                None,
+                None,
+                now,
+            )
+            self._next_boundary(self.configuration["settings"])
+            return
         if self.data.get("valid"):
             self.previous_plan = {**deepcopy(self.data), "expired": True}
         self.async_set_updated_data(
             {
-                **retained,
                 "status": status,
                 "valid": False,
-                "refreshing": bool(retained),
+                "refreshing": False,
+                "plan_retained": False,
+                "alert": alert,
                 "reason": reason,
                 "expired_previous_generated_at": self.previous_plan.get("generated_at")
                 if self.previous_plan
@@ -489,6 +573,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             self._boundary.cancel()
             self._boundary = None
         self._runner = asyncio.current_task()
+        cancelled = False
         try:
             while not self._closed:
                 self._pending = False
@@ -561,10 +646,16 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                         self._invalidate("error", type(err).__name__)
                 if not self._pending and generation == self._generation:
                     break
-            if not self._closed:
-                self._next_boundary(values)
+        except asyncio.CancelledError:
+            cancelled = True
+            if self._boundary:
+                self._boundary.cancel()
+                self._boundary = None
+            raise
         finally:
             self._runner = None
+            if not self._closed and not cancelled:
+                self._next_boundary(self.configuration["settings"])
 
     def _commit_battery_direction(self, result):
         rows = result.get("intervals", [])
