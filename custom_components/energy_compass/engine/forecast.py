@@ -2,7 +2,12 @@ from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .models import ForecastSettings, InputError
+from .models import (
+    ForecastSettings,
+    InputError,
+    LoadCoverageSegment,
+    LoadForecastResult,
+)
 from .normalize import aware, finite
 
 
@@ -14,6 +19,19 @@ def forecast_load(
     settings: ForecastSettings,
 ) -> tuple[float, ...]:
     """Predict interval energy from complete local-hour weekday/weekend means."""
+    return forecast_load_with_quality(
+        history, slots, timezone, fallback_daily_kwh, settings
+    ).values
+
+
+def forecast_load_with_quality(
+    history: tuple[tuple[datetime, float], ...],
+    slots: tuple[tuple[datetime, datetime], ...],
+    timezone: str,
+    fallback_daily_kwh: float | None,
+    settings: ForecastSettings,
+) -> LoadForecastResult:
+    """Keep each history decision with the predicted interval energy."""
     try:
         local = ZoneInfo(timezone)
     except (ZoneInfoNotFoundError, TypeError) as err:
@@ -21,7 +39,7 @@ def forecast_load(
     if settings.lookback_days <= 0 or settings.minimum_samples <= 0:
         raise InputError("invalid forecast sample settings")
     if not slots:
-        return ()
+        return LoadForecastResult((), ())
     first = aware(slots[0][0], "slot start").astimezone(UTC)
     cutoff = first - timedelta(days=settings.lookback_days)
     buckets: dict[tuple[int, int], list[float]] = defaultdict(list)
@@ -47,6 +65,7 @@ def forecast_load(
     else:
         fallback = None
     result = []
+    coverage = []
     for start, end in slots:
         cursor = aware(start, "slot start").astimezone(UTC)
         stop = aware(end, "slot end").astimezone(UTC)
@@ -65,11 +84,21 @@ def forecast_load(
             samples = buckets[(group, wall.hour)]
             if len(samples) >= settings.minimum_samples:
                 hourly = sum(samples) / len(samples)
+                method = "history"
             elif settings.allow_fallback and fallback is not None:
                 hourly = fallback / 24
+                method = "fallback"
             else:
-                raise InputError("insufficient load history")
+                raise InputError(
+                    f"insufficient load history at {cursor.isoformat()}: "
+                    f"{len(samples)}/{settings.minimum_samples} samples available/required"
+                )
             energy += hourly * (section_end - cursor).total_seconds() / 3600
+            coverage.append(
+                LoadCoverageSegment(
+                    cursor, section_end, method, len(samples), settings.minimum_samples
+                )
+            )
             cursor = section_end
         result.append(energy)
-    return tuple(result)
+    return LoadForecastResult(tuple(result), tuple(coverage))

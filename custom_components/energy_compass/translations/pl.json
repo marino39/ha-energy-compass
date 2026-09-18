@@ -71,6 +71,7 @@
           "unit": "Jednostka",
           "sign": "Znak",
           "timestamp_path": "Pole czasu pomiaru",
+          "timestamp_policy": "Zasada czasu pomiaru (auto: czas raportu HA; exact_path: wybrane pole)",
           "max_age_seconds": "Maksymalny wiek pomiaru"
         }
       },
@@ -109,7 +110,9 @@
       "preview": {
         "title": "Podgląd i zapis",
         "data": {
-          "confirm": "Akceptuję podgląd i zapis"
+          "confirm": "Akceptuję podgląd i zapis",
+          "confirm_buy_source": "Potwierdzam pokazane źródło i stawkę zakupu, także zerową stawkę, jeśli ją pokazano",
+          "confirm_load_source": "Potwierdzam pokazane źródło zużycia domu i metodę szacowania lub zastępowania danych"
         },
         "description": "{preview}"
       },
@@ -286,7 +289,11 @@
       "invalid_input": "Niepoprawne lub sprzeczne ustawienia.",
       "invalid_source": "Niepoprawne, brakujące lub nieaktualne źródło; sprawdź podgląd.",
       "component_disabled": "Najpierw włącz ten komponent w ustawieniach instalacji.",
-      "currency_review_required": "Potwierdź kwoty w nowej walucie przed zapisem."
+      "currency_review_required": "Potwierdź kwoty w nowej walucie przed zapisem.",
+      "input_acknowledgement_required": "Potwierdź osobno pokazane źródła zakupu i zużycia domu przed zapisem.",
+      "plan_infeasible": "Plan bazowy jest niewykonalny; sprawdź pokazane ograniczenia.",
+      "plan_timeout": "Przekroczono czas optymalizacji; wykonalność jest nieznana.",
+      "optimizer_error": "Optymalizator nie mógł zweryfikować planu bazowego."
     },
     "abort": {
       "reconfigure_successful": "Zapisano konfigurację."
@@ -363,6 +370,7 @@
           "unit": "Jednostka",
           "sign": "Znak",
           "timestamp_path": "Pole czasu pomiaru",
+          "timestamp_policy": "Zasada czasu pomiaru (auto: czas raportu HA; exact_path: wybrane pole)",
           "max_age_seconds": "Maksymalny wiek pomiaru"
         }
       },
@@ -401,7 +409,9 @@
       "preview": {
         "title": "Podgląd i zapis",
         "data": {
-          "confirm": "Akceptuję podgląd i zapis"
+          "confirm": "Akceptuję podgląd i zapis",
+          "confirm_buy_source": "Potwierdzam pokazane źródło i stawkę zakupu, także zerową stawkę, jeśli ją pokazano",
+          "confirm_load_source": "Potwierdzam pokazane źródło zużycia domu i metodę szacowania lub zastępowania danych"
         },
         "description": "{preview}"
       },
@@ -578,7 +588,11 @@
       "invalid_input": "Niepoprawne lub sprzeczne ustawienia.",
       "invalid_source": "Niepoprawne, brakujące lub nieaktualne źródło; sprawdź podgląd.",
       "component_disabled": "Najpierw włącz ten komponent w ustawieniach instalacji.",
-      "currency_review_required": "Potwierdź kwoty w nowej walucie przed zapisem."
+      "currency_review_required": "Potwierdź kwoty w nowej walucie przed zapisem.",
+      "input_acknowledgement_required": "Potwierdź osobno pokazane źródła zakupu i zużycia domu przed zapisem.",
+      "plan_infeasible": "Plan bazowy jest niewykonalny; sprawdź pokazane ograniczenia.",
+      "plan_timeout": "Przekroczono czas optymalizacji; wykonalność jest nieznana.",
+      "optimizer_error": "Optymalizator nie mógł zweryfikować planu bazowego."
     }
   },
   "entity": {

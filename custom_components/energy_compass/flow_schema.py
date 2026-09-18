@@ -167,6 +167,7 @@ def snapshot(hass, config: dict) -> dict:
             "state": state.state,
             "attributes": deepcopy(dict(state.attributes)),
             "last_updated": state.last_updated.isoformat(),
+            "last_reported": state.last_reported.isoformat(),
             "last_changed": state.last_changed.isoformat(),
         }
         for entity_id in entity_ids(config)

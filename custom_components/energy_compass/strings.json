@@ -71,6 +71,7 @@
           "unit": "Unit",
           "sign": "Sign",
           "timestamp_path": "Timestamp path",
+          "timestamp_policy": "Timestamp policy (auto uses native report time; exact path uses the selected field)",
           "max_age_seconds": "Max age seconds"
         }
       },
@@ -109,7 +110,9 @@
       "preview": {
         "title": "Preview and save",
         "data": {
-          "confirm": "Confirm"
+          "confirm": "Confirm",
+          "confirm_buy_source": "I confirm the displayed buy source and resolved import rate, including a free rate if shown",
+          "confirm_load_source": "I confirm the displayed household load source and estimate or fallback method"
         },
         "description": "{preview}"
       },
@@ -286,7 +289,11 @@
       "invalid_input": "Invalid or contradictory settings.",
       "invalid_source": "Invalid, missing or stale source; review the preview.",
       "component_disabled": "Enable this component in Installation first.",
-      "currency_review_required": "Confirm the amounts in the new currency before saving."
+      "currency_review_required": "Confirm the amounts in the new currency before saving.",
+      "input_acknowledgement_required": "Confirm the displayed buy and household load inputs separately before saving.",
+      "plan_infeasible": "The base plan is infeasible; review the limits shown below.",
+      "plan_timeout": "The base solve timed out; feasibility is unknown.",
+      "optimizer_error": "The optimizer could not validate the base plan."
     },
     "abort": {
       "reconfigure_successful": "Configuration saved."
@@ -363,6 +370,7 @@
           "unit": "Unit",
           "sign": "Sign",
           "timestamp_path": "Timestamp path",
+          "timestamp_policy": "Timestamp policy (auto uses native report time; exact path uses the selected field)",
           "max_age_seconds": "Max age seconds"
         }
       },
@@ -401,7 +409,9 @@
       "preview": {
         "title": "Preview and save",
         "data": {
-          "confirm": "Confirm"
+          "confirm": "Confirm",
+          "confirm_buy_source": "I confirm the displayed buy source and resolved import rate, including a free rate if shown",
+          "confirm_load_source": "I confirm the displayed household load source and estimate or fallback method"
         },
         "description": "{preview}"
       },
@@ -578,7 +588,11 @@
       "invalid_input": "Invalid or contradictory settings.",
       "invalid_source": "Invalid, missing or stale source; review the preview.",
       "component_disabled": "Enable this component in Installation first.",
-      "currency_review_required": "Confirm the amounts in the new currency before saving."
+      "currency_review_required": "Confirm the amounts in the new currency before saving.",
+      "input_acknowledgement_required": "Confirm the displayed buy and household load inputs separately before saving.",
+      "plan_infeasible": "The base plan is infeasible; review the limits shown below.",
+      "plan_timeout": "The base solve timed out; feasibility is unknown.",
+      "optimizer_error": "The optimizer could not validate the base plan."
     }
   },
   "entity": {

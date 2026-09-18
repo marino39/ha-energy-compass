@@ -39,7 +39,7 @@ from .sources.bindings import (
     parse_timestamp,
     resolve_binding,
 )
-from .sources.history import load_for_slots
+from .sources.history import load_for_slots_with_quality
 from .sources.prices import price_for_slots
 from .sources.pv import sum_pv_arrays
 
@@ -103,12 +103,22 @@ def _soc_value(states, binding, unit):
     return finite(raw, "SOC")
 
 
+def _soc_timestamp(
+    config: dict, states: dict, binding, *, prefix: str = ""
+) -> datetime:
+    options = config["soc_options"]
+    path = options[prefix + "timestamp_path"]
+    policy = options.get(prefix + "timestamp_policy", "auto")
+    state = states[binding.entity_id]
+    if policy == "auto" and path in ("last_updated", "last_reported"):
+        path = "last_reported" if "last_reported" in state else "last_updated"
+    return parse_timestamp(field(state, path), config["timezone"])
+
+
 def _soc(config, source, values, states, now, previous_soc=None):
     options = config["soc_options"]
     binding = source.soc
-    stamp = parse_timestamp(
-        field(states[binding.entity_id], options["timestamp_path"]), config["timezone"]
-    )
+    stamp = _soc_timestamp(config, states, binding)
     settings = SocSettings(
         values["capacity_kwh"],
         max(values["charge_kw"], values["discharge_kw"], 0.000001),
@@ -118,10 +128,7 @@ def _soc(config, source, values, states, now, previous_soc=None):
     )
     bms = None
     if source.bms_soc:
-        bms_stamp = parse_timestamp(
-            field(states[source.bms_soc.entity_id], options["bms_timestamp_path"]),
-            config["timezone"],
-        )
+        bms_stamp = _soc_timestamp(config, states, source.bms_soc, prefix="bms_")
         bms = validate_soc(
             _soc_value(states, source.bms_soc, options["bms_unit"])
             * options.get("bms_sign", 1),
@@ -175,13 +182,7 @@ def freshness_deadline(config, states, values, now):
             (source.bms_soc, "bms_", "bms_max_age_seconds"),
         ):
             if binding:
-                stamp = parse_timestamp(
-                    field(
-                        states[binding.entity_id],
-                        config["soc_options"][prefix + "timestamp_path"],
-                    ),
-                    config["timezone"],
-                )
+                stamp = _soc_timestamp(config, states, binding, prefix=prefix)
                 deadlines.append(stamp + timedelta(seconds=values[setting]))
         if values["daily_cycles"]:
             selected = NumericSetting.from_dict(
@@ -224,6 +225,52 @@ def measurement_diagnostics(config, states, now):
                 item["status"] = "unavailable"
         result[name] = item
     return result
+
+
+def _load_quality(source_mode, result):
+    coverage = result.coverage
+    duration = sum((row.end - row.start).total_seconds() for row in coverage)
+    history = sum(
+        (row.end - row.start).total_seconds()
+        for row in coverage
+        if row.method == "history"
+    )
+    fallback = sum(
+        (row.end - row.start).total_seconds()
+        for row in coverage
+        if row.method == "fallback"
+    )
+    if source_mode == "recorder":
+        method = (
+            "history_with_fallback"
+            if history and fallback
+            else "fallback"
+            if fallback
+            else "history"
+        )
+        insufficient = fallback / 3600
+    else:
+        method = source_mode
+        insufficient = None
+    return {
+        "source_mode": source_mode,
+        "method": method,
+        "coverage_hours": duration / 3600,
+        "history_coverage_hours": history / 3600,
+        "fallback_coverage_hours": fallback / 3600,
+        "fallback_fraction": fallback / duration if duration else 0,
+        "insufficient_history_hours": insufficient,
+        "coverage": [
+            {
+                "start": row.start.isoformat(),
+                "end": row.end.isoformat(),
+                "method": row.method,
+                "samples_available": row.samples_available,
+                "samples_required": row.samples_required,
+            }
+            for row in coverage
+        ],
+    }
 
 
 def build_problem(
@@ -326,7 +373,7 @@ def build_problem(
         values["minimum_samples"],
         values["allow_fallback"],
     )
-    loads = load_for_slots(
+    load_result = load_for_slots_with_quality(
         load_source,
         states,
         now,
@@ -339,6 +386,7 @@ def build_problem(
         if values["allow_fallback"]
         else None,
     )
+    loads = load_result.values
     slots = tuple(
         Slot(
             start, finish, tariffs[0][index], tariffs[1][index], pv[index], loads[index]
@@ -424,6 +472,7 @@ def build_problem(
         "coverage_complete": end >= requested_end,
         "input_ages": ages,
         "missing_sources": missing,
+        "load": _load_quality(source.load.mode, load_result),
         "soc_observation": soc_observation,
         "warnings": ["unvalidated_tariff"]
         if values["calibration"] != "verified"
@@ -431,6 +480,8 @@ def build_problem(
     }
     if missing:
         quality["warnings"].append("missing_forecast_continuation")
+    if quality["load"]["fallback_coverage_hours"] > 0:
+        quality["warnings"].append("load_history_fallback")
     if battery and values["capacity_calibration"] != "verified":
         quality["warnings"].append("unvalidated_capacity")
     if end < requested_end:

@@ -2,14 +2,17 @@ from copy import deepcopy
 from datetime import UTC, datetime
 
 import pytest
+from homeassistant import config_entries
 from homeassistant.helpers import selector
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.energy_compass.engine.models import InputError
 from custom_components.energy_compass.settings import (
     default_configuration,
+    merged_configuration,
     validate_configuration,
 )
+from custom_components.energy_compass.sources.bindings import EntityBinding
 
 
 async def test_options_preserve_invalid_edit(
@@ -282,3 +285,164 @@ def test_attribute_helper_uses_explicit_unit_not_parent_state_unit():
     config["helpers"]["grid_import_kw"]["entity"]["attribute"] = None
     with pytest.raises(InputError, match="unit"):
         validate_configuration(config, states, now)
+
+
+@pytest.mark.parametrize("mode", ["options", "reconfigure"])
+async def test_soc_exact_timestamp_policy_survives_existing_flow_save(
+    recorder_mock, hass, enable_custom_integrations, mode
+):
+    config = default_configuration("EUR", "UTC")
+    config["sources"].update(battery_enabled=True, soc={"entity_id": "sensor.soc"})
+    config["soc_options"].update(
+        timestamp_path="attributes.reported_at", timestamp_policy="exact_path"
+    )
+    hass.states.async_set(
+        "sensor.soc", "50", {"reported_at": datetime.now(UTC).isoformat()}
+    )
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="SOC", version=2
+    )
+    entry.add_to_hass(hass)
+    if mode == "options":
+        manager = hass.config_entries.options
+        result = await manager.async_init(entry.entry_id)
+    else:
+        manager = hass.config_entries.flow
+        result = await manager.async_init(
+            "energy_compass",
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": entry.entry_id,
+            },
+        )
+    fid = result["flow_id"]
+    await manager.async_configure(fid, {"next_step_id": "sources"})
+    await manager.async_configure(
+        fid,
+        {"target": "soc", "mode": "measurement", "operation": "replace", "group": 1},
+    )
+    await manager.async_configure(fid, {"entity_id": "sensor.soc"})
+    form = await manager.async_configure(fid, {})
+    defaults = {str(key): key.default() for key in form["data_schema"].schema}
+    assert defaults["timestamp_path"] == "attributes.reported_at"
+    assert defaults["timestamp_policy"] == "exact_path"
+    await manager.async_configure(
+        fid,
+        {
+            "unit": "%",
+            "sign": 1,
+            "timestamp_path": "attributes.reported_at",
+            "max_age_seconds": 600,
+        },
+    )
+    form = await manager.async_configure(fid, {"next_step_id": "preview"})
+    assert form["step_id"] == "preview"
+    assert not form["errors"]
+    result = await manager.async_configure(fid, {"confirm": True})
+    assert result["type"] == ("create_entry" if mode == "options" else "abort")
+    saved = merged_configuration(entry)
+    assert saved["soc_options"]["timestamp_path"] == "attributes.reported_at"
+    assert saved["soc_options"]["timestamp_policy"] == "exact_path"
+
+
+@pytest.mark.parametrize("mode", ["options", "reconfigure"])
+async def test_infeasible_existing_edit_preserves_entry_and_runtime(
+    recorder_mock, hass, enable_custom_integrations, mode
+):
+    config = default_configuration("EUR", "UTC")
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Original", version=2
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    runtime = entry.runtime_data
+    before_data = deepcopy(dict(entry.data))
+    before_options = deepcopy(dict(entry.options))
+    if mode == "options":
+        manager = hass.config_entries.options
+        result = await manager.async_init(entry.entry_id)
+    else:
+        manager = hass.config_entries.flow
+        result = await manager.async_init(
+            "energy_compass",
+            context={
+                "source": config_entries.SOURCE_RECONFIGURE,
+                "entry_id": entry.entry_id,
+            },
+        )
+    fid = result["flow_id"]
+    await manager.async_configure(fid, {"next_step_id": "installation"})
+    await manager.async_configure(
+        fid,
+        {
+            "name": "Rejected",
+            "currency": "EUR",
+            "timezone": "UTC",
+            "preset": "generic",
+            "pv_enabled": False,
+            "battery_enabled": False,
+        },
+    )
+    await manager.async_configure(fid, {"next_step_id": "hardware"})
+    await manager.async_configure(fid, {"grid_import_kw": 0})
+    result = await manager.async_configure(fid, {"next_step_id": "preview"})
+    assert result["errors"] == {"base": "plan_infeasible"}
+    result = await manager.async_configure(fid, {"confirm": True})
+    assert result["errors"] == {"base": "plan_infeasible"}
+    assert entry.data == before_data
+    assert entry.options == before_options
+    assert entry.title == "Original"
+    assert entry.runtime_data is runtime
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_preview_rechecks_live_helper_at_existing_entry_submit(
+    recorder_mock, hass, enable_custom_integrations
+):
+    config = default_configuration("EUR", "UTC")
+    config["helpers"]["grid_import_kw"] = {
+        "entity": {"entity_id": "input_number.limit"},
+        "unit": "kW",
+        "max_age_seconds": None,
+    }
+    hass.states.async_set("input_number.limit", "10")
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Helper", version=2
+    )
+    entry.add_to_hass(hass)
+    before = deepcopy(dict(entry.data))
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fid = result["flow_id"]
+    preview = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "preview"}
+    )
+    assert "Base plan: feasible" in preview["description_placeholders"]["preview"]
+    hass.states.async_set("input_number.limit", "0")
+    rejected = await hass.config_entries.options.async_configure(fid, {"confirm": True})
+    assert rejected["errors"] == {"base": "plan_infeasible"}
+    assert entry.data == before
+    assert not entry.options
+
+
+async def test_soc_measurement_submission_keeps_exact_policy_when_field_omitted(
+    recorder_mock, hass, enable_custom_integrations
+):
+    config = default_configuration("EUR", "UTC")
+    config["soc_options"].update(
+        timestamp_path="last_updated", timestamp_policy="exact_path"
+    )
+    entry = MockConfigEntry(domain="energy_compass", data=config, version=2)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    flow = hass.config_entries.options._progress[result["flow_id"]]
+    flow._source = {"target": "soc"}
+    flow._binding = EntityBinding("sensor.soc")
+    await flow.async_step_source_measurement(
+        {
+            "unit": "%",
+            "sign": 1,
+            "timestamp_path": "last_updated",
+            "max_age_seconds": 600,
+        }
+    )
+    assert flow._draft["soc_options"]["timestamp_policy"] == "exact_path"

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -8,6 +8,7 @@ from custom_components.energy_compass.config_models import (
     PriceSource,
 )
 from custom_components.energy_compass.engine.models import ForecastSettings, InputError
+from custom_components.energy_compass.sources import history as load_history
 from custom_components.energy_compass.sources.battery import (
     SocSettings,
     SocTracker,
@@ -31,6 +32,61 @@ from custom_components.energy_compass.sources.prices import (
 from custom_components.energy_compass.sources.pv import pv_series, sum_pv_arrays
 
 NOW = datetime(2026, 9, 17, 12, tzinfo=UTC)
+
+
+def test_explicit_daily_estimate_and_supplied_forecast_have_distinct_coverage():
+    slots = ((NOW, NOW + timedelta(minutes=30)),)
+    daily_source = LoadSource("daily_estimate", daily_estimate=NumericSetting(fixed=24))
+    daily = load_history.load_for_slots_with_quality(
+        daily_source,
+        {},
+        NOW,
+        slots,
+        "UTC",
+        ForecastSettings(),
+    )
+    assert (
+        daily.values
+        == load_for_slots(daily_source, {}, NOW, slots, "UTC", ForecastSettings())
+        == (0.5,)
+    )
+    assert [
+        (row.method, row.samples_available, row.samples_required)
+        for row in daily.coverage
+    ] == [("daily_estimate", None, None)]
+    binding = IntervalBinding(
+        EntityBinding("sensor.source", attribute="forecast"),
+        start_path="start",
+        end_path="end",
+        value_path="load",
+    )
+    source = LoadSource("forecast", forecast=binding)
+    states = snapshot(
+        [
+            {
+                "start": NOW.isoformat(),
+                "end": (NOW + timedelta(hours=1)).isoformat(),
+                "load": 2,
+            }
+        ]
+    )
+    result = load_history.load_for_slots_with_quality(
+        source,
+        states,
+        NOW,
+        slots,
+        "UTC",
+        ForecastSettings(),
+    )
+    assert (
+        result.values
+        == load_for_slots(source, states, NOW, slots, "UTC", ForecastSettings())
+        == (1,)
+    )
+    assert [
+        (row.method, row.samples_available, row.samples_required)
+        for row in result.coverage
+    ] == [("forecast", None, None)]
 
 
 def snapshot(value, attribute="forecast"):

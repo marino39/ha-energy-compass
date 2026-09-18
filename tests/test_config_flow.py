@@ -1,14 +1,24 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 from homeassistant import config_entries
 from homeassistant.helpers import selector
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.energy_compass.engine.models import InputError
-from custom_components.energy_compass.flow_schema import settings_schema
+from custom_components.energy_compass.config_models import LoadSource
+from custom_components.energy_compass.engine.models import InputError, SolveError
+from custom_components.energy_compass.flow_schema import settings_schema, snapshot
+from custom_components.energy_compass.runtime import build_problem, freshness_deadline
 from custom_components.energy_compass.settings import (
     default_configuration,
+    merged_configuration,
     validate_configuration,
+)
+from custom_components.energy_compass.sources.bindings import (
+    EntityBinding,
+    IntervalBinding,
 )
 
 
@@ -218,6 +228,48 @@ async def test_soc_source_freshness_is_saved(
     assert defaults["soc_max_age_seconds"] == 10
 
 
+@pytest.mark.parametrize("path", ["last_reported", "last_updated"])
+def test_snapshot_preserves_identical_native_soc_report_time(hass, freezer, path):
+    freezer.move_to("2026-09-17T10:00:00+00:00")
+    names = ("sensor.soc", "sensor.bms_soc")
+    for name in names:
+        hass.states.async_set(name, "50")
+    first = {
+        name: (hass.states.get(name).last_updated, hass.states.get(name).last_reported)
+        for name in names
+    }
+    freezer.move_to("2026-09-17T10:11:00+00:00")
+    for name in names:
+        hass.states.async_set(name, "50")
+        repeated = hass.states.get(name)
+        assert repeated.last_updated == first[name][0]
+        assert repeated.last_reported > first[name][1]
+    config = default_configuration("EUR", "UTC")
+    config["sources"].update(
+        battery_enabled=True,
+        soc={"entity_id": "sensor.soc"},
+        bms_soc={"entity_id": "sensor.bms_soc"},
+    )
+    config["soc_options"].update(timestamp_path=path, bms_timestamp_path=path)
+    if path == "last_updated":
+        config["soc_options"].pop("timestamp_policy")
+        config["soc_options"].pop("bms_timestamp_policy")
+    states = snapshot(hass, config)
+    for name in names:
+        assert states[name]["last_updated"] == first[name][0].isoformat()
+        assert (
+            states[name]["last_reported"]
+            == hass.states.get(name).last_reported.isoformat()
+        )
+    now = datetime(2026, 9, 17, 10, 11, tzinfo=UTC)
+    problem, values, quality = build_problem(config, states, now)
+    assert problem.battery.initial_kwh == 5
+    assert quality["soc_observation"][0] == now
+    assert freshness_deadline(config, states, values, now) == now + timedelta(
+        minutes=10
+    )
+
+
 @pytest.mark.parametrize("currency,expected", [("PLN", (0.05, 0.8)), ("EUR", (0, 1))])
 async def test_preset_thresholds_are_currency_specific(
     recorder_mock, hass, enable_custom_integrations, currency, expected
@@ -256,3 +308,389 @@ def test_named_provider_presets_are_explicit():
         pstryk.price_unit,
         pstryk.price_interval_minutes,
     ) == ("prices", "time", "price", "PLN/kWh", 60)
+
+
+async def _setup_preview(hass):
+    result = await hass.config_entries.flow.async_init(
+        "energy_compass", context={"source": config_entries.SOURCE_USER}
+    )
+    fid = result["flow_id"]
+    await hass.config_entries.flow.async_configure(
+        fid,
+        {
+            "name": "Fresh",
+            "currency": "EUR",
+            "timezone": "UTC",
+            "preset": "generic",
+            "pv_enabled": False,
+            "battery_enabled": False,
+        },
+    )
+    return fid, await hass.config_entries.flow.async_configure(
+        fid, {"next_step_id": "preview"}
+    )
+
+
+@pytest.mark.parametrize(
+    "acknowledgements",
+    [
+        {"confirm": True},
+        {"confirm": True, "confirm_buy_source": True},
+        {"confirm": True, "confirm_load_source": True},
+    ],
+)
+async def test_new_installation_requires_both_input_acknowledgements(
+    recorder_mock, hass, enable_custom_integrations, acknowledgements
+):
+    fid, preview = await _setup_preview(hass)
+    fields = {str(key): key.default() for key in preview["data_schema"].schema}
+    assert fields == {
+        "confirm": False,
+        "confirm_buy_source": False,
+        "confirm_load_source": False,
+    }
+    assert "0 EUR/kWh" in preview["description_placeholders"]["preview"]
+    assert "10 kWh" in preview["description_placeholders"]["preview"]
+    result = await hass.config_entries.flow.async_configure(fid, acknowledgements)
+    assert result["type"] == "form"
+    assert result["errors"] == {"base": "input_acknowledgement_required"}
+    assert not hass.config_entries.async_entries("energy_compass")
+
+
+async def test_explicit_zero_and_daily_estimate_can_be_saved_with_acknowledgements(
+    recorder_mock, hass, enable_custom_integrations
+):
+    fid, preview = await _setup_preview(hass)
+    summary = preview["description_placeholders"]["preview"]
+    assert "free import" in summary
+    assert "daily estimate" in summary
+    result = await hass.config_entries.flow.async_configure(
+        fid,
+        {"confirm": True, "confirm_buy_source": True, "confirm_load_source": True},
+    )
+    assert result["type"] == "create_entry"
+    assert all(not key.startswith("confirm") for key in result["data"])
+    assert result["data"]["settings"]["buy_rate"] == 0
+    assert result["data"]["settings"]["daily_load_kwh"] == 10
+
+
+async def test_draft_preview_restarts_acknowledgements(
+    recorder_mock, hass, enable_custom_integrations
+):
+    fid, _ = await _setup_preview(hass)
+    await hass.config_entries.flow.async_configure(
+        fid, {"confirm_buy_source": True, "confirm_load_source": True}
+    )
+    flow = hass.config_entries.flow._progress[fid]
+    await flow.async_step_tariffs({"buy_rate": 0.2})
+    preview = await flow.async_step_preview()
+    assert {str(key): key.default() for key in preview["data_schema"].schema} == {
+        "confirm": False,
+        "confirm_buy_source": False,
+        "confirm_load_source": False,
+    }
+    assert "0.2 EUR/kWh" in preview["description_placeholders"]["preview"]
+    other_fid, other = await _setup_preview(hass)
+    assert other_fid != fid
+    assert all(key.default() is False for key in other["data_schema"].schema)
+
+
+@pytest.mark.parametrize("kind", ["load", "pv"])
+async def test_preview_rejects_real_infeasible_base_plan(
+    recorder_mock, hass, enable_custom_integrations, kind
+):
+    fid, _ = await _setup_preview(hass)
+    flow = hass.config_entries.flow._progress[fid]
+    flow._draft["settings"]["grid_import_kw"] = 0
+    if kind == "pv":
+        from custom_components.energy_compass.config_models import PvSource
+        from custom_components.energy_compass.sources.bindings import (
+            EntityBinding,
+            IntervalBinding,
+        )
+
+        flow._draft["settings"]["daily_load_kwh"] = 0
+        flow._draft["sources"]["pv"] = PvSource(
+            True,
+            (
+                (
+                    IntervalBinding(
+                        EntityBinding("sensor.pv", attribute="rows"),
+                        start_path="start",
+                        end_path="end",
+                        value_path="energy",
+                    ),
+                ),
+            ),
+        ).to_dict()
+        from homeassistant.util import dt as dt_util
+
+        now = dt_util.utcnow()
+        hass.states.async_set(
+            "sensor.pv",
+            "ok",
+            {
+                "rows": [
+                    {
+                        "start": (now - timedelta(minutes=1)).isoformat(),
+                        "end": (now + timedelta(hours=24)).isoformat(),
+                        "energy": 24,
+                    }
+                ]
+            },
+        )
+    result = await flow.async_step_preview(
+        {"confirm": True, "confirm_buy_source": True, "confirm_load_source": True}
+    )
+    assert result["type"] == "form"
+    assert result["errors"] == {"base": "plan_infeasible"}
+    summary = result["description_placeholders"]["preview"]
+    assert "Source inputs: validated" in summary
+    assert "Base plan: infeasible" in summary
+    assert "Hardware" in summary
+    assert not hass.config_entries.async_entries("energy_compass")
+
+
+@pytest.mark.parametrize(
+    "reason,error", [("timeout", "plan_timeout"), ("solver_failure", "optimizer_error")]
+)
+async def test_preview_maps_solver_failure_without_saving(
+    recorder_mock, hass, enable_custom_integrations, reason, error
+):
+    fid, _ = await _setup_preview(hass)
+    from custom_components.energy_compass import config_flow
+
+    with patch.object(config_flow, "solve", side_effect=SolveError(reason)):
+        result = await hass.config_entries.flow.async_configure(
+            fid,
+            {"confirm": True, "confirm_buy_source": True, "confirm_load_source": True},
+        )
+    assert result["errors"] == {"base": error}
+    assert "Source inputs: validated" in result["description_placeholders"]["preview"]
+    assert (
+        "Extra-consumption guidance: not checked"
+        in result["description_placeholders"]["preview"]
+    )
+    assert not hass.config_entries.async_entries("energy_compass")
+
+
+async def test_preview_uses_resolved_solver_budget_without_consumption_probes(
+    recorder_mock, hass, enable_custom_integrations
+):
+    from custom_components.energy_compass import config_flow, runtime
+
+    fid, _ = await _setup_preview(hass)
+    flow = hass.config_entries.flow._progress[fid]
+    flow._draft["settings"]["solve_time_limit_s"] = 0.5
+    with (
+        patch.object(config_flow, "solve", wraps=config_flow.solve) as base_solve,
+        patch.object(
+            runtime, "analyze_consumption", side_effect=AssertionError("probe ran")
+        ),
+    ):
+        result = await flow.async_step_preview()
+    assert not result["errors"]
+    assert (
+        "Extra-consumption guidance: not checked"
+        in result["description_placeholders"]["preview"]
+    )
+    assert base_solve.call_args.kwargs["time_limit_s"] == 0.5
+
+
+async def test_feasible_base_without_extra_import_headroom_can_save(
+    recorder_mock, hass, enable_custom_integrations
+):
+    fid, _ = await _setup_preview(hass)
+    flow = hass.config_entries.flow._progress[fid]
+    flow._draft["settings"].update(grid_import_kw=1, daily_load_kwh=24)
+    preview = await flow.async_step_preview()
+    assert "Base plan: feasible" in preview["description_placeholders"]["preview"]
+    assert "guidance: not checked" in preview["description_placeholders"]["preview"]
+    saved = await flow.async_step_preview(
+        {"confirm": True, "confirm_buy_source": True, "confirm_load_source": True}
+    )
+    assert saved["type"] == "create_entry"
+
+
+async def test_source_failure_marks_base_plan_unchecked(
+    recorder_mock, hass, enable_custom_integrations
+):
+    fid, _ = await _setup_preview(hass)
+    flow = hass.config_entries.flow._progress[fid]
+    flow._draft["sources"]["pv"]["enabled"] = True
+    result = await flow.async_step_preview(
+        {"confirm": True, "confirm_buy_source": True, "confirm_load_source": True}
+    )
+    assert result["errors"] == {"base": "invalid_source"}
+    summary = result["description_placeholders"]["preview"]
+    assert "Source inputs: failed" in summary
+    assert "Base plan: not checked" in summary
+
+
+@pytest.mark.parametrize("mode", ["forecast", "recorder"])
+async def test_load_preview_distinguishes_bindings_on_same_entity(
+    recorder_mock, hass, enable_custom_integrations, mode
+):
+    now = dt_util.utcnow()
+    record = {
+        "start": (now - timedelta(minutes=1)).isoformat(),
+        "end": (now + timedelta(hours=24)).isoformat(),
+        "load_a": 10,
+        "load_b": 10,
+    }
+    hass.states.async_set(
+        "sensor.shared_load",
+        "ok",
+        {
+            "rows_a": [record],
+            "rows_b": [record],
+            "power_a": 1000,
+            "power_b": 1000,
+        },
+    )
+    fid, _ = await _setup_preview(hass)
+    flow = hass.config_entries.flow._progress[fid]
+    previews = []
+    for letter in ("a", "b"):
+        if mode == "forecast":
+            source = LoadSource(
+                "forecast",
+                forecast=IntervalBinding(
+                    EntityBinding("sensor.shared_load", attribute=f"rows_{letter}"),
+                    start_path="start",
+                    end_path="end",
+                    value_path=f"load_{letter}",
+                ),
+            )
+        else:
+            source = LoadSource(
+                "recorder",
+                power=EntityBinding("sensor.shared_load", attribute=f"power_{letter}"),
+                history_unit="W",
+            )
+            flow._draft["settings"]["allow_fallback"] = True
+        flow._draft["sources"]["load"] = source.to_dict()
+        result = await flow.async_step_preview()
+        assert not result["errors"]
+        previews.append(result["description_placeholders"]["preview"])
+    assert previews[0] != previews[1]
+    for letter, preview in zip(("a", "b"), previews, strict=True):
+        assert "sensor.shared_load" in preview
+        assert (
+            f"rows_{letter}" if mode == "forecast" else f"power_{letter}"
+        ) in preview
+        if mode == "forecast":
+            assert f"load_{letter}" in preview
+
+
+async def test_existing_forecast_without_optional_value_path_can_preview_and_save(
+    recorder_mock, hass, enable_custom_integrations
+):
+    now = dt_util.utcnow()
+    hass.states.async_set(
+        "sensor.legacy_load",
+        "ok",
+        {
+            "rows": [
+                {
+                    "start": (now - timedelta(minutes=1)).isoformat(),
+                    "end": (now + timedelta(hours=24)).isoformat(),
+                    "value": 10,
+                }
+            ]
+        },
+    )
+    config = default_configuration("EUR", "UTC")
+    config["sources"]["load"] = {
+        "mode": "forecast",
+        "forecast": {
+            "entity": {"entity_id": "sensor.legacy_load", "attribute": "rows"},
+            "start_path": "start",
+            "end_path": "end",
+        },
+    }
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Legacy", version=2
+    )
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fid = result["flow_id"]
+    preview = await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "preview"}
+    )
+    assert preview["errors"] == {}
+    assert "value path value" in preview["description_placeholders"]["preview"]
+    saved = await hass.config_entries.options.async_configure(fid, {"confirm": True})
+    assert saved["type"] == "create_entry"
+    assert (
+        "value_path" not in merged_configuration(entry)["sources"]["load"]["forecast"]
+    )
+
+
+async def test_daily_estimate_preview_identifies_helper_attribute_with_equal_values(
+    recorder_mock, hass, enable_custom_integrations
+):
+    hass.states.async_set("sensor.household_estimate", "ok", {"east": 10, "west": 10})
+    fid, _ = await _setup_preview(hass)
+    flow = hass.config_entries.flow._progress[fid]
+    previews = []
+    for attribute in ("east", "west"):
+        flow._draft["helpers"]["daily_load_kwh"] = {
+            "entity": {
+                "entity_id": "sensor.household_estimate",
+                "attribute": attribute,
+            },
+            "unit": "kWh",
+            "max_age_seconds": None,
+        }
+        result = await flow.async_step_preview()
+        assert not result["errors"]
+        previews.append(result["description_placeholders"]["preview"])
+    assert previews[0] != previews[1]
+    assert "sensor.household_estimate attribute east" in previews[0]
+    assert "sensor.household_estimate attribute west" in previews[1]
+
+
+async def test_daily_estimate_preview_omits_empty_sample_coverage_label(
+    recorder_mock, hass, enable_custom_integrations
+):
+    _, preview = await _setup_preview(hass)
+    assert (
+        "samples available/required"
+        not in preview["description_placeholders"]["preview"]
+    )
+
+
+async def test_recorder_preview_pairs_sample_counts_with_coverage_segments(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    freezer.move_to("2026-09-17T10:15:00+00:00")
+    fid, _ = await _setup_preview(hass)
+    flow = hass.config_entries.flow._progress[fid]
+    flow._draft["sources"]["load"] = LoadSource(
+        "recorder", statistic_id="sensor.household", history_unit="kWh"
+    ).to_dict()
+    flow._draft["settings"].update(
+        allow_fallback=True,
+        minimum_samples=1,
+        horizon_hours=2,
+        display_horizon_hours=2,
+        reference_horizon_hours=2,
+    )
+    rows = (
+        {"start": "2026-09-16T09:00:00+00:00", "sum": 0},
+        {"start": "2026-09-16T10:00:00+00:00", "sum": 1},
+    )
+    with patch(
+        "custom_components.energy_compass.config_flow.async_history",
+        return_value=({"statistics": rows}, ()),
+    ):
+        result = await flow.async_step_preview()
+    assert not result["errors"]
+    summary = result["description_placeholders"]["preview"]
+    assert (
+        "2026-09-17T10:15:00+00:00 → 2026-09-17T11:00:00+00:00 history 1/1" in summary
+    )
+    assert (
+        "2026-09-17T11:00:00+00:00 → 2026-09-17T12:00:00+00:00 fallback 0/1" in summary
+    )
