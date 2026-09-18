@@ -1,4 +1,4 @@
-"""Physical proofs for direction dwell and the simplified PV export budget."""
+"""Physical proofs for operating-mode dwell and the daily PV export budget."""
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -185,12 +185,12 @@ def test_curtailed_pv_cannot_increase_the_export_budget():
     assert result.flows[1].grid_export_kwh == pytest.approx(0)
 
 
-def test_minimum_direction_duration_stops_quarter_hour_arbitrage():
+def test_minimum_named_duration_stops_quarter_hour_arbitrage():
     source = dispatch(tuple((0.1 if i % 2 == 0 else 2, 0, 0, 1) for i in range(12)))
     result = solve(source)
     starts = [source.slots[0].start]
     for index in range(1, len(result.flows)):
-        if result.flows[index].battery_mode != result.flows[index - 1].battery_mode:
+        if result.flows[index].dispatch_mode != result.flows[index - 1].dispatch_mode:
             starts.append(source.slots[index].start)
     assert len(starts) > 1
     assert all(b - a >= timedelta(hours=1) for a, b in pairwise(starts))
@@ -211,9 +211,9 @@ def test_short_first_interval_uses_elapsed_time_not_slot_count():
         ),
     )
     result = solve(source)
-    first = result.flows[0].battery_mode
+    first = result.flows[0].dispatch_mode
     assert all(
-        f.battery_mode == first
+        f.dispatch_mode == first
         for s, f in zip(source.slots, result.flows)
         if s.start < source.slots[0].start + timedelta(hours=1)
     )
@@ -229,7 +229,8 @@ def test_replanning_respects_remaining_direction_hold():
     )
     result = solve(source)
     assert all(f.discharge_kwh == pytest.approx(0) for f in result.flows[:3])
-    assert result.flows[3].discharge_kwh > 0
+    assert result.flows[3].discharge_kwh == pytest.approx(0)
+    assert result.flows[4].discharge_kwh > 0
 
 
 @pytest.mark.parametrize("value", [-1, float("nan"), 1441])
@@ -240,7 +241,7 @@ def test_invalid_duration_rejected(value):
         validate_configuration(config, {}, datetime.now(UTC))
 
 
-def test_held_charge_mode_can_idle_at_soc_ceiling():
+def test_legacy_charge_guard_can_publish_hold_at_soc_ceiling():
     source = dispatch(((5, 0, 0, 1),) * 4)
     source = replace(
         source,
@@ -250,7 +251,7 @@ def test_held_charge_mode_can_idle_at_soc_ceiling():
     )
     result = solve(source)
     assert all(
-        f.battery_mode == "charge"
+        f.dispatch_mode == "HOLD"
         and abs(f.charge_kwh) < 1e-6
         and abs(f.discharge_kwh) < 1e-6
         for f in result.flows
@@ -290,8 +291,13 @@ async def test_direction_commitment_survives_recalculate_and_reload(
     assert await hass.config_entries.async_setup(entry.entry_id)
     coordinator = entry.runtime_data
     assert coordinator.data["valid"]
-    assert coordinator.data["intervals"][0]["battery_mode"] == "charge"
-    assert coordinator._battery_commitment == commitment
+    assert coordinator.data["intervals"][0]["state"] == "HOLD"
+    expected = {
+        "mode": "HOLD",
+        "since": "2026-09-18T10:00:00+00:00",
+        "legacy_direction": commitment,
+    }
+    assert coordinator._battery_commitment == expected
     assert (
         hass.states.get("sensor.policy_plan").attributes["dispatch_policy"][
             "minimum_mode_minutes"
@@ -301,10 +307,10 @@ async def test_direction_commitment_survives_recalculate_and_reload(
     freezer.move_to("2026-09-18T10:20:00+00:00")
     await coordinator.async_recalculate()
     assert coordinator.data["valid"]
-    assert coordinator.data["intervals"][0]["battery_mode"] == "charge"
-    assert coordinator._battery_commitment == commitment
+    assert coordinator.data["intervals"][0]["state"] == "HOLD"
+    assert coordinator._battery_commitment == expected
     assert await hass.config_entries.async_unload(entry.entry_id)
     assert await hass.config_entries.async_setup(entry.entry_id)
-    assert entry.runtime_data._battery_commitment == commitment
-    assert entry.runtime_data.data["intervals"][0]["battery_mode"] == "charge"
+    assert entry.runtime_data._battery_commitment == expected
+    assert entry.runtime_data.data["intervals"][0]["state"] == "HOLD"
     assert await hass.config_entries.async_unload(entry.entry_id)

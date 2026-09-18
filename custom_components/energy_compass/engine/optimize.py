@@ -9,7 +9,7 @@ from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import coo_matrix
 
 from .daily_energy import daily_export_rows, day_fractions
-from .dispatch_policy import constrain_directions, validate_directions
+from .dispatch_policy import MODES, constrain_modes, validate_modes
 from .models import Flow, InputError, Plan, Problem, SolveError
 from .normalize import validate_problem
 
@@ -108,12 +108,16 @@ def _validate_solution(
         ).total_seconds() / 3600
         for name in variables:
             _check(value(name) >= -_TOL, f"negative {name}")
-        for name in ("grid_mode", "battery_mode"):
+        for name in ("grid_mode", "battery_mode", *(f"mode_{mode}" for mode in MODES)):
             if name in variables:
                 _check(
                     min(abs(value(name)), abs(value(name) - 1)) <= _TOL,
                     f"fractional {name}",
                 )
+        if "mode_HOLD" in variables:
+            _close(
+                sum(value(f"mode_{mode}") for mode in MODES), 1, "one operating mode"
+            )
         gin, gout, curt = value("gin"), value("gout"), value("curt")
         charge = value("bc") if battery else 0.0
         discharge = value("bd") if battery else 0.0
@@ -228,13 +232,6 @@ def _validate_solution(
                 f"daily export exceeds PV generation: {row['date']}",
             )
     if battery:
-        validate_directions(
-            problem,
-            [
-                "charge" if values[v["battery_mode"]] > 0.5 else "discharge"
-                for v in vectors
-            ],
-        )
         if problem.terminal_mode == "preserve_initial":
             _check(previous_energy >= battery.initial_kwh - _TOL, "terminal SOC")
         for day, total in spent.items():
@@ -398,7 +395,7 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
                 row["remaining_export_kwh"],
             )
     if battery:
-        constrain_directions(model, problem, vectors)
+        constrain_modes(model, problem, vectors)
         if problem.terminal_mode == "preserve_initial":
             model.constrain({previous_energy_index: 1}, battery.initial_kwh, np.inf)
         for day, budget in budgets.items():
@@ -424,9 +421,18 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
             ("charge" if values[v["battery_mode"]] > 0.5 else "discharge")
             if battery
             else None,
+            next(
+                (
+                    mode
+                    for mode in MODES
+                    if f"mode_{mode}" in v and values[v[f"mode_{mode}"]] > 0.5
+                ),
+                None,
+            ),
         )
         for v in vectors
     )
+    validate_modes(problem, flows)
     grid_cost = sum(
         slot.buy_per_kwh * flow.grid_import_kwh
         - slot.sell_per_kwh * flow.grid_export_kwh
