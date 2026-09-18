@@ -150,6 +150,32 @@ def validate_problem(problem: Problem) -> None:
             raise InputError(f"{name} must be nonnegative")
     if not 0 <= finite(problem.minimum_mode_minutes, "minimum_mode_minutes") <= 1440:
         raise InputError("minimum_mode_minutes must be in [0, 1440]")
+    if (
+        not 0.001
+        <= finite(problem.minimum_mode_power_kw, "minimum_mode_power_kw")
+        <= 1000
+    ):
+        raise InputError("minimum_mode_power_kw must be in [0.001, 1000]")
+    if problem.initial_dispatch_mode not in (
+        None,
+        "CHARGE_GRID",
+        "CHARGE_PV",
+        "DISCHARGE_GRID",
+        "SELF_CONSUME",
+        "HOLD",
+        "CURTAIL",
+    ):
+        raise InputError("invalid initial dispatch mode")
+    if (problem.initial_dispatch_mode is None) != (
+        problem.initial_dispatch_mode_since is None
+    ):
+        raise InputError("initial dispatch mode requires its start time")
+    if problem.initial_dispatch_mode_since is not None:
+        aware(problem.initial_dispatch_mode_since, "initial dispatch mode start")
+        if problem.initial_dispatch_mode_since.astimezone(UTC) > problem.slots[
+            0
+        ].start.astimezone(UTC):
+            raise InputError("initial dispatch mode starts in the future")
     if problem.initial_battery_mode not in (None, "charge", "discharge"):
         raise InputError("invalid initial battery mode")
     if (problem.initial_battery_mode is None) != (

@@ -24,6 +24,7 @@ from .engine.consumption import (
     serialize_opportunity,
 )
 from .engine.daily_energy import daily_export_rows
+from .engine.dispatch_policy import MODES, safety_exception
 from .engine.models import (
     Battery,
     CompassSettings,
@@ -48,6 +49,31 @@ from .sources.bindings import (
 from .sources.history import load_for_slots_with_quality
 from .sources.prices import price_for_slots
 from .sources.pv import sum_pv_arrays
+
+
+def restore_commitment(raw, now):
+    """Discard malformed or future clocks without donating legacy direction age."""
+    if not isinstance(raw, dict) or raw.get("mode") not in (
+        *MODES,
+        "charge",
+        "discharge",
+    ):
+        return None
+    try:
+        since = parse_timestamp(raw.get("since"))
+    except InputError:
+        return None
+    if since > now:
+        return None
+    result = {"mode": raw["mode"], "since": since.isoformat()}
+    legacy = raw.get("legacy_direction")
+    if isinstance(legacy, dict) and legacy.get("mode") in ("charge", "discharge"):
+        restored = restore_commitment(legacy, now)
+        if restored:
+            result["legacy_direction"] = {
+                key: restored[key] for key in ("mode", "since")
+            }
+    return result
 
 
 def _coverage(rows, start):
@@ -462,6 +488,9 @@ def build_problem(
                 (day.isoformat(), max(0, cap - observed) if day == local_today else cap)
                 for day in sorted(days)
             )
+    commitment = restore_commitment(battery_commitment, now) if battery else None
+    named = commitment if commitment and commitment["mode"] in MODES else None
+    legacy = (commitment.get("legacy_direction") if named else commitment) or {}
     problem = Problem(
         slots,
         SiteLimits(
@@ -479,12 +508,11 @@ def build_problem(
         limit_export_to_pv=values["limit_export_to_pv"],
         pv_generated_today_kwh=pv_today,
         grid_exported_today_kwh=export_today,
-        initial_battery_mode=battery_commitment["mode"]
-        if battery and battery_commitment
-        else None,
-        initial_battery_mode_since=parse_timestamp(battery_commitment["since"])
-        if battery and battery_commitment
-        else None,
+        minimum_mode_power_kw=values["minimum_mode_power_kw"],
+        initial_dispatch_mode=named["mode"] if named else None,
+        initial_dispatch_mode_since=parse_timestamp(named["since"]) if named else None,
+        initial_battery_mode=legacy.get("mode"),
+        initial_battery_mode_since=parse_timestamp(legacy["since"]) if legacy else None,
     )
     validate_problem(problem)
     ages = {
@@ -665,6 +693,11 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
         "quality": quality,
         "dispatch_policy": {
             "minimum_mode_minutes": values["minimum_mode_minutes"],
+            "minimum_mode_power_kw": values["minimum_mode_power_kw"],
+            "mode_scope": "actual_operating_mode",
+            "enabled": problem.battery is not None
+            and values["minimum_mode_minutes"] > 0,
+            "safety_exception": safety_exception(problem),
             "limit_export_to_pv": values["limit_export_to_pv"],
             "export_limit_scope": "local_day",
             "timezone": config["timezone"],

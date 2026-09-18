@@ -187,13 +187,15 @@
           "refresh_minutes": "Okres przeliczania",
           "terminal_value_per_kwh": "Wartość energii na końcu planu",
           "terminal_mode": "Polityka końcowego SOC",
-          "minimum_mode_minutes": "Minimalny czas kierunku baterii",
-          "limit_export_to_pv": "Sell only PV"
+          "minimum_mode_minutes": "Minimalny czas trybu pracy",
+          "limit_export_to_pv": "Sell only PV",
+          "minimum_mode_power_kw": "Minimalna moc aktywnego trybu"
         },
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}",
         "data_description": {
-          "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza blokadę. Ładowanie i rozładowanie to kierunki. Postój oraz zmiana źródła PV/sieć są dozwolone. Blokada dotyczy opublikowanego planu i przetrwa przeliczenie oraz restart.",
-          "limit_export_to_pv": "Domyślnie włączone. Eksport z paneli i baterii nie może przekroczyć generacji PV tej samej doby w strefie czasowej instalacji. Uwzględnia pomiary od północy i pozostałą prognozę, bez przenoszenia limitu między dniami. W Źródłach wybierz liczniki pv_energy_today i grid_export_energy_today. Wyłączenie usuwa ten limit; pozostałe limity nadal obowiązują."
+          "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza czas i minimalną moc. Blokada obejmuje rzeczywiste tryby PV, sieci, zużycia własnego, postoju i ograniczenia PV. Zmiana źródła lub celu zaczyna nowy okres. Wyjątek: zaobserwowana granica SoC podczas aktywnej blokady.",
+          "limit_export_to_pv": "Domyślnie włączone. Eksport z paneli i baterii nie może przekroczyć generacji PV tej samej doby w strefie czasowej instalacji. Uwzględnia pomiary od północy i pozostałą prognozę, bez przenoszenia limitu między dniami. W Źródłach wybierz liczniki pv_energy_today i grid_export_energy_today. Wyłączenie usuwa ten limit; pozostałe limity nadal obowiązują.",
+          "minimum_mode_power_kw": "Domyślnie 0,1 kW (100 W); zakres 0,001–1000 kW. Minimalna aktywna moc, nie moc stała. Tryb CURTAIL nie dopuszcza ładowania ani rozładowania przy włączonej blokadzie."
         }
       },
       "compass": {
@@ -486,13 +488,15 @@
           "refresh_minutes": "Okres przeliczania",
           "terminal_value_per_kwh": "Wartość energii na końcu planu",
           "terminal_mode": "Polityka końcowego SOC",
-          "minimum_mode_minutes": "Minimalny czas kierunku baterii",
-          "limit_export_to_pv": "Sell only PV"
+          "minimum_mode_minutes": "Minimalny czas trybu pracy",
+          "limit_export_to_pv": "Sell only PV",
+          "minimum_mode_power_kw": "Minimalna moc aktywnego trybu"
         },
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}",
         "data_description": {
-          "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza blokadę. Ładowanie i rozładowanie to kierunki. Postój oraz zmiana źródła PV/sieć są dozwolone. Blokada dotyczy opublikowanego planu i przetrwa przeliczenie oraz restart.",
-          "limit_export_to_pv": "Domyślnie włączone. Eksport z paneli i baterii nie może przekroczyć generacji PV tej samej doby w strefie czasowej instalacji. Uwzględnia pomiary od północy i pozostałą prognozę, bez przenoszenia limitu między dniami. W Źródłach wybierz liczniki pv_energy_today i grid_export_energy_today. Wyłączenie usuwa ten limit; pozostałe limity nadal obowiązują."
+          "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza czas i minimalną moc. Blokada obejmuje rzeczywiste tryby PV, sieci, zużycia własnego, postoju i ograniczenia PV. Zmiana źródła lub celu zaczyna nowy okres. Wyjątek: zaobserwowana granica SoC podczas aktywnej blokady.",
+          "limit_export_to_pv": "Domyślnie włączone. Eksport z paneli i baterii nie może przekroczyć generacji PV tej samej doby w strefie czasowej instalacji. Uwzględnia pomiary od północy i pozostałą prognozę, bez przenoszenia limitu między dniami. W Źródłach wybierz liczniki pv_energy_today i grid_export_energy_today. Wyłączenie usuwa ten limit; pozostałe limity nadal obowiązują.",
+          "minimum_mode_power_kw": "Domyślnie 0,1 kW (100 W); zakres 0,001–1000 kW. Minimalna aktywna moc, nie moc stała. Tryb CURTAIL nie dopuszcza ładowania ani rozładowania przy włączonej blokadzie."
         }
       },
       "compass": {

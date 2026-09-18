@@ -1,58 +1,228 @@
-"""Elapsed-time direction commitments for the advisory battery schedule."""
+"""Physical operating modes and elapsed-time advice commitments."""
 
 from datetime import UTC, timedelta
 
 import numpy as np
 
+from .machine_state import machine_state
 from .models import Problem, SolveError
 
+MODES = (
+    "CHARGE_GRID",
+    "CHARGE_PV",
+    "DISCHARGE_GRID",
+    "SELF_CONSUME",
+    "HOLD",
+    "CURTAIL",
+)
+ACTIVE = frozenset(MODES[:4])
 
-def constrain_directions(model, problem: Problem, vectors) -> None:
-    """Keep each direction for its dwell time, allowing zero power within it."""
+
+def safety_exception(problem: Problem) -> dict | None:
+    """Permit idle advice only for an already observed bound during an active lock."""
+    battery = problem.battery
+    mode = problem.initial_dispatch_mode
+    if not battery or not problem.minimum_mode_minutes or mode not in ACTIVE:
+        return None
+    deadline = problem.initial_dispatch_mode_since.astimezone(UTC) + timedelta(
+        minutes=problem.minimum_mode_minutes
+    )
+    if problem.slots[0].start.astimezone(UTC) >= deadline:
+        return None
+    charging = mode in ("CHARGE_GRID", "CHARGE_PV")
+    bound = battery.capacity_kwh * (
+        battery.maximum_soc_fraction if charging else battery.minimum_soc_fraction
+    )
+    if abs(battery.initial_kwh - bound) > 1e-9:
+        return None
+    return {
+        "reason": "observed_soc_maximum" if charging else "observed_soc_minimum",
+        "interrupted_mode": mode,
+        "deadline": deadline.isoformat(),
+    }
+
+
+def _initial(problem):
+    exception = safety_exception(problem)
+    return (
+        "HOLD" if exception else problem.initial_dispatch_mode
+    ), problem.initial_dispatch_mode_since
+
+
+def constrain_modes(model, problem: Problem, vectors) -> None:
+    """Bind one named state to material flows and forbid premature transitions."""
     if not problem.battery or not problem.minimum_mode_minutes:
         return
+    battery = problem.battery
     dwell = timedelta(minutes=problem.minimum_mode_minutes)
-    starts = [slot.start.astimezone(UTC) for slot in problem.slots]
-    previous = problem.initial_battery_mode
-    if previous is not None:
+    starts = [s.start.astimezone(UTC) for s in problem.slots]
+    coverage_end = problem.slots[-1].end.astimezone(UTC)
+    previous, since = _initial(problem)
+    for slot, v in zip(problem.slots, vectors, strict=True):
+        hours = (
+            slot.end.astimezone(UTC) - slot.start.astimezone(UTC)
+        ).total_seconds() / 3600
+        activity = problem.minimum_mode_power_kw * hours
+        surplus = max(slot.pv_kwh - slot.load_kwh, 0)
+        charge_max = min(
+            model.upper[v["bc"]],
+            slot.pv_kwh + problem.site.inverter_kw * hours,
+            surplus + model.upper[v["gin"]],
+        )
+        discharge_max = max(
+            0,
+            min(
+                model.upper[v["bd"]],
+                problem.site.inverter_kw * hours - slot.pv_kwh,
+                slot.load_kwh - slot.pv_kwh + model.upper[v["gout"]],
+            ),
+        )
+        pv_max = min(charge_max, surplus)
+        self_max = min(discharge_max, max(slot.load_kwh - slot.pv_kwh, 0))
+        curt_max = model.upper[v["curt"]]
+        available = {
+            "CHARGE_GRID": battery.allow_grid_charge
+            and charge_max >= surplus + activity,
+            "CHARGE_PV": pv_max >= activity,
+            "DISCHARGE_GRID": battery.allow_battery_export
+            and discharge_max >= activity
+            and model.upper[v["gout"]] >= activity,
+            "SELF_CONSUME": self_max >= activity,
+            "HOLD": True,
+            "CURTAIL": curt_max >= activity,
+        }
+        for mode in MODES:
+            key = f"mode_{mode}"
+            v[key] = model.variable(binary=True)
+            # Below classifier resolution a named material state cannot be certified.
+            if not available[mode] or (mode != "HOLD" and activity <= 2e-6):
+                model.upper[v[key]] = 0
+        x = {mode: v[f"mode_{mode}"] for mode in MODES}
+        model.constrain({index: 1 for index in x.values()}, 1, 1)
+        model.constrain(
+            {v["bc"]: 1, x["CHARGE_GRID"]: -charge_max, x["CHARGE_PV"]: -pv_max},
+            -np.inf,
+            0,
+        )
+        model.constrain(
+            {
+                v["bc"]: 1,
+                x["CHARGE_GRID"]: -(surplus + activity),
+                x["CHARGE_PV"]: -activity,
+            },
+            0,
+            np.inf,
+        )
+        model.constrain(
+            {
+                v["bd"]: 1,
+                x["DISCHARGE_GRID"]: -discharge_max,
+                x["SELF_CONSUME"]: -self_max,
+            },
+            -np.inf,
+            0,
+        )
+        model.constrain(
+            {v["bd"]: 1, x["DISCHARGE_GRID"]: -activity, x["SELF_CONSUME"]: -activity},
+            0,
+            np.inf,
+        )
+        model.constrain({v["curt"]: 1, x["CURTAIL"]: -curt_max}, -np.inf, 0)
+        model.constrain({v["curt"]: 1, x["CURTAIL"]: -activity}, 0, np.inf)
+        model.constrain({v["gout"]: 1, x["DISCHARGE_GRID"]: -activity}, 0, np.inf)
+        model.constrain(
+            {v["gout"]: 1, x["SELF_CONSUME"]: model.upper[v["gout"]]},
+            -np.inf,
+            model.upper[v["gout"]],
+        )
+    if problem.initial_battery_mode is not None:
         held_until = problem.initial_battery_mode_since.astimezone(UTC) + dwell
-        for start, vector in zip(starts, vectors, strict=True):
+        for start, v in zip(starts, vectors, strict=True):
             if start < held_until:
-                mode = int(previous == "charge")
-                model.constrain({vector["battery_mode"]: 1}, mode, mode)
-    for index, vector in enumerate(vectors):
-        current = vector["battery_mode"]
-        for later in range(index + 1, len(vectors)):
-            if starts[later] >= starts[index] + dwell:
-                break
-            following = vectors[later]["battery_mode"]
-            if index:
-                preceding = vectors[index - 1]["battery_mode"]
-                model.constrain({current: 1, preceding: -1, following: -1}, -np.inf, 0)
-                model.constrain({current: -1, preceding: 1, following: 1}, -np.inf, 1)
-            elif previous is None:
-                model.constrain({following: 1, current: -1}, 0, 0)
-            else:
-                mode = int(previous == "charge")
-                model.constrain({current: 1, following: -1}, -np.inf, mode)
-                model.constrain({current: -1, following: 1}, -np.inf, 1 - mode)
+                blocked = "bd" if problem.initial_battery_mode == "charge" else "bc"
+                model.constrain({v[blocked]: 1}, 0, 0)
+    if previous is not None:
+        held_until = since.astimezone(UTC) + dwell
+        for start, v in zip(starts, vectors, strict=True):
+            if start < held_until:
+                model.constrain({v[f"mode_{previous}"]: 1}, 1, 1)
+    for i, v in enumerate(vectors):
+        for mode in MODES:
+            current = v[f"mode_{mode}"]
+            prior = vectors[i - 1][f"mode_{mode}"] if i else None
+            initial = int(mode == previous)
+            if mode in ACTIVE and coverage_end < starts[i] + dwell:
+                terms = {current: 1}
+                if prior is not None:
+                    terms[prior] = -1
+                model.constrain(terms, -np.inf, initial if i == 0 else 0)
+            for j in range(i + 1, len(vectors)):
+                if starts[j] >= starts[i] + dwell:
+                    break
+                terms = {current: 1, vectors[j][f"mode_{mode}"]: -1}
+                if prior is not None:
+                    terms[prior] = -1
+                model.constrain(terms, -np.inf, initial if i == 0 else 0)
 
 
-def validate_directions(problem: Problem, modes: list[str]) -> None:
-    """Independently reject early switches, including a carried commitment."""
+def validate_modes(problem: Problem, flows) -> None:
+    """Independently certify labels, activity, coverage and carried commitments."""
     if not problem.battery or not problem.minimum_mode_minutes:
         return
+    previous, since = _initial(problem)
     dwell = timedelta(minutes=problem.minimum_mode_minutes)
-    previous = problem.initial_battery_mode
-    since = problem.initial_battery_mode_since
-    for slot, mode in zip(problem.slots, modes, strict=True):
+    coverage_end = problem.slots[-1].end.astimezone(UTC)
+    for slot, flow in zip(problem.slots, flows, strict=True):
         start = slot.start.astimezone(UTC)
-        if previous is None:
-            since = start
-        elif mode != previous:
-            if start < since.astimezone(UTC) + dwell:
+        activity = (
+            problem.minimum_mode_power_kw
+            * (slot.end.astimezone(UTC) - start).total_seconds()
+            / 3600
+        )
+        mode = machine_state(slot, flow)
+        tolerance = min(1e-7, activity * 1e-4)
+        charge, discharge, curt, export = (
+            flow.charge_kwh,
+            flow.discharge_kwh,
+            flow.curtail_kwh,
+            flow.grid_export_kwh,
+        )
+        surplus = max(slot.pv_kwh - slot.load_kwh, 0)
+        valid = {
+            "CHARGE_GRID": charge >= surplus + activity - tolerance
+            and max(abs(discharge), abs(curt)) <= tolerance,
+            "CHARGE_PV": activity - tolerance <= charge <= surplus + tolerance
+            and max(abs(discharge), abs(curt)) <= tolerance,
+            "DISCHARGE_GRID": min(discharge, export) >= activity - tolerance
+            and max(abs(charge), abs(curt)) <= tolerance,
+            "SELF_CONSUME": discharge >= activity - tolerance
+            and max(abs(charge), abs(export), abs(curt)) <= tolerance,
+            "HOLD": max(abs(charge), abs(discharge), abs(curt)) <= tolerance,
+            "CURTAIL": curt >= activity - tolerance
+            and max(abs(charge), abs(discharge)) <= tolerance,
+        }
+        if flow.dispatch_mode != mode or not valid[mode]:
+            raise SolveError(
+                "solver_failure", "invalid solver result: physical dispatch mode"
+            )
+        if (
+            problem.initial_battery_mode is not None
+            and start < problem.initial_battery_mode_since.astimezone(UTC) + dwell
+        ):
+            blocked = discharge if problem.initial_battery_mode == "charge" else charge
+            if abs(blocked) > tolerance:
+                raise SolveError(
+                    "solver_failure", "invalid solver result: legacy direction guard"
+                )
+        if mode != previous:
+            if previous is not None and start < since.astimezone(UTC) + dwell:
                 raise SolveError(
                     "solver_failure", "invalid solver result: minimum mode duration"
+                )
+            if mode in ACTIVE and coverage_end < start + dwell:
+                raise SolveError(
+                    "solver_failure",
+                    "invalid solver result: active mode beyond coverage",
                 )
             since = start
         previous = mode
