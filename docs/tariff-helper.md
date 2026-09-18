@@ -4,7 +4,7 @@
 
 ## Install and customize
 
-Copy the example to your Home Assistant configuration directory, for instance as `packages/tariff-helper.yaml`. If `homeassistant.packages` already uses `!include_dir_named packages`, place the file there and keep that configuration. If it uses another package directory or a named package map, follow its existing layout, for example `tariff_helper: !include packages/tariff-helper.yaml` under the existing `packages:` map. If `homeassistant:` exists but has no `packages:` key, add `packages: !include_dir_named packages` under it. Otherwise add:
+Copy the example to your Home Assistant configuration directory as `packages/tariff_helper.yaml`. Home Assistant uses the filename as the package name with `!include_dir_named`, so it must be a valid slug. If `homeassistant.packages` already uses `!include_dir_named packages`, place the file there and keep that configuration. If it uses another package directory or a named package map, follow its existing layout, for example `tariff_helper: !include packages/tariff_helper.yaml` under the existing `packages:` map. If `homeassistant:` exists but has no `packages:` key, add `packages: !include_dir_named packages` under it. Otherwise add:
 
 ```yaml
 homeassistant:
