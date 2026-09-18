@@ -35,3 +35,5 @@ Under **Planning**, **Sell only PV** defaults to on and limits total grid export
 ## License
 
 Energy Compass source and original artwork are provided under [Apache License 2.0](LICENSE). SciPy and NumPy are installed as separate dependencies and retain their own licenses; their source is not included here.
+
+Planning's refresh interval controls full periodic recalculation (up to once per hour). Important source changes still recalculate earlier; native quarter-hour boundaries advance the cached plan without a new solve. Performance allows an overall calculation budget up to five minutes and individual consumption probes up to 30 seconds. Existing defaults stay unchanged.
