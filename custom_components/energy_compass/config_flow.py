@@ -72,7 +72,13 @@ def _preview_assumptions(config, problem, values, quality):
         )
         load_text = f"Household load: daily estimate from {origin}, resolved {values['daily_load_kwh']:g} kWh/day"
     elif load["mode"] == "recorder":
-        origin = load.get("statistic_id") or load.get("power", {}).get("entity_id")
+        if load.get("statistic_id"):
+            origin = f"statistic {load['statistic_id']}"
+        else:
+            power = load["power"]
+            origin = f"power {power['entity_id']}"
+            if power.get("attribute"):
+                origin += f" attribute {power['attribute']}"
         fallback = (
             f"fallback daily estimate {values['fallback_daily_kwh']:g} kWh/day"
             if values["allow_fallback"]
@@ -82,10 +88,24 @@ def _preview_assumptions(config, problem, values, quality):
             f"Household load: recorder {origin}, actual method {method}; {fallback}"
         )
     else:
-        binding = load["forecast"]["entity"]
-        load_text = (
-            f"Household load: forecast {binding['entity_id']}, actual method {method}"
+        forecast = load["forecast"]
+        binding = forecast["entity"]
+        origin = binding["entity_id"]
+        if binding.get("attribute"):
+            origin += f" attribute {binding['attribute']}"
+        mapping = [f"value path {forecast['value_path']}"]
+        mapping.extend(
+            f"{name.replace('_', ' ')} {forecast[name]}"
+            for name in (
+                "start_path",
+                "end_path",
+                "duration_path",
+                "unit_path",
+                "published_path",
+            )
+            if forecast.get(name)
         )
+        load_text = f"Household load: forecast {origin}, {', '.join(mapping)}, actual method {method}"
     load_quality = quality.get("load")
     if load_quality:
         load_text += (

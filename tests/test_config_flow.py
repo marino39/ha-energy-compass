@@ -4,12 +4,18 @@ from unittest.mock import patch
 import pytest
 from homeassistant import config_entries
 from homeassistant.helpers import selector
+from homeassistant.util import dt as dt_util
 
+from custom_components.energy_compass.config_models import LoadSource
 from custom_components.energy_compass.engine.models import InputError, SolveError
 from custom_components.energy_compass.flow_schema import settings_schema, snapshot
 from custom_components.energy_compass.settings import (
     default_configuration,
     validate_configuration,
+)
+from custom_components.energy_compass.sources.bindings import (
+    EntityBinding,
+    IntervalBinding,
 )
 
 
@@ -491,3 +497,59 @@ async def test_source_failure_marks_base_plan_unchecked(
     summary = result["description_placeholders"]["preview"]
     assert "Source inputs: failed" in summary
     assert "Base plan: not checked" in summary
+
+
+@pytest.mark.parametrize("mode", ["forecast", "recorder"])
+async def test_load_preview_distinguishes_bindings_on_same_entity(
+    recorder_mock, hass, enable_custom_integrations, mode
+):
+    now = dt_util.utcnow()
+    record = {
+        "start": (now - timedelta(minutes=1)).isoformat(),
+        "end": (now + timedelta(hours=24)).isoformat(),
+        "load_a": 10,
+        "load_b": 10,
+    }
+    hass.states.async_set(
+        "sensor.shared_load",
+        "ok",
+        {
+            "rows_a": [record],
+            "rows_b": [record],
+            "power_a": 1000,
+            "power_b": 1000,
+        },
+    )
+    fid, _ = await _setup_preview(hass)
+    flow = hass.config_entries.flow._progress[fid]
+    previews = []
+    for letter in ("a", "b"):
+        if mode == "forecast":
+            source = LoadSource(
+                "forecast",
+                forecast=IntervalBinding(
+                    EntityBinding("sensor.shared_load", attribute=f"rows_{letter}"),
+                    start_path="start",
+                    end_path="end",
+                    value_path=f"load_{letter}",
+                ),
+            )
+        else:
+            source = LoadSource(
+                "recorder",
+                power=EntityBinding("sensor.shared_load", attribute=f"power_{letter}"),
+                history_unit="W",
+            )
+            flow._draft["settings"]["allow_fallback"] = True
+        flow._draft["sources"]["load"] = source.to_dict()
+        result = await flow.async_step_preview()
+        assert not result["errors"]
+        previews.append(result["description_placeholders"]["preview"])
+    assert previews[0] != previews[1]
+    for letter, preview in zip(("a", "b"), previews, strict=True):
+        assert "sensor.shared_load" in preview
+        assert (
+            f"rows_{letter}" if mode == "forecast" else f"power_{letter}"
+        ) in preview
+        if mode == "forecast":
+            assert f"load_{letter}" in preview
