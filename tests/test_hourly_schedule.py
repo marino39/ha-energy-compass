@@ -252,7 +252,9 @@ async def test_late_result_publishes_current_mode_not_finished_first_interval(
     assert coordinator._battery_commitment["since"] == "2026-09-18T10:15:00+00:00"
 
 
-async def test_identical_fresh_soc_report_recovers_on_health_tick(switching_entry, hass, freezer):
+async def test_identical_fresh_soc_report_recovers_on_health_tick(
+    switching_entry, hass, freezer
+):
     from copy import deepcopy
 
     coordinator = switching_entry.runtime_data
