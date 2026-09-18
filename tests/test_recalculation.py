@@ -163,7 +163,7 @@ async def test_recalculation_keeps_published_values_until_replacement(
 
     def assert_previous_visible():
         assert hass.states.get("sensor.refresh_optimizer_status").state == "calculating"
-        assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "off"
+        assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "on"
         assert (
             hass.states.get("binary_sensor.refresh_forecast_valid").attributes[
                 "missing_sources"
@@ -177,9 +177,7 @@ async def test_recalculation_keeps_published_values_until_replacement(
                 current.attributes["generated_at"]
                 == previous.attributes["generated_at"]
             )
-            assert (
-                current.attributes["valid_until"] == previous.attributes["valid_until"]
-            )
+            assert current.attributes["valid_until"] == "2026-09-17T14:00:00+00:00"
             assert current.attributes["refreshing"] is True
         assert (
             hass.states.get("sensor.refresh_plan").attributes["intervals"]
@@ -224,17 +222,19 @@ async def test_recalculation_keeps_published_values_until_replacement(
 
 
 @pytest.mark.parametrize("failure", ["timeout", "infeasible", "error"])
-async def test_failed_refresh_clears_retained_values(published_entry, hass, failure):
-    """A failed replacement must not leave the previous plan available."""
+async def test_failed_refresh_and_pending_retry_keep_values(
+    published_entry, hass, failure
+):
+    """A failed replacement and its retry keep the last covered plan available."""
     error = RuntimeError("worker failed") if failure == "error" else SolveError(failure)
     with patch.object(module, "compute", side_effect=error):
         await published_entry.runtime_data.async_recalculate()
     assert hass.states.get("sensor.refresh_optimizer_status").state == failure
-    assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "off"
+    assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "on"
     assert all(
-        state.state == "unavailable" for state in recommendation_states(hass).values()
+        state.state != "unavailable" for state in recommendation_states(hass).values()
     )
-    # Retrying must not revive a snapshot that the failure already discarded.
+    # Retrying keeps both the plan and the alert until replacement succeeds.
     started, release = threading.Event(), threading.Event()
     original = module.compute
 
@@ -251,11 +251,10 @@ async def test_failed_refresh_clears_retained_values(published_entry, hass, fail
                 hass.states.get("sensor.refresh_optimizer_status").state
                 == "calculating"
             )
-            assert (
-                hass.states.get("binary_sensor.refresh_forecast_valid").state == "off"
-            )
+            assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "on"
+            assert hass.states.get("binary_sensor.refresh_alert").state == "on"
             assert all(
-                state.state == "unavailable"
+                state.state != "unavailable"
                 for state in recommendation_states(hass).values()
             )
         finally:
@@ -264,10 +263,8 @@ async def test_failed_refresh_clears_retained_values(published_entry, hass, fail
     assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "on"
 
 
-async def test_source_loss_during_refresh_discards_retained_values(
-    published_entry, hass
-):
-    """Source validation still revokes the display before a pending solve ends."""
+async def test_source_loss_during_refresh_keeps_retained_values(published_entry, hass):
+    """A source problem cannot erase the plan during or after a pending solve."""
     coordinator = published_entry.runtime_data
     started, release = threading.Event(), threading.Event()
     invalidated = asyncio.Event()
@@ -289,11 +286,9 @@ async def test_source_loss_during_refresh_discards_retained_values(
             assert await hass.async_add_executor_job(started.wait, 2)
             hass.states.async_set("input_number.limit", "unavailable")
             await asyncio.wait_for(invalidated.wait(), 2)
-            assert (
-                hass.states.get("binary_sensor.refresh_forecast_valid").state == "off"
-            )
+            assert hass.states.get("binary_sensor.refresh_forecast_valid").state == "on"
             assert all(
-                state.state == "unavailable"
+                state.state != "unavailable"
                 for state in recommendation_states(hass).values()
             )
         finally:
@@ -303,7 +298,7 @@ async def test_source_loss_during_refresh_discards_retained_values(
             unsubscribe()
     assert hass.states.get("sensor.refresh_optimizer_status").state == "invalid_input"
     assert all(
-        state.state == "unavailable" for state in recommendation_states(hass).values()
+        state.state != "unavailable" for state in recommendation_states(hass).values()
     )
 
 

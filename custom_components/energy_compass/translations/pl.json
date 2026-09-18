@@ -1034,6 +1034,33 @@
             "name": "Poprawna bieżąca wskazówka zużycia"
           }
         }
+      },
+      "alert": {
+        "name": "Alert",
+        "state_attributes": {
+          "code": {
+            "name": "Kod",
+            "state": {
+              "soc_measurement_jump": "Skok wskazania SOC",
+              "invalid_input": "Nieprawidłowe dane wejściowe",
+              "timeout": "Przekroczony czas obliczeń",
+              "infeasible": "Brak wykonalnego planu",
+              "error": "Błąd obliczeń"
+            }
+          },
+          "reason": {
+            "name": "Przyczyna"
+          },
+          "since": {
+            "name": "Od"
+          },
+          "plan_retained": {
+            "name": "Zachowany poprzedni plan"
+          },
+          "last_successful_plan_at": {
+            "name": "Ostatni poprawny plan"
+          }
+        }
       }
     }
   },
