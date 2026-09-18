@@ -113,8 +113,8 @@
   <aside class="sidebar" aria-label="Documentation navigation">
     <a class="brand" href="#overview">
       <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="../custom_components/energy_compass/brand/dark_icon@2x.png">
-        <img src="../custom_components/energy_compass/brand/icon@2x.png" width="60" height="60" alt="">
+        <source media="(prefers-color-scheme: dark)" srcset="assets/dark_icon@2x.png">
+        <img src="assets/icon@2x.png" width="60" height="60" alt="">
       </picture>
       <span>Energy<br>Compass</span>
     </a>
@@ -133,7 +133,7 @@
         <li><a href="#reference">Source reference</a></li>
       </ul>
     </nav>
-    <a class="download" href="../README.md">Repository and installation</a>
+    <a class="download" href="https://github.com/marino39/ha-energy-compass/blob/main/README.md">Repository and installation</a>
   </aside>
   <main id="main">
     <header>
@@ -450,7 +450,7 @@
       </section>
       <p>Calibration attributes are <code>unvalidated</code> or <code>verified</code>. They reflect configured validation status, not an automatic measurement or certification. Detailed input/solver failures can appear as other reason strings.</p>
       <div class="note caution"><p><strong>Unavailable is not zero, HOLD or NORMAL.</strong> Do not replace missing recommendations with a favorable default. An absent window may simply mean no matching period is known within current coverage.</p></div>
-      <p>For consumption-driven automations, check Forecast valid is on and <code>current_guidance_valid</code> is true, then compare stable uppercase levels. Optional window notifications also require Notify enabled and a configured action in the <a href="installation.md#opt-in-notifications">notification blueprint</a>.</p>
+      <p>For consumption-driven automations, check Forecast valid is on and <code>current_guidance_valid</code> is true, then compare stable uppercase levels. Optional window notifications also require Notify enabled and a configured action in the <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md#opt-in-notifications">notification blueprint</a>.</p>
     </section>
 
     <section id="examples" aria-labelledby="examples-title">
@@ -519,19 +519,19 @@
       <h2 id="reference-title">Source reference and further reading</h2>
       <p>This guide follows the released implementation. When updating calculations or entity behavior, update the corresponding explanations here.</p>
       <ul>
-        <li><a href="installation.md">Installation, source selection, dashboards and notifications</a></li>
-        <li><a href="model.md">Detailed optimizer and incremental-consumption model</a></li>
-        <li><a href="source-contracts.md">Source mapping, units and normalization contracts</a></li>
-        <li><a href="runtime-validation.md">Runtime compatibility and benchmark evidence</a></li>
-        <li><a href="../custom_components/energy_compass/sensor.py">Sensor states</a>, <a href="../custom_components/energy_compass/binary_sensor.py">validity sensor</a> and <a href="../custom_components/energy_compass/entity.py">availability and attributes</a></li>
-        <li><a href="../custom_components/energy_compass/runtime.py">Runtime calculations</a> and <a href="../custom_components/energy_compass/coordinator.py">refresh, invalidation and window persistence</a></li>
-        <li><a href="../custom_components/energy_compass/engine/consumption.py">Probes, classification, windows and energy-state precedence</a></li>
-        <li><a href="../custom_components/energy_compass/engine/optimize.py">Optimization constraints and objective</a>, <a href="../custom_components/energy_compass/engine/forecast.py">load forecasting</a> and <a href="../custom_components/energy_compass/settings.py">integration defaults</a></li>
+        <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md">Installation, source selection, dashboards and notifications</a></li>
+        <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/model.md">Detailed optimizer and incremental-consumption model</a></li>
+        <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/source-contracts.md">Source mapping, units and normalization contracts</a></li>
+        <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/runtime-validation.md">Runtime compatibility and benchmark evidence</a></li>
+        <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/custom_components/energy_compass/sensor.py">Sensor states</a>, <a href="https://github.com/marino39/ha-energy-compass/blob/main/custom_components/energy_compass/binary_sensor.py">validity sensor</a> and <a href="https://github.com/marino39/ha-energy-compass/blob/main/custom_components/energy_compass/entity.py">availability and attributes</a></li>
+        <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/custom_components/energy_compass/runtime.py">Runtime calculations</a> and <a href="https://github.com/marino39/ha-energy-compass/blob/main/custom_components/energy_compass/coordinator.py">refresh, invalidation and window persistence</a></li>
+        <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/custom_components/energy_compass/engine/consumption.py">Probes, classification, windows and energy-state precedence</a></li>
+        <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/custom_components/energy_compass/engine/optimize.py">Optimization constraints and objective</a>, <a href="https://github.com/marino39/ha-energy-compass/blob/main/custom_components/energy_compass/engine/forecast.py">load forecasting</a> and <a href="https://github.com/marino39/ha-energy-compass/blob/main/custom_components/energy_compass/settings.py">integration defaults</a></li>
       </ul>
     </section>
     <footer>
-      <p>Energy Compass v0.1.0 · Offline HTML guide. Open this file from a repository checkout; no build, remote fonts, scripts or network requests are required. Theme follows your system preference.</p>
-      <p><a href="#overview">Back to the guide</a> · <a href="../LICENSE">Apache License 2.0</a></p>
+      <p>Energy Compass v0.1.0 · This guide works online and offline from a repository checkout. Theme follows your system preference. Supporting documentation and source-code links open GitHub.</p>
+      <p><a href="#overview">Back to the guide</a> · <a href="https://github.com/marino39/ha-energy-compass/blob/main/LICENSE">Apache License 2.0</a></p>
     </footer>
   </main>
 </div>
