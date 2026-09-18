@@ -1,5 +1,8 @@
 """Stable entity identity and shared advisory attributes."""
 
+from copy import deepcopy
+
+from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -29,6 +32,7 @@ class EnergyCompassEntity(CoordinatorEntity):
 
     def __init__(self, coordinator, key):
         super().__init__(coordinator)
+        self._last_published_data = None
         self.key = key
         self._attr_unique_id = f"{coordinator.entry.entry_id}_{key}"
         self._attr_translation_key = key
@@ -40,6 +44,27 @@ class EnergyCompassEntity(CoordinatorEntity):
         )
         if key == "optimizer_status":
             self._attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def _publication_data(self):
+        """Include freshness and attributes even when the primary value is stable."""
+        available = self.available
+        return (
+            available,
+            self.state if available else None,
+            self.extra_state_attributes,
+        )
+
+    @callback
+    def _async_write_ha_state(self):
+        """Remember successful writes, including initial and HA-triggered writes."""
+        super()._async_write_ha_state()
+        self._last_published_data = deepcopy(self._publication_data())
+
+    @callback
+    def _handle_coordinator_update(self):
+        """Publish only changes visible on this entity, not every plan update."""
+        if self._publication_data() != self._last_published_data:
+            super()._handle_coordinator_update()
 
     @property
     def available(self):
