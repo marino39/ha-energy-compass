@@ -2,6 +2,7 @@
 
 import asyncio
 import threading
+from copy import deepcopy
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -79,6 +80,66 @@ def recommendation_states(hass):
         for key in SENSOR_KEYS
         if key != "optimizer_status"
     }
+
+
+@pytest.mark.parametrize("copy_data", [False, True])
+async def test_unchanged_entities_are_not_reported_again(
+    published_entry, hass, freezer, copy_data
+):
+    """Duplicate coordinator publications must not write unchanged entity states."""
+    coordinator = published_entry.runtime_data
+    entity_ids = [
+        f"sensor.refresh_{key}" for key in SENSOR_KEYS if not key.startswith("next_")
+    ] + ["binary_sensor.refresh_forecast_valid"]
+    reported = {
+        entity_id: hass.states.get(entity_id).last_reported for entity_id in entity_ids
+    }
+    freezer.tick(timedelta(seconds=1))
+    data = deepcopy(coordinator.data) if copy_data else coordinator.data
+    coordinator.async_set_updated_data(data)
+    for entity_id, timestamp in reported.items():
+        assert hass.states.get(entity_id).last_reported == timestamp, entity_id
+
+
+async def test_only_entities_with_changed_values_or_attributes_are_reported(
+    published_entry, hass, freezer
+):
+    """Nested plan edits must publish without rewriting unrelated sensors."""
+    coordinator = published_entry.runtime_data
+    unchanged_id = "sensor.refresh_expected_wear_cost"
+    original_reported = hass.states.get(unchanged_id).last_reported
+    level_id = "sensor.refresh_consumption_compass"
+    old_level = hass.states.get(level_id).state
+    new_level = "LIMIT" if old_level != "LIMIT" else "BOOST"
+    plan_id = "sensor.refresh_plan"
+    original_plan_state = hass.states.get(plan_id).state
+    freezer.tick(timedelta(seconds=1))
+    # In-place edits exercise isolation from the coordinator's mutable arrays.
+    coordinator.data["outlook"][0]["level"] = new_level
+    coordinator.async_set_updated_data(coordinator.data)
+    assert hass.states.get(level_id).state == new_level
+    assert hass.states.get(plan_id).state == original_plan_state
+    assert hass.states.get(plan_id).attributes["outlook"][0]["level"] == new_level
+    assert hass.states.get(plan_id).last_reported == dt_util.utcnow()
+    assert hass.states.get(unchanged_id).last_reported == original_reported
+
+
+async def test_freshness_attributes_publish_with_unchanged_value(
+    published_entry, hass, freezer
+):
+    """Deduplication must not freeze timestamps that consumers use for validity."""
+    coordinator = published_entry.runtime_data
+    entity_id = "sensor.refresh_consumption_compass"
+    original_state = hass.states.get(entity_id).state
+    freezer.tick(timedelta(seconds=1))
+    new_deadline = "2026-09-17T10:30:00+00:00"
+    coordinator.async_set_updated_data(
+        {**coordinator.data, "valid_until": new_deadline}
+    )
+    state = hass.states.get(entity_id)
+    assert state.state == original_state
+    assert state.attributes["valid_until"] == new_deadline
+    assert state.last_reported == dt_util.utcnow()
 
 
 @pytest.mark.parametrize("trigger", ["manual", "source", "boundary"])
