@@ -67,7 +67,7 @@ NUMBERS = {
     "limit_floor": ("compass", 1, -1000, 1000, "currency/kWh"),
     "debounce_seconds": ("performance", 5, 0, 60, "s"),
     "soc_trigger_percent": ("performance", 2, 0.1, 100, "%"),
-    "solve_time_limit_s": ("performance", 10, 0.1, 10, "s"),
+    "solve_time_limit_s": ("performance", 10, 0.1, 30, "s"),
     "probe_time_limit_s": ("performance", 2, 0.01, 10, "s"),
     "total_time_limit_s": ("performance", 60, 1, 60, "s"),
     "cost_precision": ("presentation", 3, 0, 6, ""),
