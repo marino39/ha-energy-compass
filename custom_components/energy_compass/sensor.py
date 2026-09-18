@@ -91,7 +91,7 @@ class EnergyCompassSensor(EnergyCompassEntity, SensorEntity):
         data = self.coordinator.data
         if self.key == "optimizer_status":
             return data["status"]
-        if not data.get("valid"):
+        if not (data.get("valid") or data.get("refreshing")):
             return None
         if self.key == "consumption_compass":
             return data["outlook"][0]["level"]

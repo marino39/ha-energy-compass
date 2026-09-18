@@ -391,7 +391,7 @@
             <thead><tr><th scope="col">State</th><th scope="col">Meaning and next check</th></tr></thead>
             <tbody>
               <tr><th scope="row"><code>ready</code></th><td>A baseline result was published. Check Forecast valid for freshness and current guidance validity for the consumption probe; ready does not promise complete reference coverage.</td></tr>
-              <tr><th scope="row"><code>calculating</code></th><td>Setup, changed inputs or a time boundary triggered a new calculation. Old advice is invalidated while calculation runs.</td></tr>
+              <tr><th scope="row"><code>calculating</code></th><td>Setup, changed inputs or a time boundary triggered a new calculation. In the next release, previously published values remain visible with <code>refreshing=true</code> while a replacement is queued or running; Forecast valid stays off. Initial setup or recovery after a failure has no retained values.</td></tr>
               <tr><th scope="row"><code>invalid_input</code></th><td>A required input or configuration failed validation. Inspect <code>reason</code> for missing/stale sources, units, SOC checks, history coverage or invalid settings.</td></tr>
               <tr><th scope="row"><code>timeout</code></th><td>The base solve or overall calculation exceeded its budget. Check timing, model size and hardware. A single failed probe can instead leave a ready baseline with incomplete guidance.</td></tr>
               <tr><th scope="row"><code>infeasible</code></th><td>No baseline plan satisfies all constraints. Check demand/generation, SOC, reserve, power/export limits, terminal requirements and allowed capabilities.</td></tr>
@@ -421,6 +421,7 @@
     <section id="quality" aria-labelledby="quality-title">
       <h2 id="quality-title">Validity and missing data</h2>
       <p>Entities share <code>generated_at</code>, <code>valid_until</code>, <code>reason</code>, <code>reasons</code>, <code>calibration</code>, <code>capacity_calibration</code> and <code>classification_mode</code> attributes when available. <code>reason</code> describes invalidation or reference coverage; <code>reasons</code> combines quality warnings and any incomplete-reference reason.</p>
+      <div class="note"><p><strong>Refresh continuity (next release).</strong> Unlike v0.1.0, a queued or running refresh keeps the last published values visible, including at a scheduled validity boundary. The new shared attribute <code>refreshing=true</code> identifies this retained display. Original timestamps, plan arrays and quality metadata stay unchanged; <strong>Forecast valid remains off</strong>, so retained values must not be treated as current advice. A successful calculation replaces the snapshot and clears <code>refreshing</code>. Invalid/stale required inputs or a failed calculation make recommendations unavailable. Absent or ended windows and unknown consumption probes remain unavailable during refresh.</p></div>
       <section class="table-scroll" aria-label="Classification modes" tabindex="0">
         <table>
           <caption>Classification modes</caption>
