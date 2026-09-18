@@ -13,7 +13,7 @@ Requires Home Assistant **2026.9.1 or later**. The integration installs `scipy==
 
 In HACS, open **Custom repositories**, add `https://github.com/marino39/ha-energy-compass` as an **Integration**, then download Energy Compass. Restart Home Assistant, and add **Energy Compass** under **Settings → Devices & services → Add integration**. For a manual installation, copy `custom_components/energy_compass` into the Home Assistant config directory's `custom_components` folder and restart. The optional notification blueprint lives outside the HACS-installed integration folder and must be [copied separately](docs/installation.md#opt-in-notifications).
 
-To try a source-independent synthetic setup, choose `Synthetic`, `EUR`, `UTC`, the `generic` preset, and disable PV and battery. Set fixed buy and sell rates in **Tariffs**, a daily household load in **Forecast**, and a finite grid import limit in **Hardware**. In **Sources**, select fixed buy, fixed sell, and fixed load after setting those values, then open **Preview** and confirm. The [installation guide](docs/installation.md) also shows how to select real entities and how to build a dashboard without a custom card.
+To try a source-independent synthetic setup, choose `Synthetic`, `EUR`, `UTC`, the `generic` preset, and disable PV and battery. Set fixed buy and sell rates in **Tariffs → Fixed rates and transformations**, a daily household load in **Forecast**, and a finite grid import limit in **Hardware**. Then open **Preview** and confirm. The [installation guide](docs/installation.md) shows the full setup and dashboard steps, while [source requirements](docs/source-requirements.md) explain real entity and forecast inputs.
 
 ## What it shows
 

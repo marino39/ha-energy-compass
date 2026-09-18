@@ -4,14 +4,26 @@ import re
 from copy import deepcopy
 
 import voluptuous as vol
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
 from homeassistant.util import dt as dt_util
 
-from .config_models import LoadSource, NumericSetting, PriceSource
+from .config_models import LoadSource, NumericSetting, resolve_numeric
 from .engine.models import InputError
 from .flow_schema import entity_binding, number, select, snapshot
 from .presets import PRESETS
 from .settings import NUMBERS
+from .source_management import (
+    assert_selected,
+    remove_source,
+    replace_source,
+    selected_source,
+    source_back_label,
+    source_error_detail,
+    source_inventory,
+    source_mode_options,
+    source_role_options,
+)
 from .sources.bindings import (
     IntervalBinding,
     field_paths,
@@ -38,101 +50,404 @@ TARGETS = ("buy", "sell", "pv", "load", "soc", "bms_soc", *MEASUREMENTS)
 class SourceEditor:
     """Share source transactions across setup and post-setup flows."""
 
+    _source_ref = None
+    _source_original = None
+
     async def async_step_sources(self, user_input=None):
+        self._source = None
+        self._binding = None
+        self._source_ref = None
+        self._source_original = None
+        return self.async_show_menu(
+            step_id="sources", menu_options=["source_inventory", "source_add", "menu"]
+        )
+
+    async def async_step_source_inventory(self, user_input=None):
+        rows = source_inventory(
+            self._draft, er.async_get(self.hass), self.hass.config.language
+        )
+        if user_input is not None:
+            if user_input["source"] == "back":
+                return await self.async_step_sources()
+            try:
+                ref = rows[int(user_input["source"])][0]
+                self._source_ref = ref
+                self._source_original = deepcopy(selected_source(self._draft, ref))
+                self._source = None
+                self._binding = None
+                return await self.async_step_source_actions()
+            except IndexError, ValueError, InputError:
+                errors = {"base": "invalid_source"}
+        else:
+            errors = {}
+        return self.async_show_form(
+            step_id="source_inventory",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("source"): select(
+                        [
+                            {"value": str(index), "label": label}
+                            for index, (_, label) in enumerate(rows)
+                        ]
+                        + [
+                            {
+                                "value": "back",
+                                "label": source_back_label(self.hass.config.language),
+                            }
+                        ]
+                    )
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_source_actions(self, user_input=None):
+        ref = self._source_ref
+        options = (
+            ["source_append", "source_remove_group"]
+            if ref.kind == "group"
+            else ["source_edit", "source_append", "source_remove"]
+            if ref.kind == "interval" and ref.role in ("buy", "sell", "pv")
+            else ["source_edit", "source_remove"]
+        )
+        options.extend(["source_inventory", "sources"])
+        return self.async_show_menu(step_id="source_actions", menu_options=options)
+
+    async def async_step_source_add(self, user_input=None):
+        if user_input is not None:
+            target = user_input["target"]
+            if target == "back":
+                return await self.async_step_sources()
+            if target not in TARGETS:
+                return self.async_show_form(
+                    step_id="source_add",
+                    data_schema=vol.Schema(
+                        {
+                            vol.Required("target"): select(
+                                source_role_options(
+                                    [*TARGETS, "back"], self.hass.config.language
+                                )
+                            )
+                        }
+                    ),
+                    errors={"base": "invalid_input"},
+                )
+            self._source_ref = None
+            self._source_original = None
+            self._binding = None
+            self._source = {"target": target, "operation": "replace"}
+            return await self.async_step_source_mode()
+        return self.async_show_form(
+            step_id="source_add",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("target"): select(
+                        source_role_options(
+                            [*TARGETS, "back"], self.hass.config.language
+                        )
+                    )
+                }
+            ),
+        )
+
+    def _source_modes(self, target):
+        if target in ("buy", "sell"):
+            return ["fixed", "entity", "forecast"]
+        if target == "pv":
+            return ["forecast"]
+        if target == "load":
+            return ["fixed", "forecast", "statistic", "power_history"]
+        if target in ("soc", "bms_soc", "throughput_today"):
+            return ["measurement"]
+        return ["measurement", "statistic"]
+
+    async def async_step_source_mode(self, user_input=None):
+        target = self._source["target"]
+        choices = self._source_modes(target)
         errors = {}
         if user_input is not None:
-            self._source = dict(user_input)
-            target = user_input["target"]
             mode = user_input["mode"]
-            if (
+            group = user_input.get("group", 1)
+            if mode == "back":
+                return await self.async_step_sources()
+            if mode not in choices:
+                errors["base"] = "invalid_input"
+            elif (
                 target == "pv"
                 and not self._draft["sources"]["pv"]["enabled"]
                 or target in ("soc", "bms_soc", "throughput_today")
                 and not self._draft["sources"]["battery_enabled"]
             ):
                 errors["base"] = "component_disabled"
-            elif user_input["operation"] == "remove":
-                if target in MEASUREMENTS:
-                    self._draft["measurements"].pop(target, None)
-                elif target in ("soc", "bms_soc"):
-                    self._draft["sources"][target] = None
-                elif target == "pv":
-                    self._draft["sources"]["pv"]["arrays"] = []
-                else:
-                    errors["base"] = "invalid_input"
-                if not errors:
-                    return await self.async_step_menu()
-            elif mode == "fixed" and target in ("buy", "sell", "load"):
-                if target == "load":
-                    self._draft["sources"]["load"] = LoadSource(
-                        "daily_estimate",
-                        daily_estimate=NumericSetting(
-                            fixed=self._draft["settings"]["daily_load_kwh"]
-                        ),
-                    ).to_dict()
-                else:
-                    self._draft["sources"][target] = PriceSource(
-                        "fixed",
-                        fixed=NumericSetting(
-                            fixed=self._draft["settings"][f"{target}_rate"],
-                            unit=f"{self._draft['currency']}/kWh",
-                        ),
-                    ).to_dict()
-                return await self.async_step_menu()
-            elif mode == "statistic" and (target == "load" or target in MEASUREMENTS):
-                return await self.async_step_source_statistic()
-            elif mode in ("forecast", "measurement", "power_history"):
-                if (
-                    target in ("buy", "sell", "pv")
-                    and mode != "forecast"
-                    or target in ("soc", "bms_soc", *MEASUREMENTS)
-                    and mode != "measurement"
-                    or mode == "power_history"
-                    and target != "load"
-                ):
-                    errors["base"] = "invalid_input"
-                else:
-                    return await self.async_step_source_entity()
-            else:
+            elif target == "pv" and (
+                isinstance(group, bool)
+                or not isinstance(group, (int, float))
+                or group != int(group)
+                or not 1 <= group <= len(self._draft["sources"]["pv"]["arrays"]) + 1
+            ):
                 errors["base"] = "invalid_input"
-        schema = vol.Schema(
-            {
-                vol.Required("target", default="buy"): select(TARGETS),
-                vol.Required("mode", default="forecast"): select(
-                    ["forecast", "fixed", "measurement", "power_history", "statistic"]
-                ),
-                vol.Required("operation", default="replace"): select(
-                    ["replace", "append", "remove"]
-                ),
-                vol.Required("group", default=1): number(1, 8, step=1),
-            }
-        )
+            else:
+                self._source["mode"] = mode
+                self._source["group"] = int(group)
+                if (
+                    target == "pv"
+                    and self._source["group"]
+                    <= len(self._draft["sources"]["pv"]["arrays"])
+                    or target in ("buy", "sell")
+                    and mode == "forecast"
+                    and self._draft["sources"][target]["mode"] == "forecast"
+                ):
+                    self._source["operation"] = "append"
+                if mode == "fixed":
+                    return await self._save_fixed_source()
+                if mode == "statistic":
+                    return await self.async_step_source_statistic()
+                return await self.async_step_source_entity()
+        fields = {
+            vol.Required("mode", default=choices[0]): select(
+                source_mode_options([*choices, "back"], self.hass.config.language)
+            )
+        }
+        if target == "pv":
+            fields[vol.Required("group", default=1)] = number(
+                1, len(self._draft["sources"]["pv"]["arrays"]) + 1, step=1
+            )
         return self.async_show_form(
-            step_id="sources", data_schema=schema, errors=errors
+            step_id="source_mode", data_schema=vol.Schema(fields), errors=errors
+        )
+
+    async def async_step_source_edit(self, user_input=None):
+        ref = self._source_ref
+        try:
+            assert_selected(self._draft, ref, self._source_original)
+            if ref.kind == "group":
+                raise InputError("select a PV continuation to edit")
+            mode = (
+                "forecast"
+                if ref.kind == "interval"
+                else "entity"
+                if ref.role in ("buy", "sell")
+                and self._draft["helpers"].get(f"{ref.role}_rate")
+                else "measurement"
+                if ref.role == "throughput_today" and ref.kind == "statistic"
+                else "statistic"
+                if ref.kind == "statistic"
+                or ref.role == "load"
+                and ref.kind == "recorder"
+                and self._draft["sources"]["load"].get("statistic_id")
+                else "measurement"
+                if ref.role in ("soc", "bms_soc", *MEASUREMENTS)
+                else "power_history"
+                if ref.role == "load" and self._draft["sources"]["load"].get("power")
+                else "fixed"
+            )
+            self._source = {
+                "target": ref.role,
+                "mode": mode,
+                "operation": "edit",
+                "group": (ref.group_index or 0) + 1,
+            }
+            selected = selected_source(self._draft, ref)
+            if ref.role in ("buy", "sell") and mode == "entity":
+                selected = self._draft["helpers"][f"{ref.role}_rate"]
+            elif ref.role == "load":
+                selected = selected.get("forecast") or selected.get("power") or selected
+            binding = (
+                selected.get("entity")
+                if isinstance(selected, dict) and selected.get("entity")
+                else selected
+            )
+            if isinstance(binding, dict) and binding.get("entity_id"):
+                self._binding = self._saved_entity_binding(binding)
+            if mode == "fixed":
+                return await self.async_step_source_mode()
+            if mode == "statistic":
+                return await self.async_step_source_statistic()
+            return await self.async_step_source_entity()
+        except InputError:
+            return await self.async_step_source_inventory()
+
+    async def async_step_source_append(self, user_input=None):
+        ref = self._source_ref
+        try:
+            assert_selected(self._draft, ref, self._source_original)
+        except InputError:
+            return await self.async_step_source_inventory()
+        self._source = {
+            "target": ref.role,
+            "mode": "forecast",
+            "operation": "append",
+            "group": (ref.group_index or 0) + 1,
+        }
+        self._binding = None
+        return await self.async_step_source_entity()
+
+    async def async_step_source_remove_group(self, user_input=None):
+        return await self.async_step_source_remove(user_input)
+
+    async def async_step_source_remove(self, user_input=None):
+        ref = self._source_ref
+        label = next(
+            (
+                label
+                for item, label in source_inventory(
+                    self._draft, er.async_get(self.hass), self.hass.config.language
+                )
+                if item == ref
+            ),
+            source_error_detail(
+                "selected source changed; select it again", self.hass.config.language
+            ),
+        )
+        errors = {}
+        detail = ""
+        if user_input is not None:
+            if user_input.get("confirm") is not True:
+                return await self.async_step_sources()
+            try:
+                cycles_active = False
+                if (
+                    ref.role == "throughput_today"
+                    and self._draft["sources"]["battery_enabled"]
+                ):
+                    helper = self._draft["helpers"].get("daily_cycles")
+                    if helper:
+                        from .flow_schema import snapshot
+
+                        cycles = resolve_numeric(
+                            NumericSetting.from_dict(helper),
+                            snapshot(self.hass, self._draft),
+                            dt_util.utcnow(),
+                        )
+                    else:
+                        cycles = self._draft["settings"]["daily_cycles"]
+                    cycles_active = bool(cycles)
+                candidate = remove_source(
+                    self._draft,
+                    ref,
+                    self._source_original,
+                    cycles_active=cycles_active,
+                )
+                self._draft = candidate
+                return await self.async_step_sources()
+            except InputError as err:
+                errors["base"] = "invalid_source"
+                detail = source_error_detail(err, self.hass.config.language)
+        return self.async_show_form(
+            step_id="source_remove",
+            data_schema=vol.Schema(
+                {vol.Required("confirm", default=False): selector.BooleanSelector()}
+            ),
+            errors=errors,
+            description_placeholders={"target": label, "detail": detail},
+        )
+
+    async def _save_fixed_source(self):
+        target = self._source["target"]
+        candidate = deepcopy(self._draft)
+        if target in ("buy", "sell"):
+            price = candidate["sources"][target]
+            price["mode"] = "fixed"
+            price["forecast"] = []
+            price["fixed"] = NumericSetting(
+                fixed=candidate["settings"][f"{target}_rate"],
+                unit=f"{candidate['currency']}/kWh",
+            ).to_dict()
+            candidate["helpers"].pop(f"{target}_rate", None)
+        elif target == "load":
+            candidate["sources"]["load"] = LoadSource(
+                "daily_estimate",
+                daily_estimate=NumericSetting(
+                    fixed=candidate["settings"]["daily_load_kwh"]
+                ),
+            ).to_dict()
+        else:
+            return await self.async_step_source_mode()
+        if self._source_ref:
+            assert_selected(self._draft, self._source_ref, self._source_original)
+        self._draft = candidate
+        return await self._after_source_save()
+
+    async def _after_source_save(self):
+        if self._source.get("return_to") == "tariffs":
+            return await self.async_step_tariffs()
+        return await self.async_step_sources()
+
+    def _saved_entity_binding(self, selected):
+        registry_id = selected.get("registry_id")
+        if registry_id:
+            item = er.async_get(self.hass).async_get(registry_id)
+            if item is None:
+                return None
+            return entity_binding(self.hass, item.entity_id, selected.get("attribute"))
+        return entity_binding(
+            self.hass, selected["entity_id"], selected.get("attribute")
         )
 
     async def async_step_source_statistic(self, user_input=None):
+        if self._source["target"] not in (
+            "load",
+            *(name for name in MEASUREMENTS if name != "throughput_today"),
+        ):
+            return self.async_show_form(
+                step_id="source_statistic",
+                data_schema=vol.Schema({}),
+                errors={"base": "invalid_input"},
+            )
         if user_input is not None:
             target = self._source["target"]
+            candidate = deepcopy(self._draft)
+            if self._source_ref:
+                try:
+                    assert_selected(candidate, self._source_ref, self._source_original)
+                except InputError:
+                    return self.async_show_form(
+                        step_id="source_statistic",
+                        data_schema=vol.Schema({}),
+                        errors={"base": "invalid_source"},
+                    )
             if target == "load":
-                self._draft["sources"]["load"] = LoadSource(
-                    "recorder",
+                candidate["sources"]["load"].update(
+                    mode="recorder",
                     statistic_id=user_input["statistic_id"],
+                    power=None,
+                    forecast=None,
+                    daily_estimate=None,
                     history_unit=user_input["unit"],
                     history_sign=user_input["sign"],
-                ).to_dict()
-            else:
-                self._draft["measurements"][target] = dict(
-                    user_input, usage="diagnostic_only"
                 )
-            return await self.async_step_menu()
+            else:
+                candidate["measurements"][target] = {
+                    **candidate["measurements"].get(target, {}),
+                    **user_input,
+                    "usage": "diagnostic_only",
+                }
+            self._draft = candidate
+            return await self._after_source_save()
+        saved = (
+            selected_source(self._draft, self._source_ref)
+            if self._source_ref and self._source.get("operation") == "edit"
+            else {}
+        )
+        if self._source["target"] == "load":
+            saved = {
+                "statistic_id": saved.get("statistic_id"),
+                "unit": saved.get("history_unit", "kWh"),
+                "sign": saved.get("history_sign", 1),
+            }
         return self.async_show_form(
             step_id="source_statistic",
             data_schema=vol.Schema(
                 {
-                    vol.Required("statistic_id"): selector.StatisticSelector(),
-                    vol.Required("unit", default="kWh"): select(["kWh", "Wh"]),
-                    vol.Required("sign", default=1): number(-1, 1, step=2),
+                    vol.Required("statistic_id", default=saved["statistic_id"])
+                    if saved.get("statistic_id")
+                    else vol.Required("statistic_id"): selector.StatisticSelector(),
+                    vol.Required("unit", default=saved.get("unit", "kWh")): select(
+                        ["kWh", "Wh"]
+                    ),
+                    vol.Required("sign", default=saved.get("sign", 1)): number(
+                        -1, 1, step=2
+                    ),
                 }
             ),
         )
@@ -147,10 +462,25 @@ class SourceEditor:
                 return await self.async_step_source_attribute()
             except InputError:
                 errors["base"] = "invalid_source"
+        default = self._binding.entity_id if self._binding else None
+        marker = (
+            vol.Required("entity_id", default=default)
+            if default
+            else vol.Required("entity_id")
+        )
         return self.async_show_form(
             step_id="source_entity",
             data_schema=vol.Schema(
-                {vol.Required("entity_id"): selector.EntitySelector()}
+                {
+                    marker: selector.EntitySelector(
+                        selector.EntitySelectorConfig(
+                            domain=["sensor", "number", "input_number"]
+                            if self._source["target"] in ("buy", "sell")
+                            and self._source["mode"] == "entity"
+                            else None
+                        )
+                    )
+                }
             ),
             errors=errors,
         )
@@ -158,7 +488,9 @@ class SourceEditor:
     async def async_step_source_attribute(self, user_input=None):
         if user_input is not None:
             self._binding = entity_binding(
-                self.hass, self._binding.entity_id, user_input.get("attribute")
+                self.hass,
+                self._binding.entity_id,
+                user_input.get("attribute", self._binding.attribute),
             )
             if self._source["mode"] == "forecast":
                 return await self.async_step_source_mapping()
@@ -172,8 +504,11 @@ class SourceEditor:
                 else preset.pv_attribute
             )
         marker = (
-            vol.Optional("attribute", description={"suggested_value": attribute})
-            if attribute
+            vol.Optional(
+                "attribute",
+                description={"suggested_value": self._binding.attribute or attribute},
+            )
+            if self._binding.attribute or attribute
             else vol.Optional("attribute")
         )
         return self.async_show_form(
@@ -215,6 +550,14 @@ class SourceEditor:
             if isinstance(raw, (list, tuple)) and raw and isinstance(raw[0], dict)
             else ()
         )
+        saved = None
+        if (
+            self._source.get("operation") == "edit"
+            and self._source_ref
+            and self._source_ref.kind == "interval"
+        ):
+            selected = selected_source(self._draft, self._source_ref)
+            saved = selected.get("forecast") if target == "load" else selected
         if user_input is not None:
             try:
                 data = dict(user_input)
@@ -240,12 +583,13 @@ class SourceEditor:
                         raise InputError("invalid data path")
                 age = data.pop("max_age_hours")
                 data["max_age_seconds"] = age * 3600 if data.pop("check_age") else None
-                binding = IntervalBinding(self._binding, **data)
+                data = {**(saved or {}), **data, "entity": self._binding.to_dict()}
+                binding = IntervalBinding.from_dict(data)
                 rows = parse_intervals(states, binding, dt_util.utcnow())
                 if not rows:
                     raise InputError("empty forecast")
                 self._save_interval(binding)
-                return await self.async_step_menu()
+                return await self._after_source_save()
             except (InputError, ValueError, TypeError) as err:
                 errors["base"] = "invalid_source"
                 detail = str(err)
@@ -283,6 +627,36 @@ class SourceEditor:
                     interval_minutes=preset.pv_interval_minutes or 60,
                     value_kind="power" if preset.pv_unit in ("kW", "W") else "energy",
                 )
+        if saved:
+            defaults.update(
+                {
+                    key: saved.get(key) or ""
+                    for key in (
+                        "value_path",
+                        "start_path",
+                        "end_path",
+                        "duration_path",
+                        "unit_path",
+                        "published_path",
+                    )
+                }
+            )
+            defaults.update(
+                {
+                    key: saved[key]
+                    for key in (
+                        "interval_minutes",
+                        "unit",
+                        "value_kind",
+                        "value_sign",
+                        "source_timezone",
+                    )
+                    if key in saved and saved[key] is not None
+                }
+            )
+            seconds = saved.get("max_age_seconds")
+            defaults["check_age"] = seconds is not None
+            defaults["max_age_hours"] = seconds / 3600 if seconds else 24
         defaults.update(user_input or {})
         schema = {}
         for key in (
@@ -295,11 +669,9 @@ class SourceEditor:
             choices = list(paths)
             if key != "value_path":
                 choices.insert(0, "")
-            suggested = (
-                defaults[key]
-                if defaults[key] in choices or not paths
-                else (choices[0] if choices else "")
-            )
+            if defaults[key] and defaults[key] not in choices:
+                choices.append(defaults[key])
+            suggested = defaults[key]
             schema[vol.Required(key, default=suggested)] = (
                 select(choices) if paths else selector.TextSelector()
             )
@@ -308,16 +680,24 @@ class SourceEditor:
             for path in field_paths(states.get(self._binding.entity_id, {}))
             if path not in ("state",)
         ]
+        if (
+            defaults["published_path"]
+            and defaults["published_path"] not in publication_paths
+        ):
+            publication_paths.append(defaults["published_path"])
         schema[vol.Optional("published_path", default=defaults["published_path"])] = (
             select(["", *publication_paths])
             if publication_paths
             else selector.TextSelector()
         )
+        interval_marker = (
+            vol.Optional("interval_minutes")
+            if saved is not None and saved.get("interval_minutes") is None
+            else vol.Required("interval_minutes", default=defaults["interval_minutes"])
+        )
         schema.update(
             {
-                vol.Required(
-                    "interval_minutes", default=defaults["interval_minutes"]
-                ): number(1, 1440, "min"),
+                interval_marker: number(1, 1440, "min"),
                 vol.Required("unit", default=defaults["unit"]): select(
                     [f"{currency}/kWh", f"{currency}/MWh"]
                     if price
@@ -355,61 +735,99 @@ class SourceEditor:
     def _save_interval(self, binding):
         target = self._source["target"]
         data = binding.to_dict()
+        editing_interval = (
+            self._source["operation"] == "edit"
+            and self._source_ref is not None
+            and self._source_ref.kind == "interval"
+            and target in ("buy", "sell", "pv")
+        )
+        candidate = (
+            replace_source(self._draft, self._source_ref, self._source_original, data)
+            if editing_interval
+            else deepcopy(self._draft)
+        )
+        if self._source_ref is not None and not editing_interval:
+            assert_selected(candidate, self._source_ref, self._source_original)
         if target in ("buy", "sell"):
-            old = self._draft["sources"][target]
-            rows = (
-                old["forecast"]
-                if self._source["operation"] == "append" and old["mode"] == "forecast"
-                else []
-            )
-            self._draft["sources"][target] = PriceSource(
-                "forecast",
-                tuple(IntervalBinding.from_dict(row) for row in [*rows, data]),
-            ).to_dict()
+            price = candidate["sources"][target]
+            if editing_interval:
+                pass
+            elif self._source["operation"] == "append" and price["mode"] == "forecast":
+                price["forecast"].append(data)
+            else:
+                price["forecast"] = [data]
+            price["mode"] = "forecast"
+            price["fixed"] = None
+            candidate["helpers"].pop(f"{target}_rate", None)
         elif target == "load":
-            self._draft["sources"]["load"] = LoadSource(
-                "forecast", forecast=binding
-            ).to_dict()
+            old = candidate["sources"]["load"]
+            old.update(
+                mode="forecast",
+                forecast=data,
+                statistic_id=None,
+                power=None,
+                daily_estimate=None,
+            )
         else:
-            groups = deepcopy(self._draft["sources"]["pv"]["arrays"])
+            groups = candidate["sources"]["pv"]["arrays"]
             index = int(self._source["group"]) - 1
-            if index > len(groups):
+            if index < 0 or index > len(groups):
                 raise InputError("add PV groups in consecutive order")
             if index == len(groups):
                 groups.append([])
-            groups[index] = (
-                [*groups[index], data]
-                if self._source["operation"] == "append"
-                else [data]
-            )
-            self._draft["sources"]["pv"]["arrays"] = groups
+            if editing_interval:
+                pass
+            elif self._source["operation"] == "append":
+                groups[index].append(data)
+            else:
+                groups[index] = [data]
+        self._draft = candidate
 
     async def async_step_source_measurement(self, user_input=None):
         target = self._source["target"]
+        if target in ("buy", "sell"):
+            return await self._source_price_measurement(user_input)
         errors = {}
+        detail = ""
+        prefix = "bms_" if target == "bms_soc" else ""
+        age_key = "bms_max_age_seconds" if prefix else "soc_max_age_seconds"
+        age_default = self._draft["settings"].get(age_key, 600)
+        if target in ("soc", "bms_soc") and age_key in self._draft["helpers"]:
+            try:
+                from .flow_schema import snapshot
+
+                age_default = resolve_numeric(
+                    NumericSetting.from_dict(self._draft["helpers"][age_key]),
+                    snapshot(self.hass, self._draft),
+                    dt_util.utcnow(),
+                )
+            except InputError:
+                pass
         if user_input is not None:
+            candidate = deepcopy(self._draft)
+            try:
+                if self._source_ref:
+                    assert_selected(candidate, self._source_ref, self._source_original)
+            except InputError as err:
+                errors["base"] = "invalid_source"
+                detail = str(err)
             if target in ("soc", "bms_soc"):
                 if user_input["unit"] not in ("%", "fraction", "kWh"):
                     errors["base"] = "invalid_input"
-                else:
-                    self._draft["sources"][target] = self._binding.to_dict()
-                    prefix = "bms_" if target == "bms_soc" else ""
-                    age_key = (
-                        "bms_max_age_seconds"
-                        if target == "bms_soc"
-                        else "soc_max_age_seconds"
-                    )
-                    self._draft["settings"][age_key] = user_input["max_age_seconds"]
-                    self._draft["helpers"].pop(age_key, None)
-                    self._draft["soc_options"][prefix + "sign"] = user_input["sign"]
-                    self._draft["soc_options"][prefix + "unit"] = user_input["unit"]
-                    self._draft["soc_options"][prefix + "timestamp_path"] = user_input[
+                elif not errors:
+                    candidate["sources"][target] = self._binding.to_dict()
+                    if user_input["max_age_seconds"] != age_default:
+                        candidate["settings"][age_key] = user_input["max_age_seconds"]
+                        candidate["helpers"].pop(age_key, None)
+                    candidate["soc_options"][prefix + "sign"] = user_input["sign"]
+                    candidate["soc_options"][prefix + "unit"] = user_input["unit"]
+                    candidate["soc_options"][prefix + "timestamp_path"] = user_input[
                         "timestamp_path"
                     ]
-                    self._draft["soc_options"][prefix + "timestamp_policy"] = (
+                    candidate["soc_options"][prefix + "timestamp_policy"] = (
                         user_input.get(
                             "timestamp_policy",
-                            self._draft["soc_options"].get(
+                            candidate["soc_options"].get(
                                 prefix + "timestamp_policy", "auto"
                             ),
                         )
@@ -417,20 +835,27 @@ class SourceEditor:
             elif target == "load":
                 if user_input["unit"] not in ("W", "kW"):
                     errors["base"] = "invalid_input"
-                else:
-                    self._draft["sources"]["load"] = LoadSource(
-                        "recorder",
-                        power=self._binding,
+                elif not errors:
+                    candidate["sources"]["load"].update(
+                        mode="recorder",
+                        power=self._binding.to_dict(),
+                        forecast=None,
+                        statistic_id=None,
+                        daily_estimate=None,
                         history_unit=user_input["unit"],
                         history_sign=user_input["sign"],
-                    ).to_dict()
+                    )
             else:
                 output_unit = "kW" if "power" in target else "kWh"
                 unit = user_input["unit"]
-                if unit not in (("W", "kW") if output_unit == "kW" else ("Wh", "kWh")):
+                if (
+                    unit not in (("W", "kW") if output_unit == "kW" else ("Wh", "kWh"))
+                    or target == "throughput_today"
+                    and user_input["sign"] != 1
+                ):
                     errors["base"] = "invalid_input"
-                else:
-                    self._draft["measurements"][target] = NumericSetting(
+                elif not errors:
+                    replacement = NumericSetting(
                         entity=self._binding,
                         unit=output_unit,
                         source_unit=unit,
@@ -439,22 +864,47 @@ class SourceEditor:
                         max_age_seconds=user_input["max_age_seconds"],
                         minimum=0 if target == "throughput_today" else None,
                     ).to_dict()
+                    candidate["measurements"][target] = {
+                        **candidate["measurements"].get(target, {}),
+                        **replacement,
+                    }
+                    if target == "throughput_today":
+                        try:
+                            from .flow_schema import snapshot
+                            from .sources.throughput import resolve_daily_throughput
+
+                            resolve_daily_throughput(
+                                candidate,
+                                {},
+                                snapshot(self.hass, candidate),
+                                dt_util.utcnow(),
+                            )
+                        except InputError as err:
+                            errors["base"] = "invalid_source"
+                            detail = source_error_detail(err, self.hass.config.language)
             if not errors:
-                return await self.async_step_menu()
+                self._draft = candidate
+                return await self._after_source_save()
         soc_source = target in ("soc", "bms_soc")
-        prefix = "bms_" if target == "bms_soc" else ""
         options = self._draft["soc_options"]
+        selected = self._draft["measurements"].get(target, {})
+        selected_unit = selected.get("source_unit")
+        selected_age = selected.get("max_age_seconds")
+        selected_sign = -1 if selected.get("multiplier", 1) < 0 else 1
         fields = {
             vol.Required(
                 "unit",
                 default=options.get(prefix + "unit", "%")
                 if soc_source
-                else "kWh"
+                else selected_unit or "kWh"
                 if "energy" in target or target == "throughput_today"
-                else "W",
+                else selected_unit or "W",
             ): select(["%", "fraction", "kWh", "Wh", "kW", "W"]),
             vol.Required(
-                "sign", default=options.get(prefix + "sign", 1) if soc_source else 1
+                "sign",
+                default=options.get(prefix + "sign", 1)
+                if soc_source
+                else selected_sign,
             ): number(-1, 1, step=2),
             vol.Required(
                 "timestamp_path",
@@ -464,10 +914,10 @@ class SourceEditor:
             ): selector.TextSelector(),
             vol.Required(
                 "max_age_seconds",
-                default=self._draft["settings"][
-                    "bms_max_age_seconds" if prefix else "soc_max_age_seconds"
-                ]
+                default=age_default
                 if soc_source
+                else selected_age
+                if selected_age is not None
                 else 600,
             ): number(1, 86400, "s"),
         }
@@ -482,6 +932,94 @@ class SourceEditor:
             step_id="source_measurement",
             data_schema=vol.Schema(fields),
             errors=errors,
+            description_placeholders={"detail": detail},
+        )
+
+    async def _source_price_measurement(self, user_input=None):
+        target = self._source["target"]
+        currency = self._draft["currency"]
+        current = self._draft.get("helpers", {}).get(f"{target}_rate")
+        source_unit = (
+            current.get("source_unit", f"{currency}/kWh")
+            if current
+            else f"{currency}/kWh"
+        )
+        factor = 0.001 if source_unit == f"{currency}/MWh" else 1
+        errors = {}
+        detail = ""
+        if user_input is not None:
+            try:
+                chosen_unit = user_input["source_unit"]
+                if chosen_unit not in (f"{currency}/kWh", f"{currency}/MWh"):
+                    raise InputError("price source currency or unit mismatch")
+                if self._binding.entity_id.split(".", 1)[0] not in (
+                    "sensor",
+                    "number",
+                    "input_number",
+                ):
+                    raise InputError(
+                        "price source must be a sensor, number or input_number"
+                    )
+                factor = 0.001 if chosen_unit.endswith("/MWh") else 1
+                selected = NumericSetting(
+                    entity=self._binding,
+                    unit=f"{currency}/kWh",
+                    source_unit=chosen_unit,
+                    multiplier=factor * user_input["source_scale"],
+                    minimum=-1000,
+                    maximum=1000,
+                    max_age_seconds=user_input["max_age_hours"] * 3600
+                    if user_input["check_age"]
+                    else None,
+                )
+                candidate = deepcopy(self._draft)
+                if self._source_ref:
+                    assert_selected(candidate, self._source_ref, self._source_original)
+                candidate["helpers"][f"{target}_rate"] = selected.to_dict()
+                price = candidate["sources"][target]
+                price["mode"] = "fixed"
+                price["forecast"] = []
+                price["fixed"] = NumericSetting(
+                    fixed=candidate["settings"][f"{target}_rate"],
+                    unit=f"{currency}/kWh",
+                ).to_dict()
+                from .flow_schema import snapshot
+
+                resolve_numeric(
+                    selected, snapshot(self.hass, candidate), dt_util.utcnow()
+                )
+                self._draft = candidate
+                return await self._after_source_save()
+            except (InputError, KeyError, TypeError, ValueError) as err:
+                errors["base"] = "invalid_source"
+                detail = source_error_detail(err, self.hass.config.language)
+        return self.async_show_form(
+            step_id="source_measurement",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("source_unit", default=source_unit): select(
+                        [f"{currency}/kWh", f"{currency}/MWh"]
+                    ),
+                    vol.Required(
+                        "source_scale",
+                        default=current.get("multiplier", 1) / factor if current else 1,
+                    ): number(-1000, 1000),
+                    vol.Required(
+                        "check_age",
+                        default=current.get("max_age_seconds") is not None
+                        if current
+                        else True,
+                    ): selector.BooleanSelector(),
+                    vol.Required(
+                        "max_age_hours",
+                        default=current["max_age_seconds"] / 3600
+                        if current and current.get("max_age_seconds")
+                        else 24,
+                    ): number(0.01, 8760, "h"),
+                }
+            ),
+            errors=errors,
+            description_placeholders={"detail": detail},
         )
 
     async def async_step_helpers(self, user_input=None):

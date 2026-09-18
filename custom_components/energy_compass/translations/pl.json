@@ -26,13 +26,11 @@
       },
       "sources": {
         "title": "Źródła danych",
-        "data": {
-          "target": "Rodzaj źródła",
-          "mode": "Tryb",
-          "operation": "Operacja",
-          "group": "Numer niezależnej grupy PV"
-        },
-        "description": "Dodaj osobno zakup, sprzedaż, zużycie oraz włączone PV i SOC. Append łączy dziś/jutro; kolejny numer grupy PV oznacza sumowanie niezależnych instalacji. Pomiary opcjonalne służą diagnostyce; throughput_today ogranicza dzienną pracę baterii."
+        "menu_options": {
+          "source_inventory": "Przeglądaj i edytuj źródła",
+          "source_add": "Dodaj źródło",
+          "menu": "Menu główne"
+        }
       },
       "source_entity": {
         "title": "Source entity",
@@ -72,8 +70,13 @@
           "sign": "Znak",
           "timestamp_path": "Pole czasu pomiaru",
           "timestamp_policy": "Zasada czasu pomiaru (auto: czas raportu HA; exact_path: wybrane pole)",
-          "max_age_seconds": "Maksymalny wiek pomiaru"
-        }
+          "max_age_seconds": "Maksymalny wiek pomiaru",
+          "source_unit": "Jednostka ceny źródłowej",
+          "source_scale": "Skala źródła",
+          "check_age": "Sprawdzaj wiek ceny",
+          "max_age_hours": "Maksymalny wiek ceny (godz.)"
+        },
+        "description": "{detail}"
       },
       "source_statistic": {
         "title": "Source statistic",
@@ -135,7 +138,7 @@
           "capacity_calibration": "Kalibracja pojemności",
           "bms_max_age_seconds": "Maksymalny wiek pomiaru BMS"
         },
-        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+        "description": "Dodatni limit cykli wymaga w Źródłach dziennego pomiaru sumy energii ładowania i rozładowania po stronie AC, zgodnego z przepływami modelu. {detail}"
       },
       "hardware": {
         "title": "Możliwości sprzętu",
@@ -150,21 +153,13 @@
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
       },
       "tariffs": {
-        "title": "Taryfy i kalibracja",
-        "data": {
-          "buy_rate": "Stała cena zakupu",
-          "sell_rate": "Stała cena sprzedaży",
-          "buy_multiplier": "Mnożnik ceny zakupu",
-          "sell_multiplier": "Mnożnik ceny sprzedaży",
-          "buy_addition": "Dodatek do ceny zakupu",
-          "sell_addition": "Dodatek do ceny sprzedaży",
-          "vat_percent": "Stawka VAT",
-          "monthly_charge": "Stała opłata miesięczna",
-          "buy_apply_vat": "Dolicz VAT przy zakupie",
-          "sell_apply_vat": "Dolicz VAT przy sprzedaży",
-          "calibration": "Kalibracja taryfy"
-        },
-        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+        "title": "Taryfy",
+        "menu_options": {
+          "tariff_values": "Stałe stawki i przeliczenia",
+          "tariff_buy": "Źródło ceny zakupu",
+          "tariff_sell": "Źródło ceny sprzedaży",
+          "menu": "Menu główne"
+        }
       },
       "forecast": {
         "title": "Prognoza zużycia",
@@ -251,7 +246,7 @@
           "sources": "Źródła danych",
           "battery": "Bateria",
           "hardware": "Możliwości sprzętu",
-          "tariffs": "Taryfy i kalibracja",
+          "tariffs": "Taryfy",
           "forecast": "Prognoza zużycia",
           "planning": "Planowanie",
           "compass": "Prognoza kosztu zużycia",
@@ -277,6 +272,72 @@
           "limit_floor": "Próg ograniczenia",
           "confirm_currency_values": "Potwierdzam kwoty w nowej walucie; nie wykonano automatycznej konwersji"
         }
+      },
+      "source_inventory": {
+        "title": "Wybierz istniejące źródło",
+        "data": {
+          "source": "Źródło"
+        }
+      },
+      "source_add": {
+        "title": "Dodaj źródło",
+        "data": {
+          "target": "Rola źródła"
+        }
+      },
+      "source_mode": {
+        "title": "Wybierz tryb źródła",
+        "data": {
+          "mode": "Tryb",
+          "group": "Grupa PV"
+        }
+      },
+      "source_actions": {
+        "title": "Zarządzaj źródłem",
+        "menu_options": {
+          "source_edit": "Edytuj wybrane źródło",
+          "source_append": "Dodaj kontynuację",
+          "source_remove": "Usuń wybrane źródło",
+          "source_remove_group": "Usuń całą grupę PV",
+          "source_inventory": "Powrót do listy",
+          "sources": "Powrót do źródeł"
+        }
+      },
+      "source_remove": {
+        "title": "Potwierdź usunięcie",
+        "data": {
+          "confirm": "Usuń to źródło"
+        },
+        "description": "{target}. {detail}"
+      },
+      "tariff_buy": {
+        "title": "Źródło ceny zakupu",
+        "data": {
+          "mode": "Tryb ceny zakupu"
+        }
+      },
+      "tariff_sell": {
+        "title": "Źródło ceny sprzedaży",
+        "data": {
+          "mode": "Tryb ceny sprzedaży"
+        }
+      },
+      "tariff_values": {
+        "title": "Stałe stawki i przeliczenia",
+        "data": {
+          "buy_rate": "Stała cena zakupu",
+          "sell_rate": "Stała cena sprzedaży",
+          "buy_multiplier": "Mnożnik ceny zakupu",
+          "sell_multiplier": "Mnożnik ceny sprzedaży",
+          "buy_addition": "Dodatek do ceny zakupu",
+          "sell_addition": "Dodatek do ceny sprzedaży",
+          "vat_percent": "Stawka VAT",
+          "monthly_charge": "Stała opłata miesięczna",
+          "buy_apply_vat": "Dolicz VAT przy zakupie",
+          "sell_apply_vat": "Dolicz VAT przy sprzedaży",
+          "calibration": "Kalibracja taryfy"
+        },
+        "description": "Edytuj stałe stawki oraz oddzielne mnożniki, VAT i dodatki. {detail}"
       }
     },
     "error": {
@@ -319,13 +380,11 @@
       },
       "sources": {
         "title": "Źródła danych",
-        "data": {
-          "target": "Rodzaj źródła",
-          "mode": "Tryb",
-          "operation": "Operacja",
-          "group": "Numer niezależnej grupy PV"
-        },
-        "description": "Dodaj osobno zakup, sprzedaż, zużycie oraz włączone PV i SOC. Append łączy dziś/jutro; kolejny numer grupy PV oznacza sumowanie niezależnych instalacji. Pomiary opcjonalne służą diagnostyce; throughput_today ogranicza dzienną pracę baterii."
+        "menu_options": {
+          "source_inventory": "Przeglądaj i edytuj źródła",
+          "source_add": "Dodaj źródło",
+          "menu": "Menu główne"
+        }
       },
       "source_entity": {
         "title": "Source entity",
@@ -365,8 +424,13 @@
           "sign": "Znak",
           "timestamp_path": "Pole czasu pomiaru",
           "timestamp_policy": "Zasada czasu pomiaru (auto: czas raportu HA; exact_path: wybrane pole)",
-          "max_age_seconds": "Maksymalny wiek pomiaru"
-        }
+          "max_age_seconds": "Maksymalny wiek pomiaru",
+          "source_unit": "Jednostka ceny źródłowej",
+          "source_scale": "Skala źródła",
+          "check_age": "Sprawdzaj wiek ceny",
+          "max_age_hours": "Maksymalny wiek ceny (godz.)"
+        },
+        "description": "{detail}"
       },
       "source_statistic": {
         "title": "Source statistic",
@@ -428,7 +492,7 @@
           "capacity_calibration": "Kalibracja pojemności",
           "bms_max_age_seconds": "Maksymalny wiek pomiaru BMS"
         },
-        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+        "description": "Dodatni limit cykli wymaga w Źródłach dziennego pomiaru sumy energii ładowania i rozładowania po stronie AC, zgodnego z przepływami modelu. {detail}"
       },
       "hardware": {
         "title": "Możliwości sprzętu",
@@ -443,21 +507,13 @@
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
       },
       "tariffs": {
-        "title": "Taryfy i kalibracja",
-        "data": {
-          "buy_rate": "Stała cena zakupu",
-          "sell_rate": "Stała cena sprzedaży",
-          "buy_multiplier": "Mnożnik ceny zakupu",
-          "sell_multiplier": "Mnożnik ceny sprzedaży",
-          "buy_addition": "Dodatek do ceny zakupu",
-          "sell_addition": "Dodatek do ceny sprzedaży",
-          "vat_percent": "Stawka VAT",
-          "monthly_charge": "Stała opłata miesięczna",
-          "buy_apply_vat": "Dolicz VAT przy zakupie",
-          "sell_apply_vat": "Dolicz VAT przy sprzedaży",
-          "calibration": "Kalibracja taryfy"
-        },
-        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+        "title": "Taryfy",
+        "menu_options": {
+          "tariff_values": "Stałe stawki i przeliczenia",
+          "tariff_buy": "Źródło ceny zakupu",
+          "tariff_sell": "Źródło ceny sprzedaży",
+          "menu": "Menu główne"
+        }
       },
       "forecast": {
         "title": "Prognoza zużycia",
@@ -544,7 +600,7 @@
           "sources": "Źródła danych",
           "battery": "Bateria",
           "hardware": "Możliwości sprzętu",
-          "tariffs": "Taryfy i kalibracja",
+          "tariffs": "Taryfy",
           "forecast": "Prognoza zużycia",
           "planning": "Planowanie",
           "compass": "Prognoza kosztu zużycia",
@@ -570,6 +626,72 @@
           "limit_floor": "Próg ograniczenia",
           "confirm_currency_values": "Potwierdzam kwoty w nowej walucie; nie wykonano automatycznej konwersji"
         }
+      },
+      "source_inventory": {
+        "title": "Wybierz istniejące źródło",
+        "data": {
+          "source": "Źródło"
+        }
+      },
+      "source_add": {
+        "title": "Dodaj źródło",
+        "data": {
+          "target": "Rola źródła"
+        }
+      },
+      "source_mode": {
+        "title": "Wybierz tryb źródła",
+        "data": {
+          "mode": "Tryb",
+          "group": "Grupa PV"
+        }
+      },
+      "source_actions": {
+        "title": "Zarządzaj źródłem",
+        "menu_options": {
+          "source_edit": "Edytuj wybrane źródło",
+          "source_append": "Dodaj kontynuację",
+          "source_remove": "Usuń wybrane źródło",
+          "source_remove_group": "Usuń całą grupę PV",
+          "source_inventory": "Powrót do listy",
+          "sources": "Powrót do źródeł"
+        }
+      },
+      "source_remove": {
+        "title": "Potwierdź usunięcie",
+        "data": {
+          "confirm": "Usuń to źródło"
+        },
+        "description": "{target}. {detail}"
+      },
+      "tariff_buy": {
+        "title": "Źródło ceny zakupu",
+        "data": {
+          "mode": "Tryb ceny zakupu"
+        }
+      },
+      "tariff_sell": {
+        "title": "Źródło ceny sprzedaży",
+        "data": {
+          "mode": "Tryb ceny sprzedaży"
+        }
+      },
+      "tariff_values": {
+        "title": "Stałe stawki i przeliczenia",
+        "data": {
+          "buy_rate": "Stała cena zakupu",
+          "sell_rate": "Stała cena sprzedaży",
+          "buy_multiplier": "Mnożnik ceny zakupu",
+          "sell_multiplier": "Mnożnik ceny sprzedaży",
+          "buy_addition": "Dodatek do ceny zakupu",
+          "sell_addition": "Dodatek do ceny sprzedaży",
+          "vat_percent": "Stawka VAT",
+          "monthly_charge": "Stała opłata miesięczna",
+          "buy_apply_vat": "Dolicz VAT przy zakupie",
+          "sell_apply_vat": "Dolicz VAT przy sprzedaży",
+          "calibration": "Kalibracja taryfy"
+        },
+        "description": "Edytuj stałe stawki oraz oddzielne mnożniki, VAT i dodatki. {detail}"
       }
     },
     "error": {

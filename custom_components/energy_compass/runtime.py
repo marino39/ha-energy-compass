@@ -42,6 +42,7 @@ from .sources.bindings import (
 from .sources.history import load_for_slots_with_quality
 from .sources.prices import price_for_slots
 from .sources.pv import sum_pv_arrays
+from .sources.throughput import resolve_daily_throughput
 
 
 def _coverage(rows, start):
@@ -413,22 +414,8 @@ def build_problem(
             values["allow_battery_export"],
         )
         if values["daily_cycles"]:
-            selected = config.get("measurements", {}).get("throughput_today")
-            if (
-                not selected
-                or not selected.get("entity")
-                or selected.get("_missing_registry")
-            ):
-                raise InputError(
-                    "daily cycle limit requires observed daily throughput source"
-                )
-            observed = resolve_numeric(NumericSetting.from_dict(selected), states, now)
-            measured = parse_timestamp(
-                states[selected["entity"]["entity_id"]]["last_updated"]
-            )
+            observed = resolve_daily_throughput(config, values, states, now)
             local_today = now.astimezone(ZoneInfo(config["timezone"])).date()
-            if measured.astimezone(ZoneInfo(config["timezone"])).date() != local_today:
-                raise InputError("daily throughput source is not from today")
             cap = 2 * values["capacity_kwh"] * values["daily_cycles"]
             days = {
                 slot.start.astimezone(ZoneInfo(config["timezone"])).date()

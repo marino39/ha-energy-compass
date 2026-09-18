@@ -36,6 +36,71 @@ async def test_options_preserve_invalid_edit(
     assert entry.data == before
 
 
+async def test_battery_cycle_limit_requires_daily_measurement_before_draft_acceptance(
+    recorder_mock, hass, enable_custom_integrations
+):
+    config = default_configuration("EUR", "UTC")
+    config["sources"]["battery_enabled"] = True
+    config["sources"]["soc"] = EntityBinding("sensor.soc").to_dict()
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Cycles", version=2
+    )
+    entry.add_to_hass(hass)
+    before = deepcopy(dict(entry.data))
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    fid = result["flow_id"]
+    await hass.config_entries.options.async_configure(fid, {"next_step_id": "battery"})
+
+    rejected = await hass.config_entries.options.async_configure(
+        fid, {"daily_cycles": 1}
+    )
+
+    assert rejected["step_id"] == "battery"
+    assert rejected["errors"] == {"base": "invalid_source"}
+    assert "Sources" in rejected["description_placeholders"]["detail"]
+    assert entry.data == before
+
+
+async def test_preview_shows_measured_daily_throughput_cap_and_remaining(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    freezer.move_to("2026-09-18T10:00:00+00:00")
+    config = default_configuration("EUR", "UTC")
+    config["sources"].update(
+        battery_enabled=True,
+        soc=EntityBinding("sensor.soc").to_dict(),
+    )
+    config["settings"].update(
+        capacity_kwh=20,
+        daily_cycles=1,
+        horizon_hours=1,
+        display_horizon_hours=1,
+        reference_horizon_hours=1,
+    )
+    config["measurements"]["throughput_today"] = {
+        "entity": EntityBinding("sensor.daily_throughput", attribute="total").to_dict(),
+        "unit": "kWh",
+        "source_unit": "kWh",
+        "multiplier": 1,
+        "minimum": 0,
+        "max_age_seconds": 3600,
+    }
+    hass.states.async_set("sensor.soc", "50", {"unit_of_measurement": "%"})
+    hass.states.async_set("sensor.daily_throughput", "ready", {"total": 4})
+    entry = MockConfigEntry(domain="energy_compass", data=config, version=2)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"next_step_id": "preview"}
+    )
+    text = result["description_placeholders"]["preview"]
+    assert "sensor.daily_throughput" in text
+    assert "attribute total" in text
+    assert "4 kWh" in text
+    assert "40 kWh" in text
+    assert "36 kWh" in text
+
+
 async def test_notification_form_offers_only_dispatchable_events(
     recorder_mock, hass, enable_custom_integrations
 ):
@@ -132,7 +197,11 @@ async def test_options_commit_reloads_and_preserves_sources(
     result = await hass.config_entries.options.async_init(entry.entry_id)
     fid = result["flow_id"]
     await hass.config_entries.options.async_configure(fid, {"next_step_id": "tariffs"})
+    await hass.config_entries.options.async_configure(
+        fid, {"next_step_id": "tariff_values"}
+    )
     await hass.config_entries.options.async_configure(fid, {"buy_rate": 0.4})
+    await hass.config_entries.options.async_configure(fid, {"next_step_id": "menu"})
     result = await hass.config_entries.options.async_configure(
         fid, {"next_step_id": "preview"}
     )
@@ -170,7 +239,11 @@ async def test_reconfigure_commits_atomically(
     )
     fid = result["flow_id"]
     await hass.config_entries.flow.async_configure(fid, {"next_step_id": "tariffs"})
+    await hass.config_entries.flow.async_configure(
+        fid, {"next_step_id": "tariff_values"}
+    )
     await hass.config_entries.flow.async_configure(fid, {"buy_rate": 0.7})
+    await hass.config_entries.flow.async_configure(fid, {"next_step_id": "menu"})
     assert entry.data["settings"]["buy_rate"] == 0
     await hass.config_entries.flow.async_configure(fid, {"next_step_id": "preview"})
     result = await hass.config_entries.flow.async_configure(fid, {"confirm": True})
@@ -317,10 +390,9 @@ async def test_soc_exact_timestamp_policy_survives_existing_flow_save(
         )
     fid = result["flow_id"]
     await manager.async_configure(fid, {"next_step_id": "sources"})
-    await manager.async_configure(
-        fid,
-        {"target": "soc", "mode": "measurement", "operation": "replace", "group": 1},
-    )
+    await manager.async_configure(fid, {"next_step_id": "source_add"})
+    await manager.async_configure(fid, {"target": "soc"})
+    await manager.async_configure(fid, {"mode": "measurement"})
     await manager.async_configure(fid, {"entity_id": "sensor.soc"})
     form = await manager.async_configure(fid, {})
     defaults = {str(key): key.default() for key in form["data_schema"].schema}
@@ -335,6 +407,7 @@ async def test_soc_exact_timestamp_policy_survives_existing_flow_save(
             "max_age_seconds": 600,
         },
     )
+    await manager.async_configure(fid, {"next_step_id": "menu"})
     form = await manager.async_configure(fid, {"next_step_id": "preview"})
     assert form["step_id"] == "preview"
     assert not form["errors"]
