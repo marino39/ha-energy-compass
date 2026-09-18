@@ -8,6 +8,7 @@ from homeassistant.helpers import selector
 from homeassistant.util import dt as dt_util
 
 from .config_models import LoadSource, NumericSetting, PriceSource
+from .daily_export import DAILY_EXPORT_MEASUREMENTS
 from .engine.models import InputError
 from .flow_schema import entity_binding, number, select, snapshot
 from .presets import PRESETS
@@ -31,6 +32,7 @@ MEASUREMENTS = (
     "grid_import_energy",
     "grid_export_energy",
     "throughput_today",
+    *DAILY_EXPORT_MEASUREMENTS,
 )
 TARGETS = ("buy", "sell", "pv", "load", "soc", "bms_soc", *MEASUREMENTS)
 
@@ -79,6 +81,8 @@ class SourceEditor:
                         ),
                     ).to_dict()
                 return await self.async_step_menu()
+            elif target in DAILY_EXPORT_MEASUREMENTS and mode != "measurement":
+                errors["base"] = "invalid_input"
             elif mode == "statistic" and (target == "load" or target in MEASUREMENTS):
                 return await self.async_step_source_statistic()
             elif mode in ("forecast", "measurement", "power_history"):
@@ -437,7 +441,9 @@ class SourceEditor:
                         multiplier=user_input["sign"]
                         * (0.001 if unit in ("W", "Wh") else 1),
                         max_age_seconds=user_input["max_age_seconds"],
-                        minimum=0 if target == "throughput_today" else None,
+                        minimum=0
+                        if target in ("throughput_today", *DAILY_EXPORT_MEASUREMENTS)
+                        else None,
                     ).to_dict()
             if not errors:
                 return await self.async_step_menu()
@@ -468,6 +474,8 @@ class SourceEditor:
                     "bms_max_age_seconds" if prefix else "soc_max_age_seconds"
                 ]
                 if soc_source
+                else 86400
+                if target in DAILY_EXPORT_MEASUREMENTS
                 else 600,
             ): number(1, 86400, "s"),
         }

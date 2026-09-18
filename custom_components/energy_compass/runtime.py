@@ -12,12 +12,18 @@ from homeassistant.components.recorder.history import get_significant_states
 from homeassistant.components.recorder.statistics import statistics_during_period
 
 from .config_models import NumericSetting, SourceConfig, resolve_numeric
+from .daily_export import (
+    DAILY_EXPORT_MEASUREMENTS,
+    daily_export_active,
+    daily_export_observations,
+)
 from .engine.consumption import (
     analyze_consumption,
     machine_snapshot,
     merge_windows,
     serialize_opportunity,
 )
+from .engine.daily_energy import daily_export_rows
 from .engine.models import (
     Battery,
     CompassSettings,
@@ -154,6 +160,9 @@ def freshness_deadline(config, states, values, now):
     """End validity at the first required input's actual freshness deadline."""
     source, _ = available_forecasts(SourceConfig.from_dict(config["sources"]), states)
     deadlines = [now + timedelta(minutes=values["refresh_minutes"])]
+    _, _, export_deadline = daily_export_observations(config, states, values, now)
+    if export_deadline:
+        deadlines.append(export_deadline)
     bindings = [
         *source.buy.forecast,
         *source.sell.forecast,
@@ -197,8 +206,9 @@ def freshness_deadline(config, states, values, now):
 
 
 def measurement_diagnostics(config, states, now):
-    """Report optional measurements without treating them as optimization inputs."""
+    """Describe diagnostic measurements and counters used by active constraints."""
     result = {}
+    values = validate_configuration(config, states, now, sources=False)
     for name, selected in config.get("measurements", {}).items():
         item = {
             "usage": "diagnostic_only",
@@ -211,6 +221,18 @@ def measurement_diagnostics(config, states, now):
             and config["settings"]["daily_cycles"]
         ):
             item["usage"] = "daily_throughput_constraint"
+        if name in DAILY_EXPORT_MEASUREMENTS and daily_export_active(values):
+            item["usage"] = "daily_export_constraint"
+            try:
+                observed = daily_export_observations(config, states, values, now)
+                item.update(
+                    value=observed[DAILY_EXPORT_MEASUREMENTS.index(name)],
+                    status="available",
+                )
+            except InputError:
+                item["status"] = "unavailable"
+            result[name] = item
+            continue
         if selected.get("_missing_registry"):
             item["status"] = "unavailable"
         elif selected.get("statistic_id"):
@@ -281,9 +303,11 @@ def build_problem(
     statistics=(),
     power_samples=(),
     previous_soc=None,
+    battery_commitment=None,
 ):
     """Preserve native boundaries and stop at actual contiguous source coverage."""
     values = validate_configuration(config, states, now)
+    pv_today, export_today, _ = daily_export_observations(config, states, values, now)
     source, missing = available_forecasts(
         SourceConfig.from_dict(config["sources"]), states
     )
@@ -451,6 +475,16 @@ def build_problem(
         values["terminal_value_per_kwh"],
         budgets,
         config["timezone"],
+        minimum_mode_minutes=values["minimum_mode_minutes"],
+        limit_export_to_pv=values["limit_export_to_pv"],
+        pv_generated_today_kwh=pv_today,
+        grid_exported_today_kwh=export_today,
+        initial_battery_mode=battery_commitment["mode"]
+        if battery and battery_commitment
+        else None,
+        initial_battery_mode_since=parse_timestamp(battery_commitment["since"])
+        if battery and battery_commitment
+        else None,
     )
     validate_problem(problem)
     ages = {
@@ -629,6 +663,13 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
         / 3600,
         "monthly_charge_reporting_only": values["monthly_charge"],
         "quality": quality,
+        "dispatch_policy": {
+            "minimum_mode_minutes": values["minimum_mode_minutes"],
+            "limit_export_to_pv": values["limit_export_to_pv"],
+            "export_limit_scope": "local_day",
+            "timezone": config["timezone"],
+            "daily_balances": daily_export_rows(problem, plan.flows),
+        },
         "measurements": measurement_diagnostics(config, states, now),
         "presentation": {
             key: values[key]

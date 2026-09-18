@@ -106,6 +106,7 @@ class EnergyCompassEntity(CoordinatorEntity):
                         "measurements",
                         "presentation",
                         "notification_preferences",
+                        "dispatch_policy",
                     )
                 }
             )

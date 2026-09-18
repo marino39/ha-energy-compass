@@ -32,7 +32,7 @@
           "operation": "Operation",
           "group": "Group"
         },
-        "description": "Select import, export, household load and enabled PV/SOC. Append merges today/tomorrow continuations; consecutive PV groups add independent arrays. Optional measurements are diagnostic only; throughput_today enforces a daily battery budget. Fixed prices and daily load are edited in Tariffs and Load forecasting."
+        "description": "Add buy, sell, load, enabled PV and SOC sources. Append joins today/tomorrow; PV groups add independent arrays. Sell only PV requires pv_energy_today (generation since midnight) and grid_export_energy_today (export since midnight), in kWh or Wh, resetting in the installation timezone. throughput_today constrains daily battery throughput; other measurements are diagnostic."
       },
       "source_entity": {
         "title": "Source entity",
@@ -186,9 +186,15 @@
           "horizon_hours": "Horizon hours",
           "refresh_minutes": "Refresh minutes",
           "terminal_value_per_kwh": "Terminal value per kwh",
-          "terminal_mode": "Terminal mode"
+          "terminal_mode": "Terminal mode",
+          "minimum_mode_minutes": "Minimum battery direction duration",
+          "limit_export_to_pv": "Sell only PV"
         },
-        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+        "description": "Edit fixed values or use the numeric helper editor. {detail}",
+        "data_description": {
+          "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
+          "limit_export_to_pv": "Enabled by default. Solar and battery export cannot exceed PV generation on the same local calendar day. Combines observed totals since midnight with the remaining forecast; no credit carries between days. Select pv_energy_today and grid_export_energy_today daily counters in Sources. Off removes this budget; other limits remain active."
+        }
       },
       "compass": {
         "title": "Consumption outlook",
@@ -325,7 +331,7 @@
           "operation": "Operation",
           "group": "Group"
         },
-        "description": "Select import, export, household load and enabled PV/SOC. Append merges today/tomorrow continuations; consecutive PV groups add independent arrays. Optional measurements are diagnostic only; throughput_today enforces a daily battery budget. Fixed prices and daily load are edited in Tariffs and Load forecasting."
+        "description": "Add buy, sell, load, enabled PV and SOC sources. Append joins today/tomorrow; PV groups add independent arrays. Sell only PV requires pv_energy_today (generation since midnight) and grid_export_energy_today (export since midnight), in kWh or Wh, resetting in the installation timezone. throughput_today constrains daily battery throughput; other measurements are diagnostic."
       },
       "source_entity": {
         "title": "Source entity",
@@ -479,9 +485,15 @@
           "horizon_hours": "Horizon hours",
           "refresh_minutes": "Refresh minutes",
           "terminal_value_per_kwh": "Terminal value per kwh",
-          "terminal_mode": "Terminal mode"
+          "terminal_mode": "Terminal mode",
+          "minimum_mode_minutes": "Minimum battery direction duration",
+          "limit_export_to_pv": "Sell only PV"
         },
-        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+        "description": "Edit fixed values or use the numeric helper editor. {detail}",
+        "data_description": {
+          "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
+          "limit_export_to_pv": "Enabled by default. Solar and battery export cannot exceed PV generation on the same local calendar day. Combines observed totals since midnight with the remaining forecast; no credit carries between days. Select pv_energy_today and grid_export_energy_today daily counters in Sources. Off removes this budget; other limits remain active."
+        }
       },
       "compass": {
         "title": "Consumption outlook",
