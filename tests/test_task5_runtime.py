@@ -127,7 +127,7 @@ def test_short_next_day_coverage_does_not_invent_prices():
     assert compute(config, states, now)["guidance_valid"] is False
 
 
-def test_total_budget_subtracts_base_elapsed():
+def test_total_budget_subtracts_base_elapsed_and_finish_reserve():
     now = datetime(2026, 9, 17, tzinfo=UTC)
     config = default_configuration("EUR", "UTC")
     config["settings"].update(total_time_limit_s=30)
@@ -144,7 +144,7 @@ def test_total_budget_subtracts_base_elapsed():
         ) as analyze,
     ):
         compute(config, {}, now)
-    assert analyze.call_args.kwargs["budget_s"] == 23
+    assert analyze.call_args.kwargs["budget_s"] == 22
 
 
 def test_unobserved_daily_throughput_is_rejected():

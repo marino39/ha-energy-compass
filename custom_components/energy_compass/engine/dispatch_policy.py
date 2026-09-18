@@ -110,6 +110,23 @@ def constrain_modes(model, problem: Problem, vectors) -> None:
                 model.upper[v[key]] = 0
         x = {mode: v[f"mode_{mode}"] for mode in MODES}
         model.constrain({index: 1 for index in x.values()}, 1, 1)
+        # Named modes already determine flow direction. Tie the auxiliary flags
+        # to them so fractional relaxations cannot invent grid arbitrage.
+        model.constrain(
+            {v["battery_mode"]: 1, x["CHARGE_GRID"]: -1, x["CHARGE_PV"]: -1},
+            0,
+            0,
+        )
+        grid_direction = {
+            v["grid_mode"]: 1,
+            x["CHARGE_GRID"]: -1,
+            x["SELF_CONSUME"]: -1,
+        }
+        if slot.load_kwh >= slot.pv_kwh:
+            grid_direction[x["HOLD"]] = -1
+        # Curtailment may put net demand on either side of zero.
+        model.constrain(grid_direction, 0, np.inf)
+        model.constrain({**grid_direction, x["CURTAIL"]: -1}, -np.inf, 0)
         model.constrain(
             {v["bc"]: 1, x["CHARGE_GRID"]: -charge_max, x["CHARGE_PV"]: -pv_max},
             -np.inf,

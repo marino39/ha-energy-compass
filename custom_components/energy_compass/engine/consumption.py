@@ -76,8 +76,8 @@ def _settings(settings: CompassSettings, budget_s: float) -> float:
     if not 0 < probe_time <= 10:
         raise InputError("probe_time_limit_s must be in (0, 10]")
     budget = _finite(budget_s, "budget_s")
-    if not 0 < budget <= 60:
-        raise InputError("budget_s must be in (0, 60]")
+    if not 0 <= budget <= 60:
+        raise InputError("budget_s must be in [0, 60]")
     return budget
 
 
