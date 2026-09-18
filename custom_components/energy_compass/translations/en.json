@@ -188,12 +188,12 @@
           "terminal_value_per_kwh": "Terminal value per kwh",
           "terminal_mode": "Terminal mode",
           "minimum_mode_minutes": "Minimum battery direction duration",
-          "limit_export_to_pv": "Limit grid export to PV generation"
+          "limit_export_to_pv": "Sell only PV"
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}",
         "data_description": {
           "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
-          "limit_export_to_pv": "Enabled by default. Total grid export over the planning horizon cannot exceed total PV generation after curtailment. Direct solar and battery export share this budget. Battery origin is not tracked; initial SOC can fund export within the budget."
+          "limit_export_to_pv": "Enabled by default. On: total grid export over the planning horizon cannot exceed total PV generation after curtailment. Off: removes this budget. Direct solar and battery export share the budget; battery origin is not tracked and initial SOC may fund export. Other battery and grid limits still apply."
         }
       },
       "compass": {
@@ -487,12 +487,12 @@
           "terminal_value_per_kwh": "Terminal value per kwh",
           "terminal_mode": "Terminal mode",
           "minimum_mode_minutes": "Minimum battery direction duration",
-          "limit_export_to_pv": "Limit grid export to PV generation"
+          "limit_export_to_pv": "Sell only PV"
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}",
         "data_description": {
           "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
-          "limit_export_to_pv": "Enabled by default. Total grid export over the planning horizon cannot exceed total PV generation after curtailment. Direct solar and battery export share this budget. Battery origin is not tracked; initial SOC can fund export within the budget."
+          "limit_export_to_pv": "Enabled by default. On: total grid export over the planning horizon cannot exceed total PV generation after curtailment. Off: removes this budget. Direct solar and battery export share the budget; battery origin is not tracked and initial SOC may fund export. Other battery and grid limits still apply."
         }
       },
       "compass": {

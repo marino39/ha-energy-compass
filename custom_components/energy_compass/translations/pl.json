@@ -188,12 +188,12 @@
           "terminal_value_per_kwh": "Wartość energii na końcu planu",
           "terminal_mode": "Polityka końcowego SOC",
           "minimum_mode_minutes": "Minimalny czas kierunku baterii",
-          "limit_export_to_pv": "Eksport nie większy niż generacja PV"
+          "limit_export_to_pv": "Sell only PV"
         },
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}",
         "data_description": {
           "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza blokadę. Ładowanie i rozładowanie to kierunki. Postój oraz zmiana źródła PV/sieć są dozwolone. Blokada dotyczy opublikowanego planu i przetrwa przeliczenie oraz restart.",
-          "limit_export_to_pv": "Domyślnie włączone. Suma eksportu do sieci w horyzoncie planu nie może przekroczyć sumy generacji PV po ograniczeniu produkcji. Limit obejmuje eksport z paneli i baterii. Pochodzenie energii w baterii nie jest śledzone; początkowy SoC może zasilać eksport w ramach limitu."
+          "limit_export_to_pv": "Domyślnie włączone. Włączone: suma eksportu do sieci w horyzoncie planu nie przekracza sumy generacji PV po ograniczeniu produkcji. Wyłączone: brak tego limitu. Limit obejmuje eksport z paneli i baterii, bez śledzenia pochodzenia energii; początkowy SoC może zasilać eksport. Pozostałe limity baterii i sieci nadal obowiązują."
         }
       },
       "compass": {
@@ -487,12 +487,12 @@
           "terminal_value_per_kwh": "Wartość energii na końcu planu",
           "terminal_mode": "Polityka końcowego SOC",
           "minimum_mode_minutes": "Minimalny czas kierunku baterii",
-          "limit_export_to_pv": "Eksport nie większy niż generacja PV"
+          "limit_export_to_pv": "Sell only PV"
         },
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}",
         "data_description": {
           "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza blokadę. Ładowanie i rozładowanie to kierunki. Postój oraz zmiana źródła PV/sieć są dozwolone. Blokada dotyczy opublikowanego planu i przetrwa przeliczenie oraz restart.",
-          "limit_export_to_pv": "Domyślnie włączone. Suma eksportu do sieci w horyzoncie planu nie może przekroczyć sumy generacji PV po ograniczeniu produkcji. Limit obejmuje eksport z paneli i baterii. Pochodzenie energii w baterii nie jest śledzone; początkowy SoC może zasilać eksport w ramach limitu."
+          "limit_export_to_pv": "Domyślnie włączone. Włączone: suma eksportu do sieci w horyzoncie planu nie przekracza sumy generacji PV po ograniczeniu produkcji. Wyłączone: brak tego limitu. Limit obejmuje eksport z paneli i baterii, bez śledzenia pochodzenia energii; początkowy SoC może zasilać eksport. Pozostałe limity baterii i sieci nadal obowiązują."
         }
       },
       "compass": {
