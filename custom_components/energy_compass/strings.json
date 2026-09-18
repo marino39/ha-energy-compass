@@ -25,14 +25,13 @@
         }
       },
       "sources": {
-        "title": "Source bindings",
-        "data": {
-          "target": "Target",
-          "mode": "Mode",
-          "operation": "Operation",
-          "group": "Group"
+        "title": "Sources",
+        "menu_options": {
+          "source_inventory": "Review and edit sources",
+          "source_add": "Add source",
+          "menu": "Main menu"
         },
-        "description": "Add buy, sell, load, enabled PV and SOC sources. Append joins today/tomorrow; PV groups add independent arrays. Sell only PV requires pv_energy_today (generation since midnight) and grid_export_energy_today (export since midnight), in kWh or Wh, resetting in the installation timezone. throughput_today constrains daily battery throughput; other measurements are diagnostic."
+        "description": "Review or add buy, sell, load, enabled PV and SOC sources. Append a today/tomorrow continuation; PV groups represent independent arrays. Sell only PV requires pv_energy_today (generation since local midnight) and grid_export_energy_today (export since local midnight) in kWh or Wh, resetting each local day. throughput_today constrains battery cycles; other measurements are diagnostic."
       },
       "source_entity": {
         "title": "Source entity",
@@ -72,8 +71,13 @@
           "sign": "Sign",
           "timestamp_path": "Timestamp path",
           "timestamp_policy": "Timestamp policy (auto uses native report time; exact path uses the selected field)",
-          "max_age_seconds": "Max age seconds"
-        }
+          "max_age_seconds": "Max age seconds",
+          "source_unit": "Source price unit",
+          "source_scale": "Source scale",
+          "check_age": "Check price age",
+          "max_age_hours": "Maximum price age (hours)"
+        },
+        "description": "{detail}"
       },
       "source_statistic": {
         "title": "Source statistic",
@@ -135,7 +139,7 @@
           "capacity_calibration": "Capacity calibration",
           "bms_max_age_seconds": "BMS maximum measurement age"
         },
-        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+        "description": "A positive daily cycle limit requires a daily AC-side charge-plus-discharge energy measurement in Sources, matching the model flow basis. {detail}"
       },
       "hardware": {
         "title": "Hardware capabilities",
@@ -150,21 +154,13 @@
         "description": "Edit fixed values or use the numeric helper editor. {detail}"
       },
       "tariffs": {
-        "title": "Tariffs and calibration",
-        "data": {
-          "buy_rate": "Buy rate",
-          "sell_rate": "Sell rate",
-          "buy_multiplier": "Buy multiplier",
-          "sell_multiplier": "Sell multiplier",
-          "buy_addition": "Buy addition",
-          "sell_addition": "Sell addition",
-          "vat_percent": "Vat percent",
-          "monthly_charge": "Monthly charge",
-          "buy_apply_vat": "Buy apply vat",
-          "sell_apply_vat": "Sell apply vat",
-          "calibration": "Calibration"
-        },
-        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+        "title": "Tariffs",
+        "menu_options": {
+          "tariff_values": "Fixed rates and transformations",
+          "tariff_buy": "Buy source",
+          "tariff_sell": "Sell source",
+          "menu": "Main menu"
+        }
       },
       "forecast": {
         "title": "Load forecasting",
@@ -258,10 +254,10 @@
         "title": "Energy Compass",
         "menu_options": {
           "installation": "Installation",
-          "sources": "Source bindings",
+          "sources": "Sources",
           "battery": "Battery",
           "hardware": "Hardware capabilities",
-          "tariffs": "Tariffs and calibration",
+          "tariffs": "Tariffs",
           "forecast": "Load forecasting",
           "planning": "Planning",
           "compass": "Consumption outlook",
@@ -288,6 +284,72 @@
           "confirm_currency_values": "I confirm these amounts in the new currency; no automatic conversion was performed",
           "minimum_export_episode_benefit": "Minimum benefit per additional battery-export period"
         }
+      },
+      "source_inventory": {
+        "title": "Select an existing source",
+        "data": {
+          "source": "Source"
+        }
+      },
+      "source_add": {
+        "title": "Add source",
+        "data": {
+          "target": "Source role"
+        }
+      },
+      "source_mode": {
+        "title": "Choose source mode",
+        "data": {
+          "mode": "Mode",
+          "group": "PV group"
+        }
+      },
+      "source_actions": {
+        "title": "Manage source",
+        "menu_options": {
+          "source_edit": "Edit selected source",
+          "source_append": "Append continuation",
+          "source_remove": "Remove selected source",
+          "source_remove_group": "Remove entire PV group",
+          "source_inventory": "Back to inventory",
+          "sources": "Back to Sources"
+        }
+      },
+      "source_remove": {
+        "title": "Confirm removal",
+        "data": {
+          "confirm": "Remove this source"
+        },
+        "description": "{target}. {detail}"
+      },
+      "tariff_buy": {
+        "title": "Buy price source",
+        "data": {
+          "mode": "Buy source mode"
+        }
+      },
+      "tariff_sell": {
+        "title": "Sell price source",
+        "data": {
+          "mode": "Sell source mode"
+        }
+      },
+      "tariff_values": {
+        "title": "Fixed rates and transformations",
+        "data": {
+          "buy_rate": "Buy rate",
+          "sell_rate": "Sell rate",
+          "buy_multiplier": "Buy multiplier",
+          "sell_multiplier": "Sell multiplier",
+          "buy_addition": "Buy addition",
+          "sell_addition": "Sell addition",
+          "vat_percent": "Vat percent",
+          "monthly_charge": "Monthly charge",
+          "buy_apply_vat": "Buy apply vat",
+          "sell_apply_vat": "Sell apply vat",
+          "calibration": "Calibration"
+        },
+        "description": "Edit fixed rates and separate multipliers, VAT and additions. {detail}"
       }
     },
     "error": {
@@ -329,14 +391,13 @@
         }
       },
       "sources": {
-        "title": "Source bindings",
-        "data": {
-          "target": "Target",
-          "mode": "Mode",
-          "operation": "Operation",
-          "group": "Group"
+        "title": "Sources",
+        "menu_options": {
+          "source_inventory": "Review and edit sources",
+          "source_add": "Add source",
+          "menu": "Main menu"
         },
-        "description": "Add buy, sell, load, enabled PV and SOC sources. Append joins today/tomorrow; PV groups add independent arrays. Sell only PV requires pv_energy_today (generation since midnight) and grid_export_energy_today (export since midnight), in kWh or Wh, resetting in the installation timezone. throughput_today constrains daily battery throughput; other measurements are diagnostic."
+        "description": "Review or add buy, sell, load, enabled PV and SOC sources. Append a today/tomorrow continuation; PV groups represent independent arrays. Sell only PV requires pv_energy_today (generation since local midnight) and grid_export_energy_today (export since local midnight) in kWh or Wh, resetting each local day. throughput_today constrains battery cycles; other measurements are diagnostic."
       },
       "source_entity": {
         "title": "Source entity",
@@ -376,8 +437,13 @@
           "sign": "Sign",
           "timestamp_path": "Timestamp path",
           "timestamp_policy": "Timestamp policy (auto uses native report time; exact path uses the selected field)",
-          "max_age_seconds": "Max age seconds"
-        }
+          "max_age_seconds": "Max age seconds",
+          "source_unit": "Source price unit",
+          "source_scale": "Source scale",
+          "check_age": "Check price age",
+          "max_age_hours": "Maximum price age (hours)"
+        },
+        "description": "{detail}"
       },
       "source_statistic": {
         "title": "Source statistic",
@@ -439,7 +505,7 @@
           "capacity_calibration": "Capacity calibration",
           "bms_max_age_seconds": "BMS maximum measurement age"
         },
-        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+        "description": "A positive daily cycle limit requires a daily AC-side charge-plus-discharge energy measurement in Sources, matching the model flow basis. {detail}"
       },
       "hardware": {
         "title": "Hardware capabilities",
@@ -454,21 +520,13 @@
         "description": "Edit fixed values or use the numeric helper editor. {detail}"
       },
       "tariffs": {
-        "title": "Tariffs and calibration",
-        "data": {
-          "buy_rate": "Buy rate",
-          "sell_rate": "Sell rate",
-          "buy_multiplier": "Buy multiplier",
-          "sell_multiplier": "Sell multiplier",
-          "buy_addition": "Buy addition",
-          "sell_addition": "Sell addition",
-          "vat_percent": "Vat percent",
-          "monthly_charge": "Monthly charge",
-          "buy_apply_vat": "Buy apply vat",
-          "sell_apply_vat": "Sell apply vat",
-          "calibration": "Calibration"
-        },
-        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+        "title": "Tariffs",
+        "menu_options": {
+          "tariff_values": "Fixed rates and transformations",
+          "tariff_buy": "Buy source",
+          "tariff_sell": "Sell source",
+          "menu": "Main menu"
+        }
       },
       "forecast": {
         "title": "Load forecasting",
@@ -562,10 +620,10 @@
         "title": "Energy Compass",
         "menu_options": {
           "installation": "Installation",
-          "sources": "Source bindings",
+          "sources": "Sources",
           "battery": "Battery",
           "hardware": "Hardware capabilities",
-          "tariffs": "Tariffs and calibration",
+          "tariffs": "Tariffs",
           "forecast": "Load forecasting",
           "planning": "Planning",
           "compass": "Consumption outlook",
@@ -592,6 +650,72 @@
           "confirm_currency_values": "I confirm these amounts in the new currency; no automatic conversion was performed",
           "minimum_export_episode_benefit": "Minimum benefit per additional battery-export period"
         }
+      },
+      "source_inventory": {
+        "title": "Select an existing source",
+        "data": {
+          "source": "Source"
+        }
+      },
+      "source_add": {
+        "title": "Add source",
+        "data": {
+          "target": "Source role"
+        }
+      },
+      "source_mode": {
+        "title": "Choose source mode",
+        "data": {
+          "mode": "Mode",
+          "group": "PV group"
+        }
+      },
+      "source_actions": {
+        "title": "Manage source",
+        "menu_options": {
+          "source_edit": "Edit selected source",
+          "source_append": "Append continuation",
+          "source_remove": "Remove selected source",
+          "source_remove_group": "Remove entire PV group",
+          "source_inventory": "Back to inventory",
+          "sources": "Back to Sources"
+        }
+      },
+      "source_remove": {
+        "title": "Confirm removal",
+        "data": {
+          "confirm": "Remove this source"
+        },
+        "description": "{target}. {detail}"
+      },
+      "tariff_buy": {
+        "title": "Buy price source",
+        "data": {
+          "mode": "Buy source mode"
+        }
+      },
+      "tariff_sell": {
+        "title": "Sell price source",
+        "data": {
+          "mode": "Sell source mode"
+        }
+      },
+      "tariff_values": {
+        "title": "Fixed rates and transformations",
+        "data": {
+          "buy_rate": "Buy rate",
+          "sell_rate": "Sell rate",
+          "buy_multiplier": "Buy multiplier",
+          "sell_multiplier": "Sell multiplier",
+          "buy_addition": "Buy addition",
+          "sell_addition": "Sell addition",
+          "vat_percent": "Vat percent",
+          "monthly_charge": "Monthly charge",
+          "buy_apply_vat": "Buy apply vat",
+          "sell_apply_vat": "Sell apply vat",
+          "calibration": "Calibration"
+        },
+        "description": "Edit fixed rates and separate multipliers, VAT and additions. {detail}"
       }
     },
     "error": {

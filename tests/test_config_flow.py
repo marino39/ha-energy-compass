@@ -120,9 +120,9 @@ async def test_generic_observed_mapping_preview(
     result = await hass.config_entries.flow.async_configure(
         fid, {"next_step_id": "sources"}
     )
-    result = await hass.config_entries.flow.async_configure(
-        fid, {"target": "buy", "mode": "forecast", "operation": "replace", "group": 1}
-    )
+    await hass.config_entries.flow.async_configure(fid, {"next_step_id": "source_add"})
+    await hass.config_entries.flow.async_configure(fid, {"target": "buy"})
+    result = await hass.config_entries.flow.async_configure(fid, {"mode": "forecast"})
     assert result["step_id"] == "source_entity"
     result = await hass.config_entries.flow.async_configure(
         fid, {"entity_id": "sensor.synthetic_prices"}
@@ -204,10 +204,9 @@ async def test_soc_source_freshness_is_saved(
         },
     )
     await hass.config_entries.flow.async_configure(fid, {"next_step_id": "sources"})
-    await hass.config_entries.flow.async_configure(
-        fid,
-        {"target": "soc", "mode": "measurement", "operation": "replace", "group": 1},
-    )
+    await hass.config_entries.flow.async_configure(fid, {"next_step_id": "source_add"})
+    await hass.config_entries.flow.async_configure(fid, {"target": "soc"})
+    await hass.config_entries.flow.async_configure(fid, {"mode": "measurement"})
     await hass.config_entries.flow.async_configure(
         fid, {"entity_id": "sensor.synthetic_soc"}
     )
@@ -221,6 +220,7 @@ async def test_soc_source_freshness_is_saved(
             "max_age_seconds": 10,
         },
     )
+    await hass.config_entries.flow.async_configure(fid, {"next_step_id": "menu"})
     result = await hass.config_entries.flow.async_configure(
         fid, {"next_step_id": "battery"}
     )
@@ -382,7 +382,7 @@ async def test_draft_preview_restarts_acknowledgements(
         fid, {"confirm_buy_source": True, "confirm_load_source": True}
     )
     flow = hass.config_entries.flow._progress[fid]
-    await flow.async_step_tariffs({"buy_rate": 0.2})
+    await flow.async_step_tariff_values({"buy_rate": 0.2})
     preview = await flow.async_step_preview()
     assert {str(key): key.default() for key in preview["data_schema"].schema} == {
         "confirm": False,
