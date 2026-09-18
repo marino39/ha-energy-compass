@@ -234,6 +234,7 @@ def build_problem(
     statistics=(),
     power_samples=(),
     previous_soc=None,
+    battery_commitment=None,
 ):
     """Preserve native boundaries and stop at actual contiguous source coverage."""
     values = validate_configuration(config, states, now)
@@ -363,6 +364,7 @@ def build_problem(
             values["wear_per_kwh"],
             values["allow_grid_charge"],
             values["allow_battery_export"],
+            values["prevent_grid_energy_export"],
         )
         if values["daily_cycles"]:
             selected = config.get("measurements", {}).get("throughput_today")
@@ -403,6 +405,13 @@ def build_problem(
         values["terminal_value_per_kwh"],
         budgets,
         config["timezone"],
+        minimum_mode_minutes=values["minimum_mode_minutes"],
+        initial_battery_mode=battery_commitment["mode"]
+        if battery and battery_commitment
+        else None,
+        initial_battery_mode_since=parse_timestamp(battery_commitment["since"])
+        if battery and battery_commitment
+        else None,
     )
     validate_problem(problem)
     ages = {
@@ -578,6 +587,14 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
         / 3600,
         "monthly_charge_reporting_only": values["monthly_charge"],
         "quality": quality,
+        "dispatch_policy": {
+            "minimum_mode_minutes": values["minimum_mode_minutes"],
+            "prevent_grid_energy_export": values["prevent_grid_energy_export"],
+            "initial_energy_origin": "unknown_non_exportable"
+            if values["prevent_grid_energy_export"]
+            else "unrestricted",
+            "origin_scope": "current_plan",
+        },
         "measurements": measurement_diagnostics(config, states, now),
         "presentation": {
             key: values[key]

@@ -27,4 +27,6 @@ The extra-kWh estimate assumes the optimizer's proposed plan. Until a controller
 
 ## License
 
+Planning options default to a **60-minute battery direction hold** and **no resale of grid-charged battery energy**. A hold allows idle periods and switching between PV and grid charging. Unknown initial battery energy is conservatively excluded from export on every plan; only surplus PV stored within that plan is exportable. See [policy details and limitations](docs/model.md#battery-direction-duration-and-grid-energy-resale).
+
 Energy Compass source and original artwork are provided under [Apache License 2.0](LICENSE). SciPy and NumPy are installed as separate dependencies and retain their own licenses; their source is not included here.

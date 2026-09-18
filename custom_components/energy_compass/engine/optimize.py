@@ -8,6 +8,7 @@ import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import coo_matrix
 
+from .dispatch_policy import constrain_directions, validate_directions
 from .models import Flow, InputError, Plan, Problem, SolveError
 from .normalize import validate_problem
 
@@ -114,6 +115,7 @@ def _validate_solution(
     _check(bool(np.all(np.isfinite(values))), "nonfinite variables")
     battery = problem.battery
     previous_energy = battery.initial_kwh if battery else 0.0
+    previous_pv_energy = 0.0
     spent = {day: 0.0 for day in budgets}
 
     for slot, variables, fractions in zip(
@@ -211,6 +213,31 @@ def _validate_solution(
                 "discharge direction",
             )
             _check(min(charge, discharge) <= _TOL, "simultaneous battery directions")
+            if battery.prevent_grid_energy_export:
+                pv_discharge = value("pv_discharge")
+                _check(pv_discharge <= discharge + _TOL, "PV discharge allocation")
+                _check(
+                    value("battery_grid") <= pv_discharge + _TOL,
+                    "grid-origin battery export",
+                )
+                _check(
+                    discharge - pv_discharge
+                    <= max(slot.load_kwh - slot.pv_kwh, 0) + _TOL,
+                    "non-PV discharge displacing solar export",
+                )
+                _check(
+                    value("pv_battery") <= max(slot.pv_kwh - slot.load_kwh, 0) + _TOL,
+                    "PV-origin charging exceeds surplus",
+                )
+                previous_pv_energy += (
+                    battery.eta_charge * value("pv_battery")
+                    - pv_discharge / battery.eta_discharge
+                )
+                _close(value("pv_energy"), previous_pv_energy, "PV energy balance")
+                _check(
+                    -_TOL <= previous_pv_energy <= value("energy") + _TOL,
+                    "PV energy bounds",
+                )
             if not battery.allow_grid_charge:
                 _check(value("grid_battery") <= _TOL, "grid charging capability")
                 _check(
@@ -237,6 +264,13 @@ def _validate_solution(
                 if day in spent:
                     spent[day] += fraction * (charge + discharge)
     if battery:
+        validate_directions(
+            problem,
+            [
+                "charge" if values[v["battery_mode"]] > 0.5 else "discharge"
+                for v in vectors
+            ],
+        )
         if problem.terminal_mode == "preserve_initial":
             _check(previous_energy >= battery.initial_kwh - _TOL, "terminal SOC")
         for day, total in spent.items():
@@ -261,6 +295,7 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
     vectors: list[dict[str, int]] = []
     daily_fractions: list[dict[str, float]] = []
     previous_energy_index: int | None = None
+    previous_pv_energy_index: int | None = None
     battery = problem.battery
 
     for slot in problem.slots:
@@ -320,6 +355,11 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
             model.lower[variables["energy"]] = (
                 battery.capacity_kwh * battery.minimum_soc_fraction
             )
+            if battery.prevent_grid_energy_export:
+                variables["pv_energy"] = model.variable(upper=battery.capacity_kwh)
+                variables["pv_discharge"] = model.variable(
+                    upper=battery.discharge_kw * duration
+                )
         v = variables
         model.constrain(
             {v["gin"]: 1, v["grid_mode"]: -problem.site.grid_import_kw * duration},
@@ -373,6 +413,30 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
             initial = battery.initial_kwh if previous_energy_index is None else 0
             model.constrain(energy, initial, initial)
             previous_energy_index = v["energy"]
+            if battery.prevent_grid_energy_export:
+                # Only surplus PV is certified. Initial SOC has unknown origin.
+                model.constrain(
+                    {v["pv_battery"]: 1}, -np.inf, max(slot.pv_kwh - slot.load_kwh, 0)
+                )
+                model.constrain(
+                    {v["battery_grid"]: 1, v["pv_discharge"]: -1}, -np.inf, 0
+                )
+                model.constrain({v["pv_discharge"]: 1, v["bd"]: -1}, -np.inf, 0)
+                model.constrain(
+                    {v["bd"]: 1, v["pv_discharge"]: -1},
+                    -np.inf,
+                    max(slot.load_kwh - slot.pv_kwh, 0),
+                )
+                model.constrain({v["pv_energy"]: 1, v["energy"]: -1}, -np.inf, 0)
+                pv_energy = {
+                    v["pv_energy"]: 1,
+                    v["pv_battery"]: -battery.eta_charge,
+                    v["pv_discharge"]: 1 / battery.eta_discharge,
+                }
+                if previous_pv_energy_index is not None:
+                    pv_energy[previous_pv_energy_index] = -1
+                model.constrain(pv_energy, 0, 0)
+                previous_pv_energy_index = v["pv_energy"]
             if not battery.allow_grid_charge:
                 model.constrain(
                     {v["bc"]: 1}, -np.inf, max(slot.pv_kwh - slot.load_kwh, 0)
@@ -388,6 +452,7 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
         daily_fractions.append(_day_fractions(slot.start, slot.end, zone))
 
     if battery:
+        constrain_directions(model, problem, vectors)
         if problem.terminal_mode == "preserve_initial":
             model.constrain({previous_energy_index: 1}, battery.initial_kwh, np.inf)
         for day, budget in budgets.items():
@@ -410,6 +475,13 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
             float(values[v["bd"]]) if battery else 0.0,
             float(values[v["curt"]]),
             float(values[v["energy"]]) if battery else 0.0,
+            ("charge" if values[v["battery_mode"]] > 0.5 else "discharge")
+            if battery
+            else None,
+            float(values[v["pv_battery"]]) if battery else 0.0,
+            float(values[v["grid_battery"]]) if battery else 0.0,
+            float(values[v["pv_discharge"]]) if "pv_discharge" in v else 0.0,
+            float(values[v["pv_energy"]]) if "pv_energy" in v else 0.0,
         )
         for v in vectors
     )

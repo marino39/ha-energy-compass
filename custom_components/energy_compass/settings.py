@@ -52,6 +52,7 @@ NUMBERS = {
     "power_max_gap_minutes": ("forecast", 60, 1, 120, "min"),
     "horizon_hours": ("planning", 24, 1, 48, "h"),
     "refresh_minutes": ("planning", 15, 1, 60, "min"),
+    "minimum_mode_minutes": ("planning", 60, 0, 1440, "min"),
     "terminal_value_per_kwh": ("planning", 0, -1000, 1000, "currency/kWh"),
     "display_horizon_hours": ("compass", 24, 1, 48, "h"),
     "reference_horizon_hours": ("compass", 24, 1, 48, "h"),
@@ -86,6 +87,7 @@ INTEGERS = {
 BOOLEANS = {
     "allow_grid_charge": ("hardware", False),
     "allow_battery_export": ("hardware", False),
+    "prevent_grid_energy_export": ("planning", True),
     "allow_curtailment": ("hardware", False),
     "buy_apply_vat": ("tariffs", False),
     "sell_apply_vat": ("tariffs", False),
@@ -202,6 +204,7 @@ def validate_configuration(
     for key, (_, default) in BOOLEANS.items():
         if type(values.get(key, default)) is not bool:
             raise InputError(f"{key} must be boolean")
+        values.setdefault(key, default)
     for key, (_, choices) in CHOICES.items():
         if values.get(key) not in choices:
             raise InputError(f"invalid {key}")

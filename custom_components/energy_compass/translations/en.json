@@ -183,9 +183,15 @@
           "horizon_hours": "Horizon hours",
           "refresh_minutes": "Refresh minutes",
           "terminal_value_per_kwh": "Terminal value per kwh",
-          "terminal_mode": "Terminal mode"
+          "terminal_mode": "Terminal mode",
+          "minimum_mode_minutes": "Minimum battery direction duration",
+          "prevent_grid_energy_export": "Prevent resale of grid energy"
         },
-        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+        "description": "Edit fixed values or use the numeric helper editor. {detail}",
+        "data_description": {
+          "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
+          "prevent_grid_energy_export": "Enabled by default. Battery export uses only surplus PV stored within the current plan. Initial SOC has unknown origin and can serve residual household load but cannot be exported. Does not control the inverter."
+        }
       },
       "compass": {
         "title": "Consumption outlook",
@@ -469,9 +475,15 @@
           "horizon_hours": "Horizon hours",
           "refresh_minutes": "Refresh minutes",
           "terminal_value_per_kwh": "Terminal value per kwh",
-          "terminal_mode": "Terminal mode"
+          "terminal_mode": "Terminal mode",
+          "minimum_mode_minutes": "Minimum battery direction duration",
+          "prevent_grid_energy_export": "Prevent resale of grid energy"
         },
-        "description": "Edit fixed values or use the numeric helper editor. {detail}"
+        "description": "Edit fixed values or use the numeric helper editor. {detail}",
+        "data_description": {
+          "minimum_mode_minutes": "Default 60 min; 0 disables the hold. Directions are charging and discharging. Zero power and PV/grid source changes are allowed. Published advice keeps its commitment through recalculation and restart.",
+          "prevent_grid_energy_export": "Enabled by default. Battery export uses only surplus PV stored within the current plan. Initial SOC has unknown origin and can serve residual household load but cannot be exported. Does not control the inverter."
+        }
       },
       "compass": {
         "title": "Consumption outlook",

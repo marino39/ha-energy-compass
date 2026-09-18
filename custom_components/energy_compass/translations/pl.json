@@ -183,9 +183,15 @@
           "horizon_hours": "Horyzont planowania",
           "refresh_minutes": "Okres przeliczania",
           "terminal_value_per_kwh": "Wartość energii na końcu planu",
-          "terminal_mode": "Polityka końcowego SOC"
+          "terminal_mode": "Polityka końcowego SOC",
+          "minimum_mode_minutes": "Minimalny czas kierunku baterii",
+          "prevent_grid_energy_export": "Zakaz odsprzedaży energii z sieci"
         },
-        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}",
+        "data_description": {
+          "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza blokadę. Ładowanie i rozładowanie to kierunki. Postój oraz zmiana źródła PV/sieć są dozwolone. Blokada dotyczy opublikowanego planu i przetrwa przeliczenie oraz restart.",
+          "prevent_grid_energy_export": "Domyślnie włączone. Eksport z baterii tylko z nadwyżek PV zgromadzonych w bieżącym planie. Pochodzenie początkowego SoC jest nieznane: ta energia może zasilać dom, ale nie podlega eksportowi. Brak sterowania falownikiem."
+        }
       },
       "compass": {
         "title": "Prognoza kosztu zużycia",
@@ -469,9 +475,15 @@
           "horizon_hours": "Horyzont planowania",
           "refresh_minutes": "Okres przeliczania",
           "terminal_value_per_kwh": "Wartość energii na końcu planu",
-          "terminal_mode": "Polityka końcowego SOC"
+          "terminal_mode": "Polityka końcowego SOC",
+          "minimum_mode_minutes": "Minimalny czas kierunku baterii",
+          "prevent_grid_energy_export": "Zakaz odsprzedaży energii z sieci"
         },
-        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
+        "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}",
+        "data_description": {
+          "minimum_mode_minutes": "Domyślnie 60 min; 0 wyłącza blokadę. Ładowanie i rozładowanie to kierunki. Postój oraz zmiana źródła PV/sieć są dozwolone. Blokada dotyczy opublikowanego planu i przetrwa przeliczenie oraz restart.",
+          "prevent_grid_energy_export": "Domyślnie włączone. Eksport z baterii tylko z nadwyżek PV zgromadzonych w bieżącym planie. Pochodzenie początkowego SoC jest nieznane: ta energia może zasilać dom, ale nie podlega eksportowi. Brak sterowania falownikiem."
+        }
       },
       "compass": {
         "title": "Prognoza kosztu zużycia",
