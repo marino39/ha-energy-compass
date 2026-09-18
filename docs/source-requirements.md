@@ -20,7 +20,7 @@ Entity state: `sensor.import_price`, state `0.75`, `unit_of_measurement: PLN/kWh
 
 Entity attribute: `sensor.market_price`, available parent state, numeric attribute `import_price: 750`, declared unit `PLN/MWh` → 0.75 PLN/kWh. Select the attribute explicitly; the parent's unit may describe another value.
 
-A current cheap-zone rate does not reveal when the next expensive zone starts. Use an interval forecast when time-of-use changes matter.
+A current cheap-zone rate does not reveal when the next expensive zone starts. Use an interval forecast when time-of-use changes matter. An [illustrative Home Assistant tariff helper](tariff-helper.md) publishes a G11/G12/G12w schedule in this format.
 
 ## Forecast example
 
