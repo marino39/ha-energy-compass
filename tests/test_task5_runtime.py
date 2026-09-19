@@ -120,11 +120,17 @@ def test_short_next_day_coverage_does_not_invent_prices():
     }
     result = compute(config, states, now)
     assert result["valid"]
-    assert result["classification_mode"] == "absolute_fallback"
+    assert result["classification_mode"] == "percentile"
+    assert result["coverage_reason"] == "available_reference_horizon"
     assert result["quality"]["coverage_complete"] is False
     assert len(result["intervals"]) == 2
+    assert len(result["outlook"]) == 24
+    assert result["outlook"][1]["level"] is not None
+    assert result["outlook"][2]["level"] is None
     config["settings"]["short_coverage"] = "unavailable"
-    assert compute(config, states, now)["guidance_valid"] is False
+    strict_result = compute(config, states, now)
+    assert strict_result["guidance_valid"] is True
+    assert strict_result["outlook"][2]["level"] is None
 
 
 def test_total_budget_subtracts_base_elapsed_and_finish_reserve():

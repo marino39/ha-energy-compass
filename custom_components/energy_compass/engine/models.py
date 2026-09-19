@@ -143,7 +143,7 @@ class CompassSettings:
     display_interval_minutes: int = 60
     reference_horizon_hours: int = 24
     probe_kwh: float = 1.0
-    boost_ceiling: float = 0.05
+    boost_ceiling: float = 0.01
     cheap_percentile: float = 25.0
     limit_percentile: float = 75.0
     limit_floor: float = 0.80

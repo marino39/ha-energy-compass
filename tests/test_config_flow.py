@@ -46,7 +46,7 @@ def test_defaults_are_generic():
     config = default_configuration("EUR", "UTC")
     assert config["settings"]["calibration"] == "unvalidated"
     assert config["settings"]["operating_floor"] == 0
-    assert config["settings"]["boost_ceiling"] != 0.05
+    assert config["settings"]["boost_ceiling"] == 0.01
 
 
 @pytest.mark.parametrize(
@@ -270,7 +270,9 @@ def test_snapshot_preserves_identical_native_soc_report_time(hass, freezer, path
     )
 
 
-@pytest.mark.parametrize("currency,expected", [("PLN", (0.05, 0.8)), ("EUR", (0, 1))])
+@pytest.mark.parametrize(
+    "currency,expected", [("PLN", (0.01, 0.8)), ("EUR", (0.01, 1))]
+)
 async def test_preset_thresholds_are_currency_specific(
     recorder_mock, hass, enable_custom_integrations, currency, expected
 ):

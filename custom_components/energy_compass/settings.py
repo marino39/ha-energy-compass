@@ -61,7 +61,7 @@ NUMBERS = {
     "reference_horizon_hours": ("compass", 24, 1, 48, "h"),
     "display_interval_minutes": ("compass", 60, 15, 60, "min"),
     "probe_kwh": ("compass", 1, 0.01, 5, "kWh"),
-    "boost_ceiling": ("compass", 0, -1000, 1000, "currency/kWh"),
+    "boost_ceiling": ("compass", 0.01, -1000, 1000, "currency/kWh"),
     "cheap_percentile": ("compass", 25, 0, 100, "%"),
     "limit_percentile": ("compass", 75, 0, 100, "%"),
     "limit_floor": ("compass", 1, -1000, 1000, "currency/kWh"),

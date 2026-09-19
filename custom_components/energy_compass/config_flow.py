@@ -577,7 +577,7 @@ class EnergyCompassConfigFlow(Editor, config_entries.ConfigFlow, domain=DOMAIN):
                 "pse_solcast",
                 "pse",
             ):
-                self._draft["settings"].update(boost_ceiling=0.05, limit_floor=0.80)
+                self._draft["settings"].update(boost_ceiling=0.01, limit_floor=0.80)
             preset = PRESETS.get(user_input["preset"])
             if preset and preset.soc_unit:
                 self._draft["soc_options"]["unit"] = preset.soc_unit
