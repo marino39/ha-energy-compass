@@ -211,7 +211,10 @@
           "cheap_percentile": "Percentyl taniego okresu",
           "limit_percentile": "Percentyl ograniczenia",
           "limit_floor": "Próg ograniczenia",
-          "short_coverage": "Niepełny horyzont odniesienia"
+          "short_coverage": "Polityka błędu próby"
+        },
+        "data_description": {
+          "short_coverage": "Używana tylko wtedy, gdy próba kosztu zużycia w dostępnym zakresie nie powiedzie się lub przekroczy budżet czasu. Krótszy zakres źródła używa percentyli z dostępnego ciągłego horyzontu."
         },
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
       },
@@ -582,7 +585,10 @@
           "cheap_percentile": "Percentyl taniego okresu",
           "limit_percentile": "Percentyl ograniczenia",
           "limit_floor": "Próg ograniczenia",
-          "short_coverage": "Niepełny horyzont odniesienia"
+          "short_coverage": "Polityka błędu próby"
+        },
+        "data_description": {
+          "short_coverage": "Używana tylko wtedy, gdy próba kosztu zużycia w dostępnym zakresie nie powiedzie się lub przekroczy budżet czasu. Krótszy zakres źródła używa percentyli z dostępnego ciągłego horyzontu."
         },
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
       },
@@ -748,6 +754,7 @@
             "name": "Powód",
             "state": {
               "complete": "Pełne pokrycie",
+              "available_reference_horizon": "Dostępny horyzont odniesienia",
               "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
               "reference_probe_failed": "Nieudana próba odniesienia",
               "unvalidated_tariff": "Niezweryfikowana taryfa",
@@ -773,6 +780,7 @@
             "name": "Powód",
             "state": {
               "complete": "Pełne pokrycie",
+              "available_reference_horizon": "Dostępny horyzont odniesienia",
               "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
               "reference_probe_failed": "Nieudana próba odniesienia",
               "unvalidated_tariff": "Niezweryfikowana taryfa",
@@ -798,6 +806,7 @@
             "name": "Powód",
             "state": {
               "complete": "Pełne pokrycie",
+              "available_reference_horizon": "Dostępny horyzont odniesienia",
               "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
               "reference_probe_failed": "Nieudana próba odniesienia",
               "unvalidated_tariff": "Niezweryfikowana taryfa",
@@ -823,6 +832,7 @@
             "name": "Powód",
             "state": {
               "complete": "Pełne pokrycie",
+              "available_reference_horizon": "Dostępny horyzont odniesienia",
               "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
               "reference_probe_failed": "Nieudana próba odniesienia",
               "unvalidated_tariff": "Niezweryfikowana taryfa",
@@ -848,6 +858,7 @@
             "name": "Powód",
             "state": {
               "complete": "Pełne pokrycie",
+              "available_reference_horizon": "Dostępny horyzont odniesienia",
               "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
               "reference_probe_failed": "Nieudana próba odniesienia",
               "unvalidated_tariff": "Niezweryfikowana taryfa",
@@ -873,6 +884,7 @@
             "name": "Powód",
             "state": {
               "complete": "Pełne pokrycie",
+              "available_reference_horizon": "Dostępny horyzont odniesienia",
               "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
               "reference_probe_failed": "Nieudana próba odniesienia",
               "unvalidated_tariff": "Niezweryfikowana taryfa",
@@ -898,6 +910,7 @@
             "name": "Powód",
             "state": {
               "complete": "Pełne pokrycie",
+              "available_reference_horizon": "Dostępny horyzont odniesienia",
               "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
               "reference_probe_failed": "Nieudana próba odniesienia",
               "unvalidated_tariff": "Niezweryfikowana taryfa",
@@ -923,6 +936,7 @@
             "name": "Powód",
             "state": {
               "complete": "Pełne pokrycie",
+              "available_reference_horizon": "Dostępny horyzont odniesienia",
               "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
               "reference_probe_failed": "Nieudana próba odniesienia",
               "unvalidated_tariff": "Niezweryfikowana taryfa",
@@ -948,6 +962,7 @@
             "name": "Powód",
             "state": {
               "complete": "Pełne pokrycie",
+              "available_reference_horizon": "Dostępny horyzont odniesienia",
               "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
               "reference_probe_failed": "Nieudana próba odniesienia",
               "unvalidated_tariff": "Niezweryfikowana taryfa",
@@ -973,6 +988,7 @@
             "name": "Powód",
             "state": {
               "complete": "Pełne pokrycie",
+              "available_reference_horizon": "Dostępny horyzont odniesienia",
               "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
               "reference_probe_failed": "Nieudana próba odniesienia",
               "unvalidated_tariff": "Niezweryfikowana taryfa",
@@ -1007,6 +1023,7 @@
             "name": "Powód",
             "state": {
               "complete": "Pełne pokrycie",
+              "available_reference_horizon": "Dostępny horyzont odniesienia",
               "reference_horizon_uncovered": "Brak pełnego horyzontu odniesienia",
               "reference_probe_failed": "Nieudana próba odniesienia",
               "unvalidated_tariff": "Niezweryfikowana taryfa",

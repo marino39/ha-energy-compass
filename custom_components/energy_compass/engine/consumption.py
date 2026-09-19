@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from math import ceil, floor, isfinite
+from math import ceil, floor, isclose, isfinite
 from time import perf_counter
 from zoneinfo import ZoneInfo
 
@@ -25,6 +25,8 @@ from .optimize import solve
 
 _UTC = UTC
 _TOL = 1e-6
+_PRICE_REL_TOL = 1e-12
+_PRICE_ABS_TOL = 1e-12
 _MAX_PROBES = 96
 
 
@@ -86,10 +88,11 @@ def classify_cost(
     *,
     q25: float | None,
     q75: float | None,
-    boost_ceiling: float = 0.05,
+    minimum_purchase_price: float | None = None,
+    boost_ceiling: float = 0.01,
     limit_floor: float = 0.80,
 ) -> Level:
-    """Classify a finite incremental cost using absolute and percentile limits."""
+    """Classify a finite incremental cost using the configured precedence."""
     value = _finite(cost, "cost")
     boost = _finite(boost_ceiling, "boost_ceiling")
     limit = _finite(limit_floor, "limit_floor")
@@ -97,16 +100,34 @@ def classify_cost(
         raise InputError("boost ceiling must be below limit floor")
     low = None if q25 is None else _finite(q25, "q25")
     high = None if q75 is None else _finite(q75, "q75")
+    purchase = (
+        None
+        if minimum_purchase_price is None
+        else _finite(minimum_purchase_price, "minimum_purchase_price")
+    )
     if (low is None) != (high is None):
         raise InputError("both percentile values must be supplied together")
     if low is not None and low > high:
         raise InputError("percentile values must be ordered")
-    if value <= boost:
+    if value < boost:
         return "BOOST"
+    # Optimizer objective differences can retain negligible residue at equality.
+    if any(
+        threshold is not None
+        and (
+            value <= threshold
+            or isclose(
+                value,
+                threshold,
+                rel_tol=_PRICE_REL_TOL,
+                abs_tol=_PRICE_ABS_TOL,
+            )
+        )
+        for threshold in (low, purchase)
+    ):
+        return "CHEAP"
     if value > limit and (high is None or value > high):
         return "LIMIT"
-    if low is not None and value < low:
-        return "CHEAP"
     return "NORMAL"
 
 
@@ -178,23 +199,35 @@ def analyze_consumption(
     if len(plan.flows) != len(problem.slots) or not isfinite(plan.objective):
         raise InputError("baseline plan does not match problem")
     start = problem.slots[0].start
-    display = _intervals(
+    display_requested = _intervals(
         start, settings.display_horizon_hours, settings.display_interval_minutes
     )
-    reference = _intervals(
+    reference_requested = _intervals(
         start, settings.reference_horizon_hours, settings.display_interval_minutes
     )
-    requested = tuple(dict.fromkeys((*reference, *display)))
+    source_end = problem.slots[-1].end.astimezone(_UTC)
+
+    def available(interval):
+        interval_start, interval_end = interval
+        if interval_start >= source_end:
+            return None
+        return interval_start, min(interval_end, source_end)
+
+    reference = tuple(
+        probe for item in reference_requested if (probe := available(item)) is not None
+    )
+    display = tuple((item, available(item)) for item in display_requested)
+    requested = tuple(
+        dict.fromkeys(
+            (*reference, *(probe for _, probe in display if probe is not None))
+        )
+    )
     if len(requested) > _MAX_PROBES:
         raise InputError("horizon and interval require too many probes")
-    source_end = problem.slots[-1].end.astimezone(_UTC)
     zone = ZoneInfo(problem.timezone)
     costs: dict[tuple[datetime, datetime], float | None] = {}
     deadline = perf_counter() + budget
     for interval_start, interval_end in requested:
-        if interval_end > source_end:
-            costs[(interval_start, interval_end)] = None
-            continue
         probe_start = perf_counter()
         remaining = deadline - probe_start
         if remaining <= 0:
@@ -210,40 +243,45 @@ def analyze_consumption(
             probe_deadline,
         )
     reference_costs = tuple(costs[item] for item in reference)
-    complete = all(cost is not None for cost in reference_costs)
-    if complete:
+    probes_succeeded = all(cost is not None for cost in reference_costs)
+    complete = reference_requested[-1][1] <= source_end and probes_succeeded
+    if probes_succeeded:
         mode = "percentile"
-        reason = "complete"
+        reason = "complete" if complete else "available_reference_horizon"
         known = tuple(cost for cost in reference_costs if cost is not None)
         low = _percentile(known, settings.cheap_percentile)
         high = _percentile(known, settings.limit_percentile)
+        reference_end = reference[-1][1]
+        minimum_purchase_price = min(
+            slot.buy_per_kwh
+            for slot in problem.slots
+            if slot.start.astimezone(_UTC) < reference_end
+            and slot.end.astimezone(_UTC) > reference[0][0]
+        )
     else:
         mode = settings.short_coverage
-        reason = (
-            "reference_horizon_uncovered"
-            if any(end > source_end for _, end in reference)
-            else "reference_probe_failed"
-        )
+        reason = "reference_probe_failed"
         low = high = None
+        minimum_purchase_price = None
     opportunities = tuple(
         Opportunity(
-            interval_start.astimezone(zone),
-            interval_end.astimezone(zone),
-            costs[(interval_start, interval_end)],
+            (probe or item)[0].astimezone(zone),
+            (probe or item)[1].astimezone(zone),
+            None if probe is None else costs[probe],
             (
                 None
-                if costs[(interval_start, interval_end)] is None
-                or mode == "unavailable"
+                if probe is None or costs[probe] is None or mode == "unavailable"
                 else classify_cost(
-                    costs[(interval_start, interval_end)],
+                    costs[probe],
                     q25=low,
                     q75=high,
+                    minimum_purchase_price=minimum_purchase_price,
                     boost_ceiling=settings.boost_ceiling,
                     limit_floor=settings.limit_floor,
                 )
             ),
         )
-        for interval_start, interval_end in display
+        for item, probe in display
     )
     return ConsumptionAnalysis(opportunities, mode, reason, complete)
 

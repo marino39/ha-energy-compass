@@ -211,7 +211,10 @@
           "cheap_percentile": "Cheap percentile",
           "limit_percentile": "Limit percentile",
           "limit_floor": "Limit floor",
-          "short_coverage": "Short coverage"
+          "short_coverage": "Probe failure policy"
+        },
+        "data_description": {
+          "short_coverage": "Used only when a covered consumption-cost probe fails or its compute budget expires. Shorter source coverage uses percentiles over the available contiguous horizon."
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}"
       },
@@ -582,7 +585,10 @@
           "cheap_percentile": "Cheap percentile",
           "limit_percentile": "Limit percentile",
           "limit_floor": "Limit floor",
-          "short_coverage": "Short coverage"
+          "short_coverage": "Probe failure policy"
+        },
+        "data_description": {
+          "short_coverage": "Used only when a covered consumption-cost probe fails or its compute budget expires. Shorter source coverage uses percentiles over the available contiguous horizon."
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}"
       },
@@ -748,6 +754,7 @@
             "name": "Reason",
             "state": {
               "complete": "Complete coverage",
+              "available_reference_horizon": "Available reference horizon",
               "reference_horizon_uncovered": "Reference horizon uncovered",
               "reference_probe_failed": "Reference probe failed",
               "unvalidated_tariff": "Unvalidated tariff",
@@ -773,6 +780,7 @@
             "name": "Reason",
             "state": {
               "complete": "Complete coverage",
+              "available_reference_horizon": "Available reference horizon",
               "reference_horizon_uncovered": "Reference horizon uncovered",
               "reference_probe_failed": "Reference probe failed",
               "unvalidated_tariff": "Unvalidated tariff",
@@ -798,6 +806,7 @@
             "name": "Reason",
             "state": {
               "complete": "Complete coverage",
+              "available_reference_horizon": "Available reference horizon",
               "reference_horizon_uncovered": "Reference horizon uncovered",
               "reference_probe_failed": "Reference probe failed",
               "unvalidated_tariff": "Unvalidated tariff",
@@ -823,6 +832,7 @@
             "name": "Reason",
             "state": {
               "complete": "Complete coverage",
+              "available_reference_horizon": "Available reference horizon",
               "reference_horizon_uncovered": "Reference horizon uncovered",
               "reference_probe_failed": "Reference probe failed",
               "unvalidated_tariff": "Unvalidated tariff",
@@ -848,6 +858,7 @@
             "name": "Reason",
             "state": {
               "complete": "Complete coverage",
+              "available_reference_horizon": "Available reference horizon",
               "reference_horizon_uncovered": "Reference horizon uncovered",
               "reference_probe_failed": "Reference probe failed",
               "unvalidated_tariff": "Unvalidated tariff",
@@ -873,6 +884,7 @@
             "name": "Reason",
             "state": {
               "complete": "Complete coverage",
+              "available_reference_horizon": "Available reference horizon",
               "reference_horizon_uncovered": "Reference horizon uncovered",
               "reference_probe_failed": "Reference probe failed",
               "unvalidated_tariff": "Unvalidated tariff",
@@ -898,6 +910,7 @@
             "name": "Reason",
             "state": {
               "complete": "Complete coverage",
+              "available_reference_horizon": "Available reference horizon",
               "reference_horizon_uncovered": "Reference horizon uncovered",
               "reference_probe_failed": "Reference probe failed",
               "unvalidated_tariff": "Unvalidated tariff",
@@ -923,6 +936,7 @@
             "name": "Reason",
             "state": {
               "complete": "Complete coverage",
+              "available_reference_horizon": "Available reference horizon",
               "reference_horizon_uncovered": "Reference horizon uncovered",
               "reference_probe_failed": "Reference probe failed",
               "unvalidated_tariff": "Unvalidated tariff",
@@ -948,6 +962,7 @@
             "name": "Reason",
             "state": {
               "complete": "Complete coverage",
+              "available_reference_horizon": "Available reference horizon",
               "reference_horizon_uncovered": "Reference horizon uncovered",
               "reference_probe_failed": "Reference probe failed",
               "unvalidated_tariff": "Unvalidated tariff",
@@ -973,6 +988,7 @@
             "name": "Reason",
             "state": {
               "complete": "Complete coverage",
+              "available_reference_horizon": "Available reference horizon",
               "reference_horizon_uncovered": "Reference horizon uncovered",
               "reference_probe_failed": "Reference probe failed",
               "unvalidated_tariff": "Unvalidated tariff",
@@ -1007,6 +1023,7 @@
             "name": "Reason",
             "state": {
               "complete": "Complete coverage",
+              "available_reference_horizon": "Available reference horizon",
               "reference_horizon_uncovered": "Reference horizon uncovered",
               "reference_probe_failed": "Reference probe failed",
               "unvalidated_tariff": "Unvalidated tariff",

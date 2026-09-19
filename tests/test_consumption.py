@@ -51,21 +51,88 @@ def grid_problem(prices, *, start=START, slot_minutes=60):
     )
 
 
-def test_classification_boundaries_and_flat_distribution():
-    assert classify_cost(0.05, q25=0.05, q75=0.90) == "BOOST"
-    assert classify_cost(0.19, q25=0.20, q75=0.90) == "CHEAP"
-    assert classify_cost(0.20, q25=0.20, q75=0.90) == "NORMAL"
-    assert classify_cost(0.90, q25=0.20, q75=0.90) == "NORMAL"
-    assert classify_cost(0.91, q25=0.20, q75=0.90) == "LIMIT"
-    assert classify_cost(0.40, q25=0.20, q75=0.35) == "NORMAL"
-    assert classify_cost(0.40, q25=0.40, q75=0.40) == "NORMAL"
-    assert classify_cost(0.90, q25=0.90, q75=0.90) == "NORMAL"
-    assert classify_cost(0.90, q25=1.20, q75=1.20) == "CHEAP"
+@pytest.mark.parametrize(
+    "cost,expected",
+    [
+        (-0.20, "BOOST"),
+        (-1e-14, "BOOST"),
+        (1e-14, "BOOST"),
+    ],
+)
+def test_near_zero_and_negative_costs_are_boost(cost, expected):
+    assert (
+        classify_cost(
+            cost,
+            q25=-1.0,
+            q75=0.90,
+            minimum_purchase_price=-1.0,
+        )
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "cost,expected",
+    [
+        (0.01 - 1e-14, "BOOST"),
+        (0.01, "NORMAL"),
+        (0.01 + 1e-14, "NORMAL"),
+    ],
+)
+def test_default_boost_ceiling_is_strictly_below_one_cent(cost, expected):
+    assert (
+        classify_cost(cost, q25=-1.0, q75=0.90, minimum_purchase_price=-1.0) == expected
+    )
+
+
+@pytest.mark.parametrize("cost", [0.20, 0.20 + 1e-14])
+def test_cheap_includes_percentile_equality_and_solver_residue(cost):
+    assert (
+        classify_cost(cost, q25=0.20, q75=0.90, minimum_purchase_price=0.10) == "CHEAP"
+    )
+
+
+@pytest.mark.parametrize("cost", [0.30, 0.30 + 1e-14])
+def test_cheap_includes_minimum_purchase_tariff_and_solver_residue(cost):
+    assert (
+        classify_cost(cost, q25=0.20, q75=0.90, minimum_purchase_price=0.30) == "CHEAP"
+    )
+
+
+def test_classification_precedence_and_remaining_levels():
+    assert (
+        classify_cost(0.009, q25=0.0, q75=0.90, minimum_purchase_price=0.0) == "BOOST"
+    )
+    assert (
+        classify_cost(
+            1.0,
+            q25=0.20,
+            q75=0.90,
+            minimum_purchase_price=1.0,
+            limit_floor=0.80,
+        )
+        == "CHEAP"
+    )
+    assert (
+        classify_cost(0.40, q25=0.20, q75=0.90, minimum_purchase_price=0.10) == "NORMAL"
+    )
+    assert (
+        classify_cost(0.90, q25=0.20, q75=0.90, minimum_purchase_price=0.10) == "NORMAL"
+    )
+    assert (
+        classify_cost(0.91, q25=0.20, q75=0.90, minimum_purchase_price=0.10) == "LIMIT"
+    )
     assert classify_cost(0.80, q25=None, q75=None) == "NORMAL"
     assert classify_cost(0.90, q25=None, q75=None) == "LIMIT"
 
 
-def test_display_beyond_flat_reference_uses_strict_percentile_comparisons():
+@pytest.mark.parametrize("minimum", [float("nan"), float("inf"), -float("inf")])
+def test_minimum_purchase_price_must_be_finite(minimum):
+    with pytest.raises(InputError, match="minimum_purchase_price"):
+        classify_cost(0.40, q25=0.20, q75=0.90, minimum_purchase_price=minimum)
+
+
+def test_display_beyond_flat_reference_uses_inclusive_cheap_comparisons():
     source = grid_problem((1.20, 0.90))
     result = analyze_consumption(
         source,
@@ -74,7 +141,7 @@ def test_display_beyond_flat_reference_uses_strict_percentile_comparisons():
     )
     assert result.reference_complete
     assert result.classification_mode == "percentile"
-    assert tuple(item.level for item in result.opportunities) == ("NORMAL", "CHEAP")
+    assert tuple(item.level for item in result.opportunities) == ("CHEAP", "CHEAP")
 
 
 def test_negative_sell_does_not_make_grid_consumption_free(grid_only_problem):
@@ -135,8 +202,9 @@ def test_no_future_window_or_transition_across_unknown_gap():
         None,
         None,
     )
-    assert result.classification_mode == "absolute_fallback"
-    assert result.coverage_reason == "reference_horizon_uncovered"
+    assert result.classification_mode == "percentile"
+    assert result.coverage_reason == "available_reference_horizon"
+    assert not result.reference_complete
     assert next_transition(result.opportunities, START + timedelta(hours=1)) is None
     assert (
         next_window(merge_windows(result.opportunities, frozenset({"LIMIT"})), START)
@@ -163,7 +231,7 @@ def test_reference_extends_past_display_and_custom_percentiles():
     assert tuple(item.level for item in result.opportunities) == ("CHEAP", "LIMIT")
 
 
-def test_short_coverage_unavailable_keeps_known_cost_but_no_level():
+def test_short_coverage_policy_does_not_suppress_successful_available_reference():
     source = grid_problem((0.30, 0.90))
     result = analyze_consumption(
         source,
@@ -174,9 +242,71 @@ def test_short_coverage_unavailable_keeps_known_cost_but_no_level():
             short_coverage="unavailable",
         ),
     )
-    assert result.classification_mode == "unavailable"
-    assert tuple(item.level for item in result.opportunities) == (None, None)
+    assert result.classification_mode == "percentile"
+    assert result.coverage_reason == "available_reference_horizon"
+    assert not result.reference_complete
+    assert tuple(item.level for item in result.opportunities) == ("CHEAP", "LIMIT")
     assert result.opportunities[0].cost_per_kwh == pytest.approx(0.30)
+
+
+def test_final_partial_interval_is_probed_only_through_source_coverage():
+    source = grid_problem((0.30, 0.50, 0.70), slot_minutes=30)
+    coverage_end = START + timedelta(minutes=90)
+    result = analyze_consumption(
+        source,
+        solve(source),
+        settings=CompassSettings(
+            display_horizon_hours=3,
+            reference_horizon_hours=3,
+            short_coverage="unavailable",
+        ),
+    )
+    assert result.classification_mode == "percentile"
+    assert result.coverage_reason == "available_reference_horizon"
+    assert tuple(item.end for item in result.opportunities[:2]) == (
+        START + timedelta(hours=1),
+        coverage_end,
+    )
+    assert result.opportunities[1].cost_per_kwh == pytest.approx(0.70)
+    assert result.opportunities[1].level is not None
+    assert result.opportunities[2].start == START + timedelta(hours=2)
+    assert result.opportunities[2].cost_per_kwh is None
+    assert result.opportunities[2].level is None
+
+
+def test_minimum_purchase_tariff_is_bounded_to_available_reference(monkeypatch):
+    source = grid_problem((0.80, 1.00, 0.10))
+    baseline = solve(source)
+    from custom_components.energy_compass.engine import consumption
+
+    costs = (0.80, 0.20, 0.60)
+
+    def controlled_probe(problem, **kwargs):
+        changed = next(
+            index
+            for index, (slot, original) in enumerate(
+                zip(problem.slots, source.slots, strict=True)
+            )
+            if slot.load_kwh > original.load_kwh
+        )
+        actual = sum(
+            slot.load_kwh - original.load_kwh
+            for slot, original in zip(problem.slots, source.slots, strict=True)
+        )
+        return replace(baseline, objective=baseline.objective + costs[changed] * actual)
+
+    monkeypatch.setattr(consumption, "solve", controlled_probe)
+    result = analyze_consumption(
+        source,
+        baseline,
+        settings=CompassSettings(
+            display_horizon_hours=3,
+            reference_horizon_hours=2,
+            boost_ceiling=0.01,
+        ),
+    )
+    assert result.opportunities[0].cost_per_kwh == pytest.approx(0.80)
+    assert result.opportunities[0].level == "CHEAP"
 
 
 def test_failed_probe_stays_unknown_under_absolute_fallback(monkeypatch):

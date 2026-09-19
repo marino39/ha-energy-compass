@@ -189,8 +189,8 @@
           <li>Planning, display and reference horizons: 24 hours each; configurable from 1 to 48 hours. Display and reference horizons cannot exceed the requested planning horizon.</li>
           <li>Display interval: 60 minutes; options are 15, 30 or 60 minutes. At most 96 distinct probes are allowed across display and reference horizons.</li>
           <li>Extra-energy probe: 1 kWh; UI range 0.01–5 kWh.</li>
-          <li>BOOST ceiling: 0 currency/kWh. LIMIT floor: 1 currency/kWh. CHEAP/LIMIT percentiles: 25th/75th.</li>
-          <li>Short reference coverage: <code>absolute_fallback</code>. Grid charging, battery export and curtailment: disabled.</li>
+          <li>BOOST ceiling: 0.01 currency/kWh. LIMIT floor: 1 currency/kWh. CHEAP/LIMIT percentiles: 25th/75th.</li>
+          <li>Probe-failure policy: <code>absolute_fallback</code>. Grid charging, battery export and curtailment: disabled.</li>
           <li>Default budgets: 10 seconds for the base plan, 2 seconds per probe and 60 seconds overall. Performance allows up to 30 seconds for each solve and 300 seconds overall. Probes share the remaining time after the base calculation and a one-second finishing reserve.</li>
           <li>Default periodic refresh: 15 minutes, configurable up to one hour. Significant source changes can trigger earlier recalculation; validity boundaries only validate sources and advance cached advice.</li>
         </ul>
@@ -224,10 +224,10 @@
       </div>
       <p>It then reoptimizes the <strong>whole available planning horizon</strong> with prices, starting SOC, terminal rules and equipment limits unchanged. Extra consumption can cause more import, less export, different battery use or different future charging. The resulting cost includes those opportunity costs and any change in wear or terminal credit.</p>
       <div class="note"><p><strong>The interval starts at the snapshot time.</strong> With a 60-minute display interval, a snapshot at 21:35 covers 21:35–22:35. It can cross a tariff change at 22:00. It is not a price for consuming the entire extra kWh immediately.</p></div>
-      <p>A 1 kWh probe over 60 minutes adds an average 1 kW; over 15 minutes it adds 4 kW. Different probe sizes can produce different per-kWh costs when constraints bind. A partially covered interval, infeasible probe or expired probe budget has an unknown result; it is not assigned a zero cost.</p>
+      <p>A 1 kWh probe over 60 minutes adds an average 1 kW; over 15 minutes it adds 4 kW. Different probe sizes can produce different per-kWh costs when constraints bind. The last interval overlapping source coverage is clipped and probed at its actual duration without scaling down the configured energy. A very short tail therefore requires higher average power and can fail when equipment limits bind. Later intervals, infeasible probes and expired probe budgets remain unknown; they are not assigned a zero cost.</p>
       <h3>3. Compare with the reference horizon</h3>
-      <p>When every reference probe succeeds, costs are sorted and configured percentiles are calculated by linear interpolation: for percentile <code>p</code>, position <code>(n − 1) × p / 100</code> lies between two sorted costs. Classification uses the rules in <a href="#consumption_compass">Consumption compass</a>.</p>
-      <p>Reference coverage concerns the percentile horizon, not necessarily the entire planning horizon. A plan shorter than the requested 48 hours can still support complete 24-hour percentiles.</p>
+      <p>When every available reference probe succeeds, costs are sorted and configured percentiles are calculated by linear interpolation: for percentile <code>p</code>, position <code>(n − 1) × p / 100</code> lies between two sorted costs. The minimum purchase tariff is taken from source slots overlapping the same available reference range. Classification uses the rules in <a href="#consumption_compass">Consumption compass</a>.</p>
+      <p>Reference coverage concerns the percentile horizon, not necessarily the entire planning horizon. If contiguous source coverage is shorter than the configured reference horizon, percentiles use that available coverage and the result reports it explicitly. Missing future prices do not by themselves invoke the probe-failure policy.</p>
     </section>
 
     <section id="entities" aria-labelledby="entities-title">
@@ -259,20 +259,20 @@
       <article id="consumption_compass">
         <h3>Consumption compass</h3>
         <p class="entity-meta"><code>consumption_compass</code> · <span lang="pl">Kompas zużycia</span> · Sensor</p>
-        <p>The level of the first consumption outlook interval. Let <code>c</code> be its extra-kWh cost, <code>B</code> the BOOST ceiling, <code>L</code> the LIMIT floor, and <code>Qlow</code>/<code>Qhigh</code> the configured reference percentiles. Rules are evaluated in the order shown; the first match wins.</p>
+        <p>The level of the first consumption outlook interval. Let <code>c</code> be its extra-kWh cost, <code>B</code> the BOOST ceiling, <code>L</code> the LIMIT floor, <code>Qlow</code>/<code>Qhigh</code> the configured reference percentiles, and <code>Pmin</code> the minimum purchase tariff in the available reference horizon. Rules are evaluated in the order shown; the first match wins.</p>
         <section class="table-scroll" aria-label="Consumption state rules" tabindex="0">
           <table>
             <thead><tr><th scope="col">State</th><th scope="col">Exact rule with complete reference</th><th scope="col">Meaning</th></tr></thead>
             <tbody>
-              <tr><th scope="row" class="state boost">BOOST</th><td><code>c ≤ B</code></td><td>Extra use costs at most your configured BOOST ceiling. With the default ceiling of zero, the modeled incremental cost is zero or negative.</td></tr>
+              <tr><th scope="row" class="state boost">BOOST</th><td><code>c &lt; B</code></td><td>Extra use costs less than your configured BOOST ceiling. The default ceiling is 0.01 currency/kWh; real negative costs remain BOOST.</td></tr>
+              <tr><th scope="row" class="state cheap">CHEAP</th><td><code>c ≤ Qlow</code> or <code>c ≤ Pmin</code></td><td>Extra use is no more expensive than the low percentile or the minimum purchase tariff in the available reference horizon.</td></tr>
               <tr><th scope="row" class="state limit">LIMIT</th><td><code>c &gt; L</code> and <code>c &gt; Qhigh</code></td><td>Extra use exceeds both your absolute expensive threshold and the upper reference percentile.</td></tr>
-              <tr><th scope="row" class="state cheap">CHEAP</th><td><code>c &lt; Qlow</code>, if neither rule above matched</td><td>Extra use is relatively cheap within the reference horizon. This does not necessarily mean free or below your retail tariff.</td></tr>
               <tr><th scope="row" class="state normal">NORMAL</th><td>All other known costs</td><td>None of the other rules matched. This is not a statement that the battery is full or the instantaneous tariff is low.</td></tr>
             </tbody>
           </table>
         </section>
-        <p>Equality at either percentile stays NORMAL unless the BOOST rule applies. Equality at the LIMIT floor does not trigger LIMIT. Flat reference prices do not become CHEAP merely by matching the low percentile.</p>
-        <p>With <code>absolute_fallback</code>, missing reference results remove the percentile tests: BOOST uses <code>c ≤ B</code>, LIMIT uses <code>c &gt; L</code>, and everything else known is NORMAL. CHEAP cannot be assigned in this mode. With the <code>unavailable</code> policy, levels remain unknown.</p>
+        <p>BOOST wins first, followed by CHEAP, LIMIT and NORMAL. Equality at the low percentile or minimum purchase tariff is CHEAP; a negligible numeric tolerance covers solver residue at those equalities. Equality at the BOOST ceiling is not BOOST, and equality at the LIMIT floor or high percentile does not trigger LIMIT.</p>
+        <p>With <code>absolute_fallback</code>, an actual reference-probe failure removes the percentile and minimum-tariff tests: BOOST uses <code>c &lt; B</code>, LIMIT uses <code>c &gt; L</code>, and everything else known is NORMAL. CHEAP cannot be assigned in this mode. With the <code>unavailable</code> policy, levels remain unknown. Shorter successful source coverage still uses percentile mode.</p>
         <p><strong>Unavailable:</strong> the baseline is invalid/expired, or the current guidance level is unknown. A low SOC is incorporated into the optimization; it does not independently force LIMIT.</p>
       </article>
 
@@ -437,9 +437,9 @@
           <caption>Classification modes</caption>
           <thead><tr><th scope="col">Mode</th><th scope="col">What happened</th></tr></thead>
           <tbody>
-            <tr><th scope="row"><code>percentile</code></th><td>All reference probes have known costs. Both absolute thresholds and percentiles apply.</td></tr>
-            <tr><th scope="row"><code>absolute_fallback</code></th><td>Reference coverage/probes are incomplete. Known costs use absolute BOOST and LIMIT rules; CHEAP is unavailable as a classification.</td></tr>
-            <tr><th scope="row"><code>unavailable</code></th><td>The selected strict policy suppresses consumption levels when the reference is incomplete. The baseline can remain valid.</td></tr>
+            <tr><th scope="row"><code>percentile</code></th><td>All probes in the available reference horizon have known costs. Absolute thresholds, percentiles and the minimum purchase tariff apply.</td></tr>
+            <tr><th scope="row"><code>absolute_fallback</code></th><td>A reference probe failed. Known costs use absolute BOOST and LIMIT rules; CHEAP is unavailable as a classification.</td></tr>
+            <tr><th scope="row"><code>unavailable</code></th><td>A reference probe failed and the selected strict policy suppresses consumption levels. The baseline can remain valid.</td></tr>
           </tbody>
         </table>
       </section>
@@ -449,8 +449,8 @@
           <thead><tr><th scope="col">Value</th><th scope="col">Meaning</th></tr></thead>
           <tbody>
             <tr><th scope="row"><code>complete</code></th><td>The reference horizon has all probe results. This alone does not mean the longer requested planning horizon is fully covered.</td></tr>
-            <tr><th scope="row"><code>reference_horizon_uncovered</code></th><td>At least one full reference interval extends beyond available source coverage.</td></tr>
-            <tr><th scope="row"><code>reference_probe_failed</code></th><td>Sources cover the reference horizon, but at least one probe failed or ran out of time.</td></tr>
+            <tr><th scope="row"><code>available_reference_horizon</code></th><td>All probes succeeded over contiguous source coverage shorter than the configured reference horizon; percentiles use that available range.</td></tr>
+            <tr><th scope="row"><code>reference_probe_failed</code></th><td>At least one covered reference probe failed or ran out of time.</td></tr>
             <tr><th scope="row"><code>short_source_coverage</code></th><td>Available planning coverage is shorter than requested. Inspect coverage_end.</td></tr>
             <tr><th scope="row"><code>missing_forecast_continuation</code></th><td>A selected continuation, such as tomorrow's forecast, is unavailable. Usable contiguous coverage may remain.</td></tr>
             <tr><th scope="row"><code>current_guidance_unavailable</code></th><td>The current consumption level is unknown. Baseline flows/costs and known future windows may remain useful.</td></tr>
@@ -494,7 +494,7 @@
 
       <h3>Why NORMAL can coexist with a 1.25 PLN/kWh tariff</h3>
       <p>Use a deliberately simple battery-disabled, PV-disabled case to isolate the display-interval effect. Load is a fixed 24 kWh/day (1 kW), the grid import limit is 25 kW, export is zero, and no equipment limit binds. The snapshot is at 21:30; planning, display and reference horizons are 24 hours; probes are 1 kWh across 60-minute intervals.</p>
-      <p>Assume import costs 1.25 PLN/kWh from 06:00–22:00 and 0.61 PLN/kWh from 22:00–06:00, repeating daily. Export price and wear are zero; there is no battery terminal credit. BOOST ceiling is 0 and LIMIT floor is 1 PLN/kWh; reference percentiles are 25th/75th and all probes succeed.</p>
+      <p>Assume import costs 1.25 PLN/kWh from 06:00–22:00 and 0.61 PLN/kWh from 22:00–06:00, repeating daily. Export price and wear are zero; there is no battery terminal credit. BOOST ceiling is 0.01 and LIMIT floor is 1 PLN/kWh; reference percentiles are 25th/75th and all probes succeed.</p>
       <div class="formula">
         <p>Extra demand at 21:30–22:00: 0.5 kWh × 1.25 = 0.625 PLN</p>
         <p>Extra demand at 22:00–22:30: 0.5 kWh × 0.61 = 0.305 PLN</p>
@@ -502,7 +502,7 @@
       </div>
       <p>The 24 reference costs contain seven full low-rate hours at 0.61, two mixed hours at 0.93, and fifteen full high-rate hours at 1.25. Thus Q25 = 0.61 and Q75 = 1.25. The current 0.93 is above BOOST, below the LIMIT floor, and not below Q25: <strong>NORMAL</strong>.</p>
       <p>Baseline import cost is <code>8 × 0.61 + 16 × 1.25 = 24.88 PLN</code>. The probe increases the objective to 25.81 PLN; the difference is 0.93 PLN. Energy compass is HOLD, Expected wear cost is 0, and Forecast valid is on while this generation remains fresh.</p>
-      <p>The first fully low-rate display interval begins at 22:30 in this snapshot's outlook, not at the 22:00 tariff boundary, because display bins are anchored to 21:30. Low-rate bins equal Q25 and high-rate bins equal Q75, so neither strict percentile comparison matches. Every interval is NORMAL in this deliberately flat example; Next change and all three window-start sensors are unavailable. This is how configured classification works; it does not mean 1.25 PLN/kWh is inexpensive.</p>
+      <p>The first fully low-rate display interval begins at 22:30 in this snapshot's outlook, not at the 22:00 tariff boundary, because display bins are anchored to 21:30. Low-rate bins equal both Q25 and the minimum purchase tariff, so they are CHEAP. High-rate bins equal Q75 and remain NORMAL. The mixed current interval remains NORMAL, with the next CHEAP window beginning at 22:30.</p>
       <p>Adding a nearly empty battery changes feasible flows and costs, but introduces no independent “low SOC means LIMIT” rule.</p>
 
       <h3>Solar consumption can have an export opportunity cost</h3>
