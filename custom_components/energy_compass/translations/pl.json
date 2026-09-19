@@ -214,7 +214,7 @@
           "short_coverage": "Polityka błędu próby"
         },
         "data_description": {
-          "short_coverage": "Używana tylko wtedy, gdy próba kosztu zużycia w dostępnym zakresie nie powiedzie się lub przekroczy budżet czasu. Krótszy zakres źródła używa percentyli z dostępnego ciągłego horyzontu."
+          "short_coverage": "Używana, gdy próba pełnego przedziału odniesienia nie powiedzie się lub przekroczy budżet czasu. Nieudana próba skróconego końca pozostaje nieznana, a udane pełne przedziały zachowują percentyle."
         },
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
       },
@@ -588,7 +588,7 @@
           "short_coverage": "Polityka błędu próby"
         },
         "data_description": {
-          "short_coverage": "Używana tylko wtedy, gdy próba kosztu zużycia w dostępnym zakresie nie powiedzie się lub przekroczy budżet czasu. Krótszy zakres źródła używa percentyli z dostępnego ciągłego horyzontu."
+          "short_coverage": "Używana, gdy próba pełnego przedziału odniesienia nie powiedzie się lub przekroczy budżet czasu. Nieudana próba skróconego końca pozostaje nieznana, a udane pełne przedziały zachowują percentyle."
         },
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
       },

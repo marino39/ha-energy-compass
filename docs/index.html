@@ -224,9 +224,9 @@
       </div>
       <p>It then reoptimizes the <strong>whole available planning horizon</strong> with prices, starting SOC, terminal rules and equipment limits unchanged. Extra consumption can cause more import, less export, different battery use or different future charging. The resulting cost includes those opportunity costs and any change in wear or terminal credit.</p>
       <div class="note"><p><strong>The interval starts at the snapshot time.</strong> With a 60-minute display interval, a snapshot at 21:35 covers 21:35–22:35. It can cross a tariff change at 22:00. It is not a price for consuming the entire extra kWh immediately.</p></div>
-      <p>A 1 kWh probe over 60 minutes adds an average 1 kW; over 15 minutes it adds 4 kW. Different probe sizes can produce different per-kWh costs when constraints bind. The last interval overlapping source coverage is clipped and probed at its actual duration without scaling down the configured energy. A very short tail therefore requires higher average power and can fail when equipment limits bind. Later intervals, infeasible probes and expired probe budgets remain unknown; they are not assigned a zero cost.</p>
+      <p>A 1 kWh probe over 60 minutes adds an average 1 kW; over 15 minutes it adds 4 kW. Different probe sizes can produce different per-kWh costs when constraints bind. The last interval overlapping source coverage is clipped and probed at its actual duration without scaling down the configured energy. A very short tail therefore requires higher average power and can fail when equipment limits bind. That tail remains unknown while successful full reference intervals retain percentile guidance. Later intervals, infeasible probes and expired probe budgets remain unknown; they are not assigned a zero cost.</p>
       <h3>3. Compare with the reference horizon</h3>
-      <p>When every available reference probe succeeds, costs are sorted and configured percentiles are calculated by linear interpolation: for percentile <code>p</code>, position <code>(n − 1) × p / 100</code> lies between two sorted costs. The minimum purchase tariff is taken from source slots overlapping the same available reference range. Classification uses the rules in <a href="#consumption_compass">Consumption compass</a>.</p>
+      <p>Successful reference costs are sorted and configured percentiles are calculated by linear interpolation: for percentile <code>p</code>, position <code>(n − 1) × p / 100</code> lies between two sorted costs. A failed source-clipped tail is excluded when at least one reference probe succeeded; a failed full interval invokes the configured policy. The minimum purchase tariff is taken independently from source slots overlapping the available reference range. Classification uses the rules in <a href="#consumption_compass">Consumption compass</a>.</p>
       <p>Reference coverage concerns the percentile horizon, not necessarily the entire planning horizon. If contiguous source coverage is shorter than the configured reference horizon, percentiles use that available coverage and the result reports it explicitly. Missing future prices do not by themselves invoke the probe-failure policy.</p>
     </section>
 
@@ -272,7 +272,7 @@
           </table>
         </section>
         <p>BOOST wins first, followed by CHEAP, LIMIT and NORMAL. Equality at the low percentile or minimum purchase tariff is CHEAP; a negligible numeric tolerance covers solver residue at those equalities. Equality at the BOOST ceiling is not BOOST, and equality at the LIMIT floor or high percentile does not trigger LIMIT.</p>
-        <p>With <code>absolute_fallback</code>, an actual reference-probe failure removes the percentile and minimum-tariff tests: BOOST uses <code>c &lt; B</code>, LIMIT uses <code>c &gt; L</code>, and everything else known is NORMAL. CHEAP cannot be assigned in this mode. With the <code>unavailable</code> policy, levels remain unknown. Shorter successful source coverage still uses percentile mode.</p>
+        <p>With <code>absolute_fallback</code>, a failed full reference probe removes percentile tests but retains the independent minimum-tariff CHEAP rule. BOOST uses <code>c &lt; B</code>; CHEAP uses <code>c ≤ Pmin</code>; LIMIT uses <code>c &gt; L</code>; everything else known is NORMAL. With the <code>unavailable</code> policy, a full-interval failure suppresses levels. A failed source-clipped tail remains unknown without suppressing percentile advice from successful reference probes.</p>
         <p><strong>Unavailable:</strong> the baseline is invalid/expired, or the current guidance level is unknown. A low SOC is incorporated into the optimization; it does not independently force LIMIT.</p>
       </article>
 
@@ -437,9 +437,9 @@
           <caption>Classification modes</caption>
           <thead><tr><th scope="col">Mode</th><th scope="col">What happened</th></tr></thead>
           <tbody>
-            <tr><th scope="row"><code>percentile</code></th><td>All probes in the available reference horizon have known costs. Absolute thresholds, percentiles and the minimum purchase tariff apply.</td></tr>
-            <tr><th scope="row"><code>absolute_fallback</code></th><td>A reference probe failed. Known costs use absolute BOOST and LIMIT rules; CHEAP is unavailable as a classification.</td></tr>
-            <tr><th scope="row"><code>unavailable</code></th><td>A reference probe failed and the selected strict policy suppresses consumption levels. The baseline can remain valid.</td></tr>
+            <tr><th scope="row"><code>percentile</code></th><td>Available reference probes succeeded, or only a source-clipped tail failed while other reference probes succeeded. Absolute thresholds, successful-cost percentiles and the minimum purchase tariff apply.</td></tr>
+            <tr><th scope="row"><code>absolute_fallback</code></th><td>A full reference probe failed. Known costs use absolute BOOST/LIMIT and minimum-tariff CHEAP rules.</td></tr>
+            <tr><th scope="row"><code>unavailable</code></th><td>A full reference probe failed and the selected strict policy suppresses consumption levels. The baseline can remain valid.</td></tr>
           </tbody>
         </table>
       </section>
@@ -450,7 +450,7 @@
           <tbody>
             <tr><th scope="row"><code>complete</code></th><td>The reference horizon has all probe results. This alone does not mean the longer requested planning horizon is fully covered.</td></tr>
             <tr><th scope="row"><code>available_reference_horizon</code></th><td>All probes succeeded over contiguous source coverage shorter than the configured reference horizon; percentiles use that available range.</td></tr>
-            <tr><th scope="row"><code>reference_probe_failed</code></th><td>At least one covered reference probe failed or ran out of time.</td></tr>
+            <tr><th scope="row"><code>reference_probe_failed</code></th><td>At least one covered reference probe failed or ran out of time. Percentile mode can remain active when every failure is a source-clipped tail and other reference probes succeeded.</td></tr>
             <tr><th scope="row"><code>short_source_coverage</code></th><td>Available planning coverage is shorter than requested. Inspect coverage_end.</td></tr>
             <tr><th scope="row"><code>missing_forecast_continuation</code></th><td>A selected continuation, such as tomorrow's forecast, is unavailable. Usable contiguous coverage may remain.</td></tr>
             <tr><th scope="row"><code>current_guidance_unavailable</code></th><td>The current consumption level is unknown. Baseline flows/costs and known future windows may remain useful.</td></tr>

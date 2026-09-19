@@ -214,7 +214,7 @@
           "short_coverage": "Probe failure policy"
         },
         "data_description": {
-          "short_coverage": "Used only when a covered consumption-cost probe fails or its compute budget expires. Shorter source coverage uses percentiles over the available contiguous horizon."
+          "short_coverage": "Used when a full reference-interval probe fails or its compute budget expires. A failed clipped tail stays unknown while successful full intervals keep percentile guidance."
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}"
       },
@@ -588,7 +588,7 @@
           "short_coverage": "Probe failure policy"
         },
         "data_description": {
-          "short_coverage": "Used only when a covered consumption-cost probe fails or its compute budget expires. Shorter source coverage uses percentiles over the available contiguous horizon."
+          "short_coverage": "Used when a full reference-interval probe fails or its compute budget expires. A failed clipped tail stays unknown while successful full intervals keep percentile guidance."
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}"
       },

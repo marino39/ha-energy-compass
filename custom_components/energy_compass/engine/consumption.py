@@ -214,12 +214,17 @@ def analyze_consumption(
         return interval_start, min(interval_end, source_end)
 
     reference = tuple(
-        probe for item in reference_requested if (probe := available(item)) is not None
+        (item, probe)
+        for item in reference_requested
+        if (probe := available(item)) is not None
     )
     display = tuple((item, available(item)) for item in display_requested)
     requested = tuple(
         dict.fromkeys(
-            (*reference, *(probe for _, probe in display if probe is not None))
+            (
+                *(probe for _, probe in reference),
+                *(probe for _, probe in display if probe is not None),
+            )
         )
     )
     if len(requested) > _MAX_PROBES:
@@ -242,27 +247,40 @@ def analyze_consumption(
             settings.probe_kwh,
             probe_deadline,
         )
-    reference_costs = tuple(costs[item] for item in reference)
-    probes_succeeded = all(cost is not None for cost in reference_costs)
+    reference_results = tuple((item, probe, costs[probe]) for item, probe in reference)
+    known = tuple(cost for _, _, cost in reference_results if cost is not None)
+    failed = tuple(
+        (item, probe) for item, probe, cost in reference_results if cost is None
+    )
+    probes_succeeded = not failed
     complete = reference_requested[-1][1] <= source_end and probes_succeeded
-    if probes_succeeded:
+    clipped_failures_only = (
+        bool(known)
+        and bool(failed)
+        and all(probe[1] < item[1] for item, probe in failed)
+    )
+    reference_start = reference[0][1][0]
+    reference_end = reference[-1][1][1]
+    minimum_purchase_price = min(
+        slot.buy_per_kwh
+        for slot in problem.slots
+        if slot.start.astimezone(_UTC) < reference_end
+        and slot.end.astimezone(_UTC) > reference_start
+    )
+    if probes_succeeded or clipped_failures_only:
         mode = "percentile"
-        reason = "complete" if complete else "available_reference_horizon"
-        known = tuple(cost for cost in reference_costs if cost is not None)
+        if complete:
+            reason = "complete"
+        elif failed:
+            reason = "reference_probe_failed"
+        else:
+            reason = "available_reference_horizon"
         low = _percentile(known, settings.cheap_percentile)
         high = _percentile(known, settings.limit_percentile)
-        reference_end = reference[-1][1]
-        minimum_purchase_price = min(
-            slot.buy_per_kwh
-            for slot in problem.slots
-            if slot.start.astimezone(_UTC) < reference_end
-            and slot.end.astimezone(_UTC) > reference[0][0]
-        )
     else:
         mode = settings.short_coverage
         reason = "reference_probe_failed"
         low = high = None
-        minimum_purchase_price = None
     opportunities = tuple(
         Opportunity(
             (probe or item)[0].astimezone(zone),

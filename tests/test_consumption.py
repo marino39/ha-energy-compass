@@ -274,6 +274,65 @@ def test_final_partial_interval_is_probed_only_through_source_coverage():
     assert result.opportunities[2].level is None
 
 
+@pytest.mark.parametrize("short_coverage", ["absolute_fallback", "unavailable"])
+def test_failed_one_minute_tail_keeps_successful_reference_percentiles(short_coverage):
+    slots = (
+        Slot(START, START + timedelta(hours=1), 0.20, -0.10, 0.0, 0.25),
+        Slot(
+            START + timedelta(hours=1),
+            START + timedelta(hours=2),
+            0.80,
+            -0.10,
+            0.0,
+            0.25,
+        ),
+        Slot(
+            START + timedelta(hours=2),
+            START + timedelta(hours=2, minutes=1),
+            0.60,
+            -0.10,
+            0.0,
+            0.005,
+        ),
+    )
+    source = Problem(
+        slots,
+        SiteLimits(0.0, 10.0, 0.0, False),
+        None,
+        "preserve_initial",
+        0.0,
+        (),
+        "Europe/Warsaw",
+    )
+    result = analyze_consumption(
+        source,
+        solve(source),
+        settings=CompassSettings(
+            display_horizon_hours=3,
+            reference_horizon_hours=3,
+            short_coverage=short_coverage,
+        ),
+    )
+    assert result.classification_mode == "percentile"
+    assert result.coverage_reason == "reference_probe_failed"
+    assert not result.reference_complete
+    assert tuple(item.cost_per_kwh for item in result.opportunities[:2]) == (
+        pytest.approx(0.20),
+        pytest.approx(0.80),
+    )
+    assert tuple(item.level for item in result.opportunities) == (
+        "CHEAP",
+        "NORMAL",
+        None,
+    )
+    assert all(
+        item.end <= source.slots[-1].end
+        for item in result.opportunities
+        if item.cost_per_kwh is not None
+    )
+    assert result.opportunities[2].end == START + timedelta(hours=2, minutes=1)
+
+
 def test_minimum_purchase_tariff_is_bounded_to_available_reference(monkeypatch):
     source = grid_problem((0.80, 1.00, 0.10))
     baseline = solve(source)
@@ -309,7 +368,16 @@ def test_minimum_purchase_tariff_is_bounded_to_available_reference(monkeypatch):
     assert result.opportunities[0].level == "CHEAP"
 
 
-def test_failed_probe_stays_unknown_under_absolute_fallback(monkeypatch):
+@pytest.mark.parametrize(
+    "short_coverage,expected_mode,expected_first",
+    [
+        ("absolute_fallback", "absolute_fallback", "CHEAP"),
+        ("unavailable", "unavailable", None),
+    ],
+)
+def test_failed_full_probe_uses_policy_and_preserves_minimum_tariff(
+    monkeypatch, short_coverage, expected_mode, expected_first
+):
     source = grid_problem((0.30, 0.90))
     baseline = solve(source)
     from custom_components.energy_compass.engine import consumption
@@ -325,13 +393,43 @@ def test_failed_probe_stays_unknown_under_absolute_fallback(monkeypatch):
     result = analyze_consumption(
         source,
         baseline,
-        settings=CompassSettings(display_horizon_hours=2, reference_horizon_hours=2),
+        settings=CompassSettings(
+            display_horizon_hours=2,
+            reference_horizon_hours=2,
+            short_coverage=short_coverage,
+        ),
     )
-    assert result.classification_mode == "absolute_fallback"
+    assert result.classification_mode == expected_mode
     assert result.coverage_reason == "reference_probe_failed"
     assert result.opportunities[1].cost_per_kwh is None
     assert result.opportunities[1].level is None
-    assert result.opportunities[0].level == "NORMAL"
+    assert result.opportunities[0].level == expected_first
+
+
+@pytest.mark.parametrize("short_coverage", ["absolute_fallback", "unavailable"])
+def test_all_reference_probes_failed_stay_unknown(monkeypatch, short_coverage):
+    source = grid_problem((0.30, 0.90))
+    baseline = solve(source)
+    from custom_components.energy_compass.engine import consumption
+
+    def fail_all(problem, **kwargs):
+        raise SolveError("timeout")
+
+    monkeypatch.setattr(consumption, "solve", fail_all)
+    result = analyze_consumption(
+        source,
+        baseline,
+        settings=CompassSettings(
+            display_horizon_hours=2,
+            reference_horizon_hours=2,
+            short_coverage=short_coverage,
+        ),
+    )
+    assert result.classification_mode == short_coverage
+    assert result.coverage_reason == "reference_probe_failed"
+    assert not result.reference_complete
+    assert all(item.cost_per_kwh is None for item in result.opportunities)
+    assert all(item.level is None for item in result.opportunities)
 
 
 @pytest.mark.parametrize(
