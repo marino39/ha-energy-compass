@@ -86,6 +86,104 @@ A separate HA Store, `energy_compass.<entry_id>.export`, contains only `{generat
 
 Only accepted, published results update this record; failed and superseded results do not. Continuity uses the physical discharge/export values with a 1e-6 kWh tolerance, not the display label (which may give curtailment precedence). Current HOLD or PV-only export clears the record, and a future planned export period creates no current record. Unload flushes the record and restart restores it. Continuity is also maintained while the hurdle is zero, so enabling it during a current period does not fabricate a new start. Each accepted result records its own contiguous current period; without a replacement it expires at the previously scheduled end. No forecasts or household measurements are persisted in this store.
 
+## Dispatch strategies
+
+The `strategy` Planning setting selects one of six bundles. `cost_min` is the exact objective and
+constraints above, unchanged; every other strategy adds weighted terms to the solver's internal
+coefficients only — the reported physical objective (`Plan.grid_cost + Plan.wear_cost -
+Plan.terminal_credit`, exposed as `plan_monetary_cost()`) stays real currency under every strategy,
+never carrying a strategy weight or penalty. The solver minimizes
+
+```
+grid = sum(import_weight × buy × import + import_kwh_weight × import
+           - export_weight × (sell - pv_export_margin) × export)
+     + battery_export_penalty_per_kwh × battery_export
+autonomy = soc_target_weight × sum(window shortfall slacks)
+peak = peak_import_weight × max(import ÷ duration)
+caps = cap_violation_weight × sum(import/export cap slacks)
+objective = grid + wear + episodes + autonomy + peak + caps - terminal_credit
+```
+
+| strategy | changes | when |
+| --- | --- | --- |
+| `cost_min` | none — every weight at its default, autonomy reserve off | default; byte-identical to the plain objective above |
+| `self_sufficiency` | `import_kwh_weight` dominates price (`max(self_sufficiency_import_price_per_kwh, max abs buy price + 0.50)`), a `self_sufficiency_export_penalty_per_kwh` battery-export penalty; autonomy reserve on | minimize grid kWh, not currency; robust to zero or negative prices |
+| `backup_ready` | autonomy reserve on, its floor raised to `backup_target_soc_percent` of capacity | storm warning, planned outage, winter |
+| `pv_swap` | `pv_export_margin` (`pv_swap_margin_per_kwh`) subtracted from the sell price; `limit_export_to_pv` and the grid-charge price ceiling forced on; autonomy reserve on | small winter PV: buy cheap at night, sell the real PV production later that day |
+| `max_export` | the export-episode penalty zeroed, `limit_export_to_pv` and the grid-charge ceiling forced off; autonomy reserve off | pure arbitrage, high sell-tariff windows |
+| `grid_friendly` | a `peak_import_price_per_kw` peak-import term and `cap_violation_price_per_kwh` soft import/export caps (`grid_friendly_import_cap_kw` / `grid_friendly_export_cap_kw`, `0` = use the site's `SiteLimits` connection limit); autonomy reserve off | capacity tariffs, a weak connection |
+
+Every numeric field a strategy did not itself set is still open to the user: settings the entry marks
+as explicitly set (`explicit_strategy_fields`) are never overridden by the bundle, so changing a
+strategy-owned flag by hand sticks across a later strategy switch.
+
+### Autonomy-reserve SOC floor
+
+Enabled by the bundles above whenever `battery` is present. Windows partition the horizon by the
+*cumulative* net surplus, not by per-slot sign, so the partition is invariant under interval
+subdivision: a window starts at the horizon start or immediately after the previous window ends, and
+ends at the first slot where the running sum of `pv - load` since the window's own start reaches zero
+and stays non-negative through the end of that local day (or the horizon end). Window ids are assigned
+from this partition alone and are carried on `Problem.soc_target_window`; reserve or capacity clamping
+of the targets never merges or splits a window. The floor itself,
+
+```
+soc_target[t] = min(usable_capacity, reserve + (1/eta_discharge) *
+                     sum(max(0, load[tau] - pv[tau]) for tau in (t, end_of_window(t)]))
+```
+
+is billed **once per window**, on the deepest shortfall of that window — a ten-slot dip below the
+floor costs one weight, not ten — at `soc_target_weight`, the expected night rebuy price plus
+`autonomy_margin_per_kwh` (median buy price over the night hours, or over every slot when none fall at
+night). `backup_ready` raises the target to `backup_floor_kwh` (`backup_target_soc_percent` of
+capacity) and takes the larger of the two weights.
+
+The floor sees a separate **48-hour** PV/load horizon, independent of the priced horizon: before
+tomorrow's day-ahead prices publish (typically ~14:00), the solver still only plans over priced slots,
+but the floor's own targets already account for tomorrow's forecast. Native PV/load edges inside the
+tail are preserved (a brief surplus dip survives); a tail longer than 192 intervals coarsens to hourly
+edges (`autonomy_tail_coarsened`); a tail source `InputError` degrades to the priced horizon alone
+(`autonomy_tail_unavailable`). No PV source configured skips the floor entirely
+(`autonomy_floor_requires_pv`) — without PV every window would run to the horizon end and pin the
+battery at usable capacity, which is not a floor. If the grid-charge price ceiling sits below
+`soc_target_weight - autonomy_margin_per_kwh`, a warning (`grid_charge_ceiling_below_autonomy_weight`)
+fires — the solver could otherwise never refill what the floor made it sell — but the ceiling is never
+mutated automatically.
+
+### Soft caps
+
+`grid_friendly`'s import/export power caps and every strategy's autonomy floor are **soft**: a
+violation becomes a penalized slack variable rather than an infeasible solve, so a strategy always
+returns a plan even under conditions its author did not foresee (a full battery with PV surplus and
+curtailment disabled, load above the configured import cap). The total slack is reported as
+`Plan.cap_violation_kwh` (and `Plan.autonomy_shortfall_kwh` for the floor), both exposed as plan
+sensor attributes — the deployer sees the strategy is fighting its own constraints instead of the plan
+silently failing to solve.
+
+### Strategy-switch release semantics
+
+Writing a new `strategy` (through the `select.<name>_strategy` entity or an options/reconfigure
+flow) stamps `strategy_changed_at` on the configuration. The **next** `build_problem` call drops the
+carried mode commitment entirely for that one generation — `initial_dispatch_mode`,
+`initial_dispatch_mode_since`, `initial_battery_mode` and `initial_battery_mode_since` are all `None`,
+and the new plan starts unlocked, with `Problem.strategy_changed=True` recorded on it. This is
+different from a `safety_exception`: an exception is a *pause* — the locked mode is temporarily
+substituted with `HOLD` but the commitment and its `since` survive underneath, ready to resume; a
+strategy change is a *reset* — the commitment itself is gone, and whatever mode the new plan opens
+with becomes the fresh baseline. `initial_export_active` is deliberately untouched by a release: it
+marks an export episode already in progress, and clearing it would double-charge the episode penalty
+mid-episode.
+
+The `strategy_changed_at` token is a **one-shot**, consumed only after a plan generated under it is
+successfully published (`Plan.strategy_released` mirrors the flag the token produced) — never on
+persist, and never speculatively. If HA restarts, the compute fails, or the result is superseded by a
+newer generation between the write and the publication, the token survives untouched and the first
+successful plan after recovery performs the release. A generation superseded mid-solve (by another
+configuration write, including a rapid second strategy switch) is discarded rather than published; the
+select's `current_option` always reads the cached configuration the user set, while the plan's
+`strategy` attribute is the label of the generation that actually produced it — the two differ only
+for the moment a recalculation is in flight.
+
 ## Incremental consumption guidance
 
 `analyze_consumption(problem, plan, settings, budget_s=50.0)` recomputes the same optimization with an extra load probe in each display and percentile-reference interval. The starting stored energy, terminal rule and value, prices, and equipment limits stay fixed. A probe adds the configured energy, 1 kWh by default, across underlying slots in proportion to UTC elapsed overlap. Display and reference bins are anchored at the actual snapshot start. The final covered bin is clipped to source coverage and probed at its actual duration; the configured probe energy is unchanged, so a short tail implies higher average power and can genuinely fail when equipment limits bind. Later display bins remain unknown. The incremental cost is the physical `Plan.objective` difference divided by the energy actually added; both plans use the same export-benefit decision policy, but their decision reserves are excluded from this difference. Infeasible and expired probes have unknown costs and levels. The optimizer calls are serial and stop when the shared probe budget expires.

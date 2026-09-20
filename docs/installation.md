@@ -14,6 +14,8 @@ For a synthetic interval source, an entity can expose a `rows` attribute with re
 
 The integration creates one device and native sensors for the current household level and extra-kWh cost, the optimized machine state and costs, the next different level, three upcoming window starts, the plan, and optimizer status. A forecast-valid binary sensor reports plan availability, coverage, and current-guidance validity. The diagnostic Alert binary sensor reports input or calculation failures separately; its reason and timestamp remain available while the last covered plan continues with `plan_retained: true`. If the current household probe is infeasible but the baseline forecast is valid, the current household level/cost may be unavailable while known later windows remain usable. Entity IDs can be renamed; select entities by name in the UI rather than assuming an ID.
 
+A `select.<name>_strategy` entity picks the dispatch strategy the optimizer solves (`cost_min`, `self_sufficiency`, `backup_ready`, `pv_swap`, `max_export`, `grid_friendly`); it always reflects the saved configuration, even while a plan is mid-recalculation. See [dispatch strategies](model.md#dispatch-strategies) for what each bundle changes.
+
 For battery SOC and optional BMS SOC, the default timestamp policy is `auto` with the native `last_reported` path. On older saved native `last_updated` paths without a policy, `auto` also uses Home Assistant's `last_reported` when available, so an identical fresh reading remains fresh. If that native field is absent in an older snapshot, it uses `last_updated`. A custom path such as `attributes.reported_at` always means that exact measurement timestamp. Select `exact_path` to require the chosen field literally, including `last_updated` when only a changed reading should count. Stale, invalid, or future timestamps are rejected, and explicit custom paths are retained during migration.
 
 The Plan sensor and Forecast valid binary sensor expose `load_quality`. Its `source_mode` names the selected recorder, daily estimate, or supplied forecast source; `method` reports history, history with fallback, fallback, daily estimate, or forecast. `coverage` lists the actual time segments, method, and eligible historical samples available/required for recorder buckets. `fallback_coverage_hours` and `fallback_fraction` measure elapsed UTC forecast time, not energy share or a count of slots. Repeated daylight-saving hours remain distinct. A recorder fallback adds the `load_history_fallback` warning even if estimated fallback energy is zero. A chosen daily estimate or supplied forecast does not imply missing recorder history. This detailed quality attribute is excluded from recorder state history because it changes with each forecast.
@@ -57,3 +59,26 @@ Choose at least one **Notification action** in the blueprint's action selector; 
 Before creating the automation, use **Settings → Devices & services → Helpers → Create helper** to create two **Text** helpers for the last favorable and LIMIT window starts, one **Number** helper for the daily count (minimum 0, maximum at least your daily cap, step 1), one **Date and/or time** helper with **date only** for the last local date, and one **Date and/or time** helper with **both date and time** for the last send. Select all five in the blueprint form. Each text helper stores one integer Unix timestamp, shorter than 20 characters; a maximum length of at least 20 characters is sufficient, and the default 100 is safe. Leave their initial values empty so Home Assistant restores their last values after restart. Do not share the helpers between multiple automations.
 
 The blueprint examines current favorable windows and upcoming LIMIT windows on forecast changes and each minute. A favorable window must last at least the selected duration; LIMIT fires within the selected lead time. The last window start, local date, count, and send time persist through the helpers. A recalculation that shifts a start by less than 30 minutes is treated as the same window; a larger reschedule may notify again, subject to cooldown and cap. Empty first-use text/date/time values are accepted while the count is zero. An unknown count, an unknown date/time after the first action, or any unavailable helper suppresses actions until the helpers recover. During testing, choose an **Event** action with a local event name and inspect the automation trace; do not choose a real notify action until the behavior suits your household.
+
+## Import the strategy switch blueprint
+
+Requires two dedicated helpers, created the same way as the notification blueprint's: **Settings →
+Devices & services → Helpers → Create helper** — one **Date and/or time** helper with **date and
+time** (`last_run`) and one **Text** helper with a max length of at least 24, long enough for
+`manual:self_sufficiency` (`manual_marker`). Leave their initial values empty.
+
+Copy [the blueprint](../blueprints/automation/energy_compass/strategy_switch.yaml) into Home
+Assistant's `config/blueprints/automation/energy_compass/strategy_switch.yaml`, then go to
+**Settings → Automations & scenes → Blueprints → Create automation** and select **Energy Compass
+strategy switch**. Select the `select.<name>_strategy` entity, the plan and forecast-valid entities,
+a PV-forecast-for-tomorrow entity (for example a Solcast "forecast tomorrow" sensor), your typical
+daily household load, the RCE PSE next-day price sensor and its `prices`/`rce_pln`/`dtime`
+attribute names, and the two helpers above. **Enabled rules** defaults to all three opt-in rules
+(`alert`, `pv_swap`, `self_sufficiency`); `cost_min` is the unconditional fallback and is never
+listed there. An **Alert entity** is optional — leave it empty to skip that rule entirely.
+
+The automation runs once daily at 14:05 (after RCE next-day prices and the Solcast update normally
+publish), retries hourly until 20:00 if next-day prices are still unavailable, and reconciles a
+partially-applied write on Home Assistant start. A manual change to the strategy select is detected
+and blocks the economic rules until the next successful scheduled run; the alert rule and the daily
+scheduled run are never blocked by it. See [the full rule and price contract](model.md#dispatch-strategies).
