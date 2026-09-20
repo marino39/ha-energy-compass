@@ -89,6 +89,8 @@ class Problem:
     initial_dispatch_mode_since: datetime | None = None
     minimum_export_episode_benefit: float = 1.0
     initial_export_active: bool = False
+    minimum_grid_charge_episode_benefit: float = 0.0
+    initial_grid_charge_active: bool = False
     maximum_grid_charge_price: float | None = None
     strategy: Strategy = "cost_min"
     import_weight: float = 1.0
@@ -127,6 +129,8 @@ class Plan:
     terminal_credit: float
     new_export_episodes: int = 0
     export_episode_reserve: float = 0.0
+    new_grid_charge_episodes: int = 0
+    grid_charge_episode_reserve: float = 0.0
     autonomy_shortfall_kwh: float = 0.0
     cap_violation_kwh: float = 0.0
     peak_import_kw: float = 0.0

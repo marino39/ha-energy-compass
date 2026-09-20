@@ -119,6 +119,22 @@ def restore_export_commitment(raw, now):
     return {"generated_at": generated.isoformat(), "until": until.isoformat()}
 
 
+def restore_grid_charge_commitment(raw, now):
+    """Only a bounded, current published grid-charge period proves continuity."""
+    if not isinstance(raw, dict):
+        return None
+    try:
+        generated = parse_timestamp(raw.get("generated_at"))
+        until = parse_timestamp(raw.get("until"))
+    except InputError, OverflowError, ValueError:
+        return None
+    if not generated <= now < until or not timedelta(
+        0
+    ) < until - generated <= timedelta(hours=48):
+        return None
+    return {"generated_at": generated.isoformat(), "until": until.isoformat()}
+
+
 def _coverage(rows, start):
     cursor = start
     for row in rows:
@@ -374,6 +390,7 @@ def build_problem(
     previous_soc=None,
     battery_commitment=None,
     export_commitment=None,
+    grid_charge_commitment=None,
 ):
     """Preserve native boundaries and stop at actual contiguous source coverage."""
     values = effective_settings(config, states, now)
@@ -664,6 +681,12 @@ def build_problem(
         initial_export_active=bool(
             battery and restore_export_commitment(export_commitment, now)
         ),
+        minimum_grid_charge_episode_benefit=values[
+            "minimum_grid_charge_episode_benefit"
+        ],
+        initial_grid_charge_active=bool(
+            battery and restore_grid_charge_commitment(grid_charge_commitment, now)
+        ),
         minimum_mode_minutes=values["minimum_mode_minutes"],
         limit_export_to_pv=values["limit_export_to_pv"],
         pv_generated_today_kwh=pv_today,
@@ -909,6 +932,12 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
             "new_export_episodes": plan.new_export_episodes,
             "export_episode_reserve": plan.export_episode_reserve,
             "export_benefit_scope": "additional_battery_export_period",
+            "minimum_grid_charge_episode_benefit": values[
+                "minimum_grid_charge_episode_benefit"
+            ],
+            "new_grid_charge_episodes": plan.new_grid_charge_episodes,
+            "grid_charge_episode_reserve": plan.grid_charge_episode_reserve,
+            "grid_charge_benefit_scope": "grid_fed_battery_charge_period",
             "minimum_mode_minutes": values["minimum_mode_minutes"],
             "minimum_mode_power_kw": values["minimum_mode_power_kw"],
             "mode_scope": "actual_operating_mode",

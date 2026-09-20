@@ -113,6 +113,7 @@ MONETARY_VALUES = {
     "peak_import_price_per_kw": 0.55,
     "cap_violation_price_per_kwh": 2.5,
     "autonomy_margin_per_kwh": 0.12,
+    "minimum_grid_charge_episode_benefit": 3.0,
 }
 
 
