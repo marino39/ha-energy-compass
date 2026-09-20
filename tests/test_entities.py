@@ -176,3 +176,71 @@ async def test_helper_precision_and_blueprint_preferences(
     assert plan.attributes["notification_preferences"]["notify_minimum_hours"] == 3
     assert plan.attributes["notification_preferences"]["notify_enabled"] is False
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_plan_attributes_include_strategy_fields(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.energy_compass.settings import default_configuration
+
+    freezer.move_to("2026-09-17T10:00:00+00:00")
+    config = default_configuration("EUR", "UTC")
+    config["settings"].update(
+        horizon_hours=1, display_horizon_hours=1, reference_horizon_hours=1
+    )
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Strategy", version=2
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    plan = hass.states.get("sensor.strategy_plan")
+    assert plan.attributes["strategy"] == "cost_min"
+    assert plan.attributes["autonomy_shortfall_kwh"] == 0.0
+    assert plan.attributes["cap_violation_kwh"] == 0.0
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_plan_strategy_attribute_is_a_scalar_not_a_list(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.energy_compass.settings import default_configuration
+
+    freezer.move_to("2026-09-17T10:00:00+00:00")
+    config = default_configuration("EUR", "UTC")
+    config["settings"].update(
+        horizon_hours=1, display_horizon_hours=1, reference_horizon_hours=1
+    )
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Scalar", version=2
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    plan = hass.states.get("sensor.scalar_plan")
+    assert isinstance(plan.attributes["strategy"], str)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_attribute_schema_version_is_three(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.energy_compass.settings import default_configuration
+
+    freezer.move_to("2026-09-17T10:00:00+00:00")
+    config = default_configuration("EUR", "UTC")
+    config["settings"].update(
+        horizon_hours=1, display_horizon_hours=1, reference_horizon_hours=1
+    )
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Schema", version=2
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    plan = hass.states.get("sensor.schema_plan")
+    assert plan.attributes["attribute_schema_version"] == 3
+    assert await hass.config_entries.async_unload(entry.entry_id)

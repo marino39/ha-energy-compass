@@ -21,6 +21,18 @@ Read the [published entity and calculation guide](https://marino39.github.io/ha-
 
 The integration creates current consumption level and extra-kWh cost sensors, a flexible-energy depth sensor, optimized machine state and cost sensors, next change and next `BOOST`/`CHEAP`/`LIMIT` window timestamps, a plan with a bounded outlook, optimizer status, a forecast-valid binary sensor, and a diagnostic **Alert** binary sensor. Native entity names, diagnostics, and reasons are translated into English and Polish. Automations should compare level and machine state values using their stable uppercase names.
 
+### Dispatch strategy
+
+The `select.<name>_strategy` entity picks which of six bundles the optimizer solves: `cost_min` (the
+plain lowest-cost plan, the default), `self_sufficiency` (minimize grid kWh over currency),
+`backup_ready` (hold a higher reserve), `pv_swap` (buy cheap at night, sell PV production later),
+`max_export` (unrestricted arbitrage), and `grid_friendly` (capped import/export power). The plan
+sensor's attributes gain `strategy` (the bundle that produced this plan), `autonomy_shortfall_kwh` and
+`cap_violation_kwh` (how hard the active strategy is fighting its own soft constraints, both `0` under
+`cost_min` at defaults). See [dispatch strategies](docs/model.md#dispatch-strategies) for the full
+model, and the optional [`strategy_switch` blueprint](docs/installation.md#import-the-strategy-switch-blueprint)
+for rule-based daily switching.
+
 **Flexible energy depth** independently optimizes 3, 5, 10, 15 and 20 kWh loads with a default 3 kW power cap. The 3 kWh average incremental cost is the anchor. Each larger block remains stable while its marginal cost is no more than 15% worse than that anchor; the first degraded or unknown block stops the published depth. Groups are small (3/5 kWh), medium (10/15 kWh) and large (20 kWh). This metric is separate from the hourly CHEAP classification and exposes its anchor price, threshold, profile costs and schedules as attributes.
 
 Input or calculation failures turn **Alert** on with `code`, `reason`, `since`, `plan_retained`, and `last_successful_plan_at`. A covered previous plan continues through its scheduled intervals, including during retries. `plan_retained: true` identifies advice based on that earlier snapshot; **Forecast valid** remains on until the plan coverage ends. A successful replacement clears the alert. SOC corrections can recover after fresh, plausible reports span at least one minute. See [retention and SOC recovery](docs/model.md#plan-retention-and-alerts).

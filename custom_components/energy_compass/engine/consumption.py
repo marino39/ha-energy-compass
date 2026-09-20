@@ -20,6 +20,7 @@ from .models import (
     Slot,
     SolveError,
     Window,
+    plan_monetary_cost,
 )
 from .normalize import aware, validate_problem
 from .optimize import solve, solve_flexible_load
@@ -206,7 +207,7 @@ def analyze_flexible_loads(
             chain_open = False
             continue
 
-        incremental_cost = candidate.plan.objective - plan.objective
+        incremental_cost = plan_monetary_cost(candidate.plan) - plan_monetary_cost(plan)
         average_cost = incremental_cost / energy_kwh
         block_cost = (
             None
@@ -287,7 +288,8 @@ def classify_cost(
         raise InputError("percentile values must be ordered")
     if value < boost:
         return "BOOST"
-    # Optimizer objective differences can retain negligible residue at equality.
+    # Real-currency probe differences can retain negligible residue at equality,
+    # independent of any strategy weighting on the solver objective.
     if any(
         threshold is not None
         and (
@@ -337,6 +339,14 @@ def _probe(
     amount: float,
     deadline: float,
 ) -> float | None:
+    """Marginal PLN/kWh cost of adding `amount` kWh of load over [start, end).
+
+    Differences plan_monetary_cost (real currency), not the solver objective,
+    so the result stays honest under any strategy weighting. The candidate is
+    solved from `replace(problem, slots=...)`, which carries every other field
+    of `problem` — including `strategy_changed` — unchanged, so baseline and
+    candidate always see the same (released or carried) mode-lock state.
+    """
     elapsed = (end - start).total_seconds()
     additions = []
     for slot in problem.slots:
@@ -362,7 +372,7 @@ def _probe(
         return None
     if perf_counter() >= deadline:
         return None
-    cost = (candidate.objective - baseline.objective) / actual
+    cost = (plan_monetary_cost(candidate) - plan_monetary_cost(baseline)) / actual
     return cost if isfinite(cost) and perf_counter() < deadline else None
 
 

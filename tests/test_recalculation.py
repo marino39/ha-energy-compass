@@ -17,7 +17,10 @@ from custom_components.energy_compass import coordinator as module
 from custom_components.energy_compass.config_models import PriceSource
 from custom_components.energy_compass.engine.models import SolveError
 from custom_components.energy_compass.sensor import SENSOR_KEYS
-from custom_components.energy_compass.settings import default_configuration
+from custom_components.energy_compass.settings import (
+    default_configuration,
+    merged_configuration,
+)
 from custom_components.energy_compass.sources.bindings import (
     EntityBinding,
     IntervalBinding,
@@ -343,3 +346,108 @@ async def test_ended_window_is_not_upcoming_in_retained_plan(
         finally:
             release.set()
             await job
+
+
+async def test_apply_configuration_supersedes_in_flight_generation(
+    published_entry, hass, freezer
+):
+    """Applying a new configuration mid-solve must discard the stale generation."""
+    coordinator = published_entry.runtime_data
+    started, release = threading.Event(), threading.Event()
+    original = module.compute
+
+    def delayed(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return original(*args, **kwargs)
+
+    seen = []
+    with patch.object(module, "compute", new=delayed):
+        job = hass.async_create_task(coordinator.async_recalculate())
+        unsubscribe = coordinator.async_add_listener(
+            lambda: seen.append(coordinator.data.get("strategy"))
+        )
+        try:
+            assert await hass.async_add_executor_job(started.wait, 2)
+            new_config = merged_configuration(published_entry)
+            new_config["settings"]["strategy"] = "max_export"
+            await coordinator.async_apply_configuration(new_config)
+        finally:
+            unsubscribe()
+            release.set()
+            await job
+            await hass.async_block_till_done()
+
+    assert "cost_min" not in seen
+    assert coordinator.data["strategy"] == "max_export"
+
+
+async def test_rapid_switches_publish_only_the_last(published_entry, hass, freezer):
+    """Several switches while a solve is in flight collapse into one recompute."""
+    coordinator = published_entry.runtime_data
+    started, release = threading.Event(), threading.Event()
+    original = module.compute
+    calls = []
+
+    def delayed(*args, **kwargs):
+        calls.append(1)
+        started.set()
+        assert release.wait(10)
+        return original(*args, **kwargs)
+
+    with patch.object(module, "compute", new=delayed):
+        job = hass.async_create_task(coordinator.async_recalculate())
+        try:
+            assert await hass.async_add_executor_job(started.wait, 2)
+            for strategy in ("grid_friendly", "backup_ready", "max_export"):
+                config = merged_configuration(published_entry)
+                config["settings"]["strategy"] = strategy
+                await coordinator.async_apply_configuration(config)
+            release.set()
+            await job
+            await hass.async_block_till_done()
+        finally:
+            release.set()
+
+    assert coordinator.data["strategy"] == "max_export"
+    # the stale in-flight solve plus exactly one retry for the last switch
+    assert len(calls) == 2
+
+
+async def test_apply_configuration_updates_the_cached_snapshot_before_refresh(
+    published_entry, hass
+):
+    """The snapshot swap must be visible before the new solve even starts."""
+    coordinator = published_entry.runtime_data
+    started, release = threading.Event(), threading.Event()
+    original = module.compute
+
+    def delayed(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return original(*args, **kwargs)
+
+    new_config = merged_configuration(published_entry)
+    new_config["settings"]["strategy"] = "max_export"
+    with patch.object(module, "compute", new=delayed):
+        job = hass.async_create_task(coordinator.async_apply_configuration(new_config))
+        try:
+            assert await hass.async_add_executor_job(started.wait, 2)
+            assert coordinator.configuration["settings"]["strategy"] == "max_export"
+            assert coordinator.data["strategy"] != "max_export"
+        finally:
+            release.set()
+            await job
+            await hass.async_block_till_done()
+
+    assert coordinator.data["strategy"] == "max_export"
+
+
+async def test_published_strategy_comes_from_the_result_not_the_configuration(
+    published_entry, hass
+):
+    """Mutating the cached configuration must never move the published label."""
+    coordinator = published_entry.runtime_data
+    assert coordinator.data["strategy"] == "cost_min"
+    coordinator.configuration["settings"]["strategy"] = "max_export"
+    assert coordinator.data["strategy"] == "cost_min"

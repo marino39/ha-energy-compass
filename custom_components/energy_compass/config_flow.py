@@ -25,7 +25,9 @@ from .settings import (
     DOMAIN,
     GROUPS,
     default_configuration,
+    explicit_strategy_fields,
     merged_configuration,
+    stamp_strategy_change,
     validate_configuration,
 )
 from .source_flow import SourceEditor
@@ -565,7 +567,7 @@ class Editor(SourceEditor):
 class EnergyCompassConfigFlow(Editor, config_entries.ConfigFlow, domain=DOMAIN):
     """Configure provider-independent advisory inputs through native HA forms."""
 
-    VERSION = 2
+    VERSION = 3
 
     async def async_step_user(self, user_input=None):
         self._draft = default_configuration(
@@ -601,6 +603,13 @@ class EnergyCompassConfigFlow(Editor, config_entries.ConfigFlow, domain=DOMAIN):
 
     @callback
     def _finish(self):
+        previous = (
+            merged_configuration(self._entry) if hasattr(self, "_entry") else None
+        )
+        self._draft["explicit_strategy_fields"] = explicit_strategy_fields(
+            self._draft["settings"]
+        )
+        stamp_strategy_change(self._draft, previous, dt_util.utcnow())
         if hasattr(self, "_entry"):
             return self.async_update_reload_and_abort(
                 self._entry, data=self._draft, options={}, title=self._draft["name"]
@@ -623,6 +632,11 @@ class EnergyCompassOptionsFlow(Editor, config_entries.OptionsFlowWithReload):
 
     @callback
     def _finish(self):
+        previous = merged_configuration(self.config_entry)
+        self._draft["explicit_strategy_fields"] = explicit_strategy_fields(
+            self._draft["settings"]
+        )
+        stamp_strategy_change(self._draft, previous, dt_util.utcnow())
         self.hass.config_entries.async_update_entry(
             self.config_entry, title=self._draft["name"]
         )

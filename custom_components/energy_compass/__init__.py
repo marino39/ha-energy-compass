@@ -5,9 +5,9 @@ from copy import deepcopy
 from homeassistant.const import Platform
 
 from .coordinator import EnergyCompassCoordinator
-from .settings import default_configuration
+from .settings import default_configuration, explicit_strategy_fields
 
-PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SELECT]
 
 
 async def async_setup_entry(hass, entry) -> bool:
@@ -33,9 +33,9 @@ async def async_unload_entry(hass, entry) -> bool:
 
 async def async_migrate_entry(hass, entry) -> bool:
     """Fill absent configuration fields while retaining every existing choice."""
-    if entry.version > 2:
+    if entry.version > 3:
         return False
-    if entry.version == 1:
+    if entry.version < 3:
         current = deepcopy(dict(entry.data))
         defaults = default_configuration(
             current.get("currency", "EUR"),
@@ -53,7 +53,14 @@ async def async_migrate_entry(hass, entry) -> bool:
         options = deepcopy(dict(entry.options))
         if "configuration" in options:
             fill(options["configuration"], defaults)
+        for target in (
+            current,
+            *([options["configuration"]] if "configuration" in options else []),
+        ):
+            target["explicit_strategy_fields"] = explicit_strategy_fields(
+                target["settings"]
+            )
         hass.config_entries.async_update_entry(
-            entry, data=current, options=options, version=2
+            entry, data=current, options=options, version=3
         )
     return True

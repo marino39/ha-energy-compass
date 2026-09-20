@@ -95,6 +95,17 @@ def _close(actual: float, expected: float, detail: str) -> None:
     _check(abs(actual - expected) <= _TOL, detail)
 
 
+def _floor_windows(window_ids: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    """Group slot indices by the window id the autonomy module assigned them."""
+    windows: list[list[int]] = []
+    for index, window_id in enumerate(window_ids):
+        if windows and window_id == window_ids[index - 1]:
+            windows[-1].append(index)
+        else:
+            windows.append([index])
+    return tuple(tuple(window) for window in windows)
+
+
 def _validate_solution(
     problem: Problem,
     vectors: list[dict[str, int]],
@@ -112,9 +123,18 @@ def _validate_solution(
     battery = problem.battery
     previous_energy = battery.initial_kwh if battery else 0.0
     spent = {day: 0.0 for day in budgets}
+    floor_windows = (
+        _floor_windows(problem.soc_target_window)
+        if battery and problem.soc_target_kwh and problem.soc_target_weight > 0
+        else ()
+    )
+    slack_index_by_slot = {
+        t: vectors[window[0]]["soc_slack"] for window in floor_windows for t in window
+    }
+    peak_index = vectors[0].get("peak_import")
 
-    for slot, variables, fractions in zip(
-        problem.slots, vectors, daily_fractions, strict=True
+    for index, (slot, variables, fractions) in enumerate(
+        zip(problem.slots, vectors, daily_fractions, strict=True)
     ):
 
         def value(name, variables=variables):
@@ -142,6 +162,19 @@ def _validate_solution(
                 sum(value(f"mode_{mode}") for mode in MODES), 1, "one operating mode"
             )
         gin, gout, curt = value("gin"), value("gout"), value("curt")
+        if index in slack_index_by_slot:
+            target = problem.soc_target_kwh[index]
+            if target > 0:
+                slack = float(values[slack_index_by_slot[index]])
+                _check(slack >= target - value("energy") - _TOL, "autonomy floor slack")
+        if peak_index is not None:
+            _check(float(values[peak_index]) >= gin / duration - _TOL, "peak import")
+        if "cap_import" in variables:
+            cap = problem.soft_import_cap_kw * duration
+            _check(gin - value("cap_import") <= cap + _TOL, "soft import cap")
+        if "cap_export" in variables:
+            cap = problem.soft_export_cap_kw * duration
+            _check(gout - value("cap_export") <= cap + _TOL, "soft export cap")
         extra_load = value("flex_load") if flexible_load else 0.0
         charge = value("bc") if battery else 0.0
         discharge = value("bd") if battery else 0.0
@@ -345,10 +378,14 @@ def _solve(
         ).total_seconds() / 3600
         variables = {
             "gin": model.variable(
-                upper=problem.site.grid_import_kw * duration, cost=slot.buy_per_kwh
+                upper=problem.site.grid_import_kw * duration,
+                cost=problem.import_weight * slot.buy_per_kwh
+                + problem.import_kwh_weight,
             ),
             "gout": model.variable(
-                upper=problem.site.grid_export_kw * duration, cost=-slot.sell_per_kwh
+                upper=problem.site.grid_export_kw * duration,
+                cost=-problem.export_weight
+                * (slot.sell_per_kwh - problem.pv_export_margin),
             ),
             "curt": model.variable(
                 upper=slot.pv_kwh if problem.site.allow_curtailment else 0
@@ -393,7 +430,8 @@ def _solve(
                     "battery_grid": model.variable(
                         upper=battery.discharge_kw * duration
                         if battery.allow_battery_export
-                        else 0
+                        else 0,
+                        cost=problem.battery_export_penalty_per_kwh,
                     ),
                     "battery_mode": model.variable(binary=True),
                 }
@@ -422,6 +460,20 @@ def _solve(
             -np.inf,
             problem.site.grid_export_kw * duration,
         )
+        if problem.soft_import_cap_kw is not None and problem.cap_violation_weight > 0:
+            cap = problem.soft_import_cap_kw * duration
+            slack = max(0.0, problem.site.grid_import_kw * duration - cap)
+            u = v["cap_import"] = model.variable(
+                upper=slack, cost=problem.cap_violation_weight
+            )
+            model.constrain({v["gin"]: 1, u: -1}, -np.inf, cap)
+        if problem.soft_export_cap_kw is not None and problem.cap_violation_weight > 0:
+            cap = problem.soft_export_cap_kw * duration
+            slack = max(0.0, problem.site.grid_export_kw * duration - cap)
+            u = v["cap_export"] = model.variable(
+                upper=slack, cost=problem.cap_violation_weight
+            )
+            model.constrain({v["gout"]: 1, u: -1}, -np.inf, cap)
         model.constrain(
             {v["curt"]: -1, **({v["bd"]: 1, v["bc"]: -1} if battery else {})},
             -problem.site.inverter_kw * duration - slot.pv_kwh,
@@ -559,6 +611,29 @@ def _solve(
         vectors.append(variables)
         daily_fractions.append(day_fractions(slot.start, slot.end, zone))
 
+    if battery and problem.soc_target_kwh and problem.soc_target_weight > 0:
+        for window in _floor_windows(problem.soc_target_window):
+            slack = model.variable(
+                upper=max(problem.soc_target_kwh[t] for t in window),
+                cost=problem.soc_target_weight,
+            )
+            vectors[window[0]]["soc_slack"] = slack
+            for t in window:
+                target = problem.soc_target_kwh[t]
+                if target > 0:
+                    model.constrain({vectors[t]["energy"]: 1, slack: 1}, target, np.inf)
+
+    if problem.peak_import_weight > 0:
+        peak = model.variable(
+            upper=problem.site.grid_import_kw, cost=problem.peak_import_weight
+        )
+        vectors[0]["peak_import"] = peak
+        for slot, v in zip(problem.slots, vectors, strict=True):
+            duration = (
+                slot.end.astimezone(_UTC) - slot.start.astimezone(_UTC)
+            ).total_seconds() / 3600
+            model.constrain({v["gin"]: 1 / duration, peak: -1}, -np.inf, 0)
+
     if flexible_load:
         target = model.variable(upper=flexible_load.energy_kwh)
         model.lower[target] = flexible_load.energy_kwh
@@ -657,6 +732,18 @@ def _solve(
     )
     objective = grid_cost + wear_cost - terminal_credit
     _check(isfinite(objective), "nonfinite objective")
+    autonomy_shortfall_kwh = sum(
+        float(values[v["soc_slack"]]) for v in vectors if "soc_slack" in v
+    )
+    cap_violation_kwh = sum(
+        float(values[v[name]])
+        for v in vectors
+        for name in ("cap_import", "cap_export")
+        if name in v
+    )
+    peak_import_kw = (
+        float(values[vectors[0]["peak_import"]]) if "peak_import" in vectors[0] else 0.0
+    )
     episodes, reserve = validate_export_benefit(problem, vectors, values)
     return FlexibleLoadPlan(
         Plan(
@@ -667,6 +754,9 @@ def _solve(
             terminal_credit,
             episodes,
             reserve,
+            autonomy_shortfall_kwh,
+            cap_violation_kwh,
+            peak_import_kw,
         ),
         tuple(float(values[v["flex_load"]]) for v in vectors) if flexible_load else (),
     )

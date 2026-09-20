@@ -19,10 +19,12 @@ from custom_components.energy_compass.engine.models import (
     CompassSettings,
     Flow,
     InputError,
+    Plan,
     Problem,
     SiteLimits,
     Slot,
     SolveError,
+    plan_monetary_cost,
 )
 from custom_components.energy_compass.engine.optimize import solve
 
@@ -131,6 +133,35 @@ def test_flexible_load_analysis_can_be_disabled():
 
     assert result.depth_kwh is None
     assert result.profiles == ()
+
+
+def test_plan_monetary_cost_ignores_the_solver_objective():
+    plan = Plan((), 999.0, 12.5, 0.5, 2.0)
+    assert plan_monetary_cost(plan) == pytest.approx(11.0)
+
+
+def test_flexible_load_average_cost_uses_monetary_sum_not_raw_objective(monkeypatch):
+    source = grid_problem((0.40,) * 7)
+    baseline = solve(source)
+    from custom_components.energy_compass.engine import consumption
+
+    original = consumption.solve_flexible_load
+
+    def weighted_solve(problem, request, *, time_limit_s):
+        # Simulate a strategy weight inflating the raw objective; the real
+        # PLN/kWh cost the advice reports must not move.
+        result = original(problem, request, time_limit_s=time_limit_s)
+        return replace(
+            result,
+            plan=replace(
+                result.plan, objective=result.plan.objective + 5.0 * request.energy_kwh
+            ),
+        )
+
+    monkeypatch.setattr(consumption, "solve_flexible_load", weighted_solve)
+    result = analyze_flexible_loads(source, baseline, settings=CompassSettings())
+
+    assert result.anchor_price_per_kwh == pytest.approx(0.40)
 
 
 @pytest.mark.parametrize(
@@ -415,6 +446,33 @@ def test_failed_one_minute_tail_keeps_successful_reference_percentiles(short_cov
     assert result.opportunities[2].end == START + timedelta(hours=2, minutes=1)
 
 
+def test_probe_cost_uses_monetary_sum_not_raw_objective(monkeypatch):
+    source = grid_problem((0.40,))
+    baseline = solve(source)
+    from custom_components.energy_compass.engine import consumption
+
+    def weighted_probe(problem, **kwargs):
+        actual = sum(
+            slot.load_kwh - original.load_kwh
+            for slot, original in zip(problem.slots, source.slots, strict=True)
+        )
+        # objective carries an extra shadow-price term a weighted strategy
+        # would add; only the grid_cost delta (real PLN) may reach advice.
+        return replace(
+            baseline,
+            objective=baseline.objective + 5.0 * actual,
+            grid_cost=baseline.grid_cost + 0.40 * actual,
+        )
+
+    monkeypatch.setattr(consumption, "solve", weighted_probe)
+    result = analyze_consumption(
+        source,
+        baseline,
+        settings=CompassSettings(display_horizon_hours=1, reference_horizon_hours=1),
+    )
+    assert result.opportunities[0].cost_per_kwh == pytest.approx(0.40)
+
+
 def test_minimum_purchase_tariff_is_bounded_to_available_reference(monkeypatch):
     source = grid_problem((0.80, 1.00, 0.10))
     baseline = solve(source)
@@ -434,7 +492,7 @@ def test_minimum_purchase_tariff_is_bounded_to_available_reference(monkeypatch):
             slot.load_kwh - original.load_kwh
             for slot, original in zip(problem.slots, source.slots, strict=True)
         )
-        return replace(baseline, objective=baseline.objective + costs[changed] * actual)
+        return replace(baseline, grid_cost=baseline.grid_cost + costs[changed] * actual)
 
     monkeypatch.setattr(consumption, "solve", controlled_probe)
     result = analyze_consumption(
@@ -534,7 +592,7 @@ def test_probe_completed_after_deadline_stays_unknown(
     def late_solve(problem, *, time_limit_s):
         calls.append(time_limit_s)
         clock[0] += elapsed_s
-        return replace(baseline, objective=baseline.objective + 0.40)
+        return replace(baseline, grid_cost=baseline.grid_cost + 0.40)
 
     monkeypatch.setattr(consumption, "perf_counter", lambda: clock[0])
     monkeypatch.setattr(consumption, "solve", late_solve)

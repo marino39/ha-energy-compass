@@ -29,12 +29,13 @@ from .runtime import (
     async_history,
     available_forecasts,
     compute,
+    effective_settings,
     freshness_deadline,
     measurement_diagnostics,
     restore_commitment,
     restore_export_commitment,
 )
-from .settings import DOMAIN, merged_configuration, validate_configuration
+from .settings import DOMAIN, merged_configuration
 from .sources.bindings import merge_continuations, parse_intervals, parse_timestamp
 
 _LOGGER = logging.getLogger(__name__)
@@ -86,6 +87,21 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             er.EVENT_ENTITY_REGISTRY_UPDATED, self._registry_changed
         )
         self._subscribe()
+        await self.async_recalculate()
+
+    async def async_apply_configuration(self, config: dict) -> None:
+        """Adopt a configuration written outside the flows and supersede any run.
+
+        Order is load-bearing: persist, then replace the cached snapshot, then bump
+        the generation, then ask for a recalculation.
+        """
+        self.hass.config_entries.async_update_entry(
+            self.entry, options={**self.entry.options, "configuration": config}
+        )
+        self.configuration = rebind_configuration(self.hass, deepcopy(config))
+        self._generation += 1
+        self._fingerprint = None
+        self._pending = True
         await self.async_recalculate()
 
     def _subscribe(self):
@@ -219,7 +235,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self.configuration = config
         states = snapshot(self.hass, config)
         now = dt_util.utcnow()
-        values = validate_configuration(config, states, now)
+        values = effective_settings(config, states, now)
         daily_export_observations(config, states, values, now)
         source, _ = available_forecasts(
             SourceConfig.from_dict(config["sources"]), states
@@ -580,6 +596,17 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._anchors = updated
         self._store.async_delay_save(lambda: self._anchors, 1)
 
+    def _clear_strategy_change(self) -> None:
+        """Consume the one-shot release exactly once, after it produced a plan."""
+        config = merged_configuration(self.entry)
+        if not config.get("strategy_changed_at"):
+            return
+        config["strategy_changed_at"] = None
+        self.configuration["strategy_changed_at"] = None
+        self.hass.config_entries.async_update_entry(
+            self.entry, options={**self.entry.options, "configuration": config}
+        )
+
     async def async_recalculate(self) -> None:
         """Snapshot on the event loop, calculate off-loop, and publish one generation."""
         if self._closed:
@@ -647,6 +674,8 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                         self._publish_current(
                             result, current_states, current_values, published_at
                         )
+                        if result.get("strategy_released") and self.data.get("valid"):
+                            self._clear_strategy_change()
                 except InputError as err:
                     if not self._closed and generation == self._generation:
                         self._invalidate("invalid_input", str(err))

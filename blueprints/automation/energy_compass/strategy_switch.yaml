@@ -1,0 +1,448 @@
+blueprint:
+  name: Energy Compass strategy switch
+  description: >-
+    Rule-based daily dispatch strategy selection for one Energy Compass
+    installation. `cost_min` is the unconditional fallback; `alert`, `pv_swap`
+    and `self_sufficiency` are opt-in rules evaluated in that precedence
+    order, each skipped unless its name is in "Enabled rules". This is not
+    solved-and-compared: the rules exist for risk the solver does not price.
+
+    Tonight's prices come from the plan sensor's `intervals` attribute,
+    already final PLN/kWh including the installation's multiplier, VAT and
+    additions. Tomorrow evening's prices come from the raw RCE PSE forecast
+    (PLN/MWh by default, divided by 1000) because the plan horizon normally
+    does not reach that far. The two are on different tariff bases; the swap
+    margin absorbs the gap.
+
+    "Next-day prices available" means at least 90 quarter-hour records for
+    tomorrow's local date (96 is a full day; 90 tolerates DST and late RCE
+    publication). When unavailable, the 14:05 run makes no decision and does
+    not write the select; an hourly retry (fired at minute 5 of every hour)
+    re-evaluates until the retry cutoff. A manual change to the strategy
+    select is detected and blocks the economic rules until the next
+    successful scheduled run; the alert rule and the daily scheduled run are
+    never blocked by it.
+
+    Requires three dedicated helpers: `last_run` (Date and/or time, date and
+    time), `manual_marker` (Text, max length at least 24 -- long enough for
+    "manual:self_sufficiency") and `pending_marker` (Text, max length at
+    least 20).
+  domain: automation
+  homeassistant:
+    min_version: 2026.9.1
+  input:
+    strategy_select:
+      name: Strategy select
+      selector:
+        entity:
+          filter:
+            domain: select
+    plan:
+      name: Plan
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    forecast_valid:
+      name: Forecast valid
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+    pv_forecast_tomorrow:
+      name: PV forecast for tomorrow
+      description: kWh scalar, e.g. Solcast "forecast tomorrow".
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    daily_load_kwh:
+      name: Typical daily load
+      default: 20
+      selector:
+        number:
+          min: 0
+          max: 1000
+          step: 0.1
+          unit_of_measurement: kWh
+          mode: box
+    rce_next_day:
+      name: RCE PSE price sensor
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    rce_prices_attribute:
+      name: RCE prices attribute
+      default: prices
+      selector:
+        text: {}
+    rce_price_key:
+      name: RCE price record key
+      default: rce_pln
+      selector:
+        text: {}
+    rce_time_key:
+      name: RCE time record key
+      description: The record's local end-of-interval timestamp.
+      default: dtime
+      selector:
+        text: {}
+    rce_unit:
+      name: RCE price unit
+      default: PLN/MWh
+      selector:
+        select:
+          options:
+            - PLN/MWh
+            - PLN/kWh
+    alert_entity:
+      name: Alert entity
+      description: Optional. The alert rule is skipped when left empty.
+      default: ""
+      selector:
+        entity: {}
+    alert_on_states:
+      name: Alert states
+      default:
+        - "on"
+      selector:
+        select:
+          multiple: true
+          options:
+            - "on"
+            - warning
+            - alert
+    night_start:
+      name: Night window start
+      default: "22:00:00"
+      selector:
+        time: {}
+    night_end:
+      name: Night window end
+      default: "06:00:00"
+      selector:
+        time: {}
+    evening_start:
+      name: Evening window start
+      default: "17:00:00"
+      selector:
+        time: {}
+    evening_end:
+      name: Evening window end
+      default: "21:00:00"
+      selector:
+        time: {}
+    round_trip_efficiency:
+      name: Round-trip efficiency
+      default: 0.9
+      selector:
+        number:
+          min: 0.5
+          max: 1.0
+          step: 0.01
+          mode: box
+    spread_margin:
+      name: Self-sufficiency spread margin
+      default: 0.15
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 0.01
+          unit_of_measurement: PLN/kWh
+          mode: box
+    swap_margin:
+      name: PV swap margin
+      default: 0.05
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 0.01
+          unit_of_measurement: PLN/kWh
+          mode: box
+    run_time:
+      name: Scheduled run time
+      default: "14:05:00"
+      selector:
+        time: {}
+    retry_until:
+      name: Retry cutoff
+      default: "20:00:00"
+      selector:
+        time: {}
+    last_run:
+      name: Last successful run
+      description: Dedicated Date and/or time helper with date and time.
+      selector:
+        entity:
+          filter:
+            domain: input_datetime
+    manual_marker:
+      name: Manual override marker
+      description: >-
+        Dedicated Text helper, max length at least 24 (the longest written
+        value is "manual:self_sufficiency").
+      selector:
+        entity:
+          filter:
+            domain: input_text
+    pending_marker:
+      name: Pending write marker
+      description: >-
+        Dedicated Text helper, max length at least 20. Records the strategy
+        this automation is about to apply, written before
+        select.select_option so a restart mid-write can be reconciled from
+        the helper's last-updated timestamp.
+      selector:
+        entity:
+          filter:
+            domain: input_text
+    enabled_rules:
+      name: Enabled rules
+      description: cost_min is the unconditional fallback and is never listed here.
+      default:
+        - alert
+        - pv_swap
+        - self_sufficiency
+      selector:
+        select:
+          multiple: true
+          options:
+            - alert
+            - pv_swap
+            - self_sufficiency
+
+mode: single
+max_exceeded: silent
+
+variables:
+  strategy_select_entity: !input strategy_select
+  plan_entity: !input plan
+  forecast_valid_entity: !input forecast_valid
+  pv_forecast_tomorrow_entity: !input pv_forecast_tomorrow
+  daily_load_kwh: !input daily_load_kwh
+  rce_next_day_entity: !input rce_next_day
+  rce_prices_attribute: !input rce_prices_attribute
+  rce_price_key: !input rce_price_key
+  rce_time_key: !input rce_time_key
+  rce_unit: !input rce_unit
+  alert_entity: !input alert_entity
+  alert_on_states: !input alert_on_states
+  night_start: !input night_start
+  night_end: !input night_end
+  evening_start: !input evening_start
+  evening_end: !input evening_end
+  round_trip_efficiency: !input round_trip_efficiency
+  spread_margin: !input spread_margin
+  swap_margin: !input swap_margin
+  run_time: !input run_time
+  retry_until: !input retry_until
+  last_run_entity: !input last_run
+  manual_marker_entity: !input manual_marker
+  pending_marker_entity: !input pending_marker
+  enabled_rules: !input enabled_rules
+
+triggers:
+  - trigger: time
+    at: !input run_time
+    id: run_time
+  - trigger: time_pattern
+    minutes: 5
+    id: retry
+  - trigger: homeassistant
+    event: start
+    id: startup
+  - trigger: state
+    entity_id: !input alert_entity
+    id: alert
+  - trigger: state
+    entity_id: !input strategy_select
+    id: manual
+
+actions:
+  - variables:
+      night_buy: >-
+        {%- set ns = today_at(night_start | string).replace(tzinfo=none) -%}
+        {%- set ne = (ns + timedelta(days=1))
+            if (night_end | string) <= (night_start | string)
+            else today_at(night_end | string).replace(tzinfo=none) -%}
+        {%- set rows = state_attr(plan_entity, 'intervals') or [] -%}
+        {%- set values = namespace(items=[]) -%}
+        {%- for row in rows -%}
+          {%- if row is mapping and 'start' in row and 'buy_per_kwh' in row -%}
+            {%- set start_dt = as_datetime(row.start) -%}
+            {%- if start_dt is not none -%}
+              {%- set start_dt = start_dt.replace(tzinfo=none) if start_dt.tzinfo else start_dt -%}
+              {%- if ns <= start_dt < ne -%}
+                {%- set values.items = values.items + [row.buy_per_kwh | float] -%}
+              {%- endif -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ values.items | min if values.items | count > 0 else none }}
+      day_max_buy: >-
+        {%- set rows = state_attr(plan_entity, 'intervals') or [] -%}
+        {%- set values = rows
+            | selectattr('buy_per_kwh', 'defined')
+            | map(attribute='buy_per_kwh')
+            | map('float')
+            | list -%}
+        {{ values | max if values | count > 0 else none }}
+      evening_sell: >-
+        {%- set divisor = 1 if (rce_unit | string) == 'PLN/kWh' else 1000 -%}
+        {%- set es = (today_at(evening_start | string) + timedelta(days=1)).replace(tzinfo=none) -%}
+        {%- set extra_days = 2 if (evening_end | string) <= (evening_start | string) else 1 -%}
+        {%- set ee = (today_at(evening_end | string) + timedelta(days=extra_days)).replace(tzinfo=none) -%}
+        {%- set records = state_attr(rce_next_day_entity, rce_prices_attribute) or [] -%}
+        {%- set values = namespace(items=[]) -%}
+        {%- for record in records -%}
+          {%- if record is mapping and rce_time_key in record and rce_price_key in record -%}
+            {%- set end_dt = as_datetime(record[rce_time_key]) -%}
+            {%- if end_dt is not none -%}
+              {%- set end_dt = end_dt.replace(tzinfo=none) if end_dt.tzinfo else end_dt -%}
+              {%- set start_dt = end_dt - timedelta(minutes=15) -%}
+              {%- if es <= start_dt < ee -%}
+                {%- set values.items = values.items + [(record[rce_price_key] | float(0)) / divisor] -%}
+              {%- endif -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ values.items | max if values.items | count > 0 else none }}
+      next_day_available: >-
+        {%- set tomorrow = (now().date() + timedelta(days=1)).isoformat() -%}
+        {%- set records = state_attr(rce_next_day_entity, rce_prices_attribute) or [] -%}
+        {%- set counter = namespace(n=0) -%}
+        {%- for record in records -%}
+          {%- if record is mapping and rce_time_key in record -%}
+            {%- set end_dt = as_datetime(record[rce_time_key]) -%}
+            {%- if end_dt is not none and (end_dt - timedelta(minutes=15)).date().isoformat() == tomorrow -%}
+              {%- set counter.n = counter.n + 1 -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ counter.n >= 90 }}
+      alert_match: >-
+        {{ 'alert' in enabled_rules
+           and (alert_entity | string) not in ['', 'None']
+           and states(alert_entity) in alert_on_states }}
+      pv_swap_match: >-
+        {{ 'pv_swap' in enabled_rules
+           and states(pv_forecast_tomorrow_entity) not in ['unknown', 'unavailable', '']
+           and (states(pv_forecast_tomorrow_entity) | float(0)) < (daily_load_kwh | float)
+           and evening_sell is not none
+           and night_buy is not none
+           and (evening_sell | float) * (round_trip_efficiency | float)
+               >= (night_buy | float) + (swap_margin | float) }}
+      self_sufficiency_match: >-
+        {{ 'self_sufficiency' in enabled_rules
+           and day_max_buy is not none
+           and night_buy is not none
+           and (day_max_buy | float - night_buy | float) < (spread_margin | float) }}
+      chosen_strategy: >-
+        {%- if alert_match -%}
+          backup_ready
+        {%- elif not next_day_available -%}
+          none
+        {%- elif pv_swap_match -%}
+          pv_swap
+        {%- elif self_sufficiency_match -%}
+          self_sufficiency
+        {%- else -%}
+          cost_min
+        {%- endif -%}
+      retry_time_window: >-
+        {%- set current = now().strftime('%H:%M:%S') -%}
+        {{ (run_time | string) <= current < (retry_until | string) }}
+      last_run_before_today: >-
+        {%- set raw = states(last_run_entity) -%}
+        {%- set parsed = as_datetime(raw) if raw not in ['unknown', 'unavailable', ''] else none -%}
+        {{ parsed is none or parsed.date() < now().date() }}
+      manual_override_active: "{{ (states(manual_marker_entity) | string).startswith('manual:') }}"
+      retry_eligible: "{{ retry_time_window and last_run_before_today and not manual_override_active }}"
+      run_allowed: >-
+        {{ trigger.id == 'run_time'
+           or alert_match
+           or (trigger.id in ['retry', 'startup'] and retry_eligible) }}
+      select_change_needed: "{{ chosen_strategy != 'none' and states(strategy_select_entity) != chosen_strategy }}"
+      manual_change_detected: "{{ trigger.to_state.state != states(manual_marker_entity) }}"
+      reconcile_needed: >-
+        {{ states(pending_marker_entity) not in ['unknown', '']
+           and states(pending_marker_entity) != states(strategy_select_entity)
+           and (states(last_run_entity) in ['unknown', 'unavailable', '']
+                or as_timestamp(states[pending_marker_entity].last_updated)
+                   > (state_attr(last_run_entity, 'timestamp') | float(0))) }}
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: manual
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ manual_change_detected }}"
+            then:
+              - action: input_text.set_value
+                target:
+                  entity_id: "{{ manual_marker_entity }}"
+                data:
+                  value: "manual:{{ trigger.to_state.state }}"
+          - stop: Manual select change handled, nothing else runs.
+      - conditions:
+          - condition: trigger
+            id: startup
+          - condition: template
+            value_template: "{{ reconcile_needed }}"
+        sequence:
+          - action: select.select_option
+            target:
+              entity_id: "{{ strategy_select_entity }}"
+            data:
+              option: "{{ states(pending_marker_entity) }}"
+          - wait_template: "{{ states(strategy_select_entity) == states(pending_marker_entity) }}"
+            timeout: "00:01:00"
+            continue_on_timeout: true
+  - condition: template
+    value_template: "{{ run_allowed }}"
+  - if:
+      - condition: template
+        value_template: "{{ chosen_strategy == 'none' }}"
+    then:
+      - stop: No decision, next-day prices unavailable.
+  - if:
+      - condition: template
+        value_template: "{{ select_change_needed }}"
+    then:
+      - action: input_text.set_value
+        target:
+          entity_id: "{{ pending_marker_entity }}"
+        data:
+          value: "{{ chosen_strategy }}"
+      - action: select.select_option
+        target:
+          entity_id: "{{ strategy_select_entity }}"
+        data:
+          option: "{{ chosen_strategy }}"
+      - wait_template: "{{ states(strategy_select_entity) == chosen_strategy }}"
+        timeout: "00:01:00"
+        continue_on_timeout: true
+  - if:
+      - condition: template
+        value_template: "{{ alert_match }}"
+    then:
+      - action: input_text.set_value
+        target:
+          entity_id: "{{ manual_marker_entity }}"
+        data:
+          value: "{{ chosen_strategy }}"
+    else:
+      - action: input_text.set_value
+        target:
+          entity_id: "{{ manual_marker_entity }}"
+        data:
+          value: "{{ chosen_strategy }}"
+      - action: input_datetime.set_datetime
+        target:
+          entity_id: "{{ last_run_entity }}"
+        data:
+          timestamp: "{{ as_timestamp(now()) }}"
