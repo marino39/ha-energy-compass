@@ -152,11 +152,14 @@ class EnergyCompassEntity(CoordinatorEntity):
                     else "upcoming"
                 )
             attrs["window_status"] = window_status
-            attrs["attribute_schema_version"] = 2
+            attrs["attribute_schema_version"] = 3
             attrs["monthly_charge_reporting_only"] = data.get(
                 "monthly_charge_reporting_only"
             )
             attrs["load_quality"] = quality.get("load")
+            attrs["strategy"] = data.get("strategy")
+            attrs["autonomy_shortfall_kwh"] = data.get("autonomy_shortfall_kwh")
+            attrs["cap_violation_kwh"] = data.get("cap_violation_kwh")
         elif self.key == "consumption_cost":
             attrs.update(method="finite_difference", probe_kwh=data.get("probe_kwh"))
         elif self.key == "flexible_energy_depth":

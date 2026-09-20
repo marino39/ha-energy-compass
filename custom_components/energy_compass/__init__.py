@@ -7,7 +7,7 @@ from homeassistant.const import Platform
 from .coordinator import EnergyCompassCoordinator
 from .settings import default_configuration, explicit_strategy_fields
 
-PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.SELECT]
 
 
 async def async_setup_entry(hass, entry) -> bool:
