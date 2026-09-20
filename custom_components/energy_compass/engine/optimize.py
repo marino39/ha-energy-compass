@@ -115,7 +115,12 @@ def _validate_solution(
         ).total_seconds() / 3600
         for name in variables:
             _check(value(name) >= -_TOL, f"negative {name}")
-        for name in ("grid_mode", "battery_mode", *(f"mode_{mode}" for mode in MODES)):
+        for name in (
+            "grid_mode",
+            "battery_mode",
+            "reserve_discharge",
+            *(f"mode_{mode}" for mode in MODES),
+        ):
             if name in variables:
                 _check(
                     min(abs(value(name)), abs(value(name) - 1)) <= _TOL,
@@ -221,12 +226,15 @@ def _validate_solution(
                     discharge <= max(slot.load_kwh - slot.pv_kwh, 0) + _TOL,
                     "residual load discharge",
                 )
+            discharge_floor = min(
+                battery.capacity_kwh * battery.minimum_soc_fraction, previous_energy
+            )
             previous_energy += (
                 battery.eta_charge * charge - discharge / battery.eta_discharge
             )
             _close(value("energy"), previous_energy, "battery energy")
             _check(
-                battery.capacity_kwh * battery.minimum_soc_fraction - _TOL
+                discharge_floor - _TOL
                 <= previous_energy
                 <= battery.capacity_kwh * battery.maximum_soc_fraction + _TOL,
                 "battery SOC",
@@ -327,9 +335,19 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
                     "battery_mode": model.variable(binary=True),
                 }
             )
-            model.lower[variables["energy"]] = (
-                battery.capacity_kwh * battery.minimum_soc_fraction
-            )
+            reserve = battery.capacity_kwh * battery.minimum_soc_fraction
+            model.lower[variables["energy"]] = min(reserve, battery.initial_kwh)
+            if battery.initial_kwh < reserve:
+                # Below reserve, waiting or gradual charging remains feasible.
+                # Any discharge must finish at/above the full reserve; a fixed
+                # lowered energy bound alone would allow spending partial recovery.
+                gate = variables["reserve_discharge"] = model.variable(binary=True)
+                model.constrain(
+                    {variables["bd"]: 1, gate: -battery.discharge_kw * duration},
+                    -np.inf,
+                    0,
+                )
+                model.constrain({variables["energy"]: 1, gate: -reserve}, 0, np.inf)
         v = variables
         model.constrain(
             {v["gin"]: 1, v["grid_mode"]: -problem.site.grid_import_kw * duration},

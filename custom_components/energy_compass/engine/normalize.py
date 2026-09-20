@@ -221,11 +221,8 @@ def validate_problem(problem: Problem) -> None:
         if battery.minimum_soc_fraction >= battery.maximum_soc_fraction:
             raise InputError("battery floor must be below ceiling")
         initial = finite(battery.initial_kwh, "initial_kwh")
-        if (
-            not battery.capacity_kwh * battery.minimum_soc_fraction
-            <= initial
-            <= battery.capacity_kwh * battery.maximum_soc_fraction
-        ):
+        # The reserve limits planned discharge, not valid observed depletion.
+        if not 0 <= initial <= battery.capacity_kwh * battery.maximum_soc_fraction:
             raise InputError("initial SOC outside bounds")
         if finite(battery.wear_per_kwh, "wear_per_kwh") < 0:
             raise InputError("wear cost must be nonnegative")
