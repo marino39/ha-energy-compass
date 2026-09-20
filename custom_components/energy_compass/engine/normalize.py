@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime
 from math import isfinite
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .models import InputError, Problem
+from .models import STRATEGIES, InputError, Problem
 
 
 @dataclass(frozen=True)
@@ -159,6 +159,60 @@ def validate_problem(problem: Problem) -> None:
         raise InputError("minimum_export_episode_benefit must be in [0, 1000]")
     if type(problem.initial_export_active) is not bool:
         raise InputError("initial_export_active must be boolean")
+    if problem.strategy not in STRATEGIES:
+        raise InputError("invalid strategy")
+    for name in (
+        "import_weight",
+        "export_weight",
+        "import_kwh_weight",
+        "battery_export_penalty_per_kwh",
+        "soc_target_weight",
+        "peak_import_weight",
+        "cap_violation_weight",
+    ):
+        if finite(getattr(problem, name), name) < 0:
+            raise InputError(f"{name} must be nonnegative")
+    if finite(problem.pv_export_margin, "pv_export_margin") < 0:
+        raise InputError("pv_export_margin must be nonnegative")
+    for name in ("soft_import_cap_kw", "soft_export_cap_kw"):
+        cap = getattr(problem, name)
+        if cap is not None and (isinstance(cap, bool) or finite(cap, name) < 0):
+            raise InputError(f"{name} must be nonnegative or null")
+    if problem.soc_target_kwh:
+        if len(problem.soc_target_kwh) != len(problem.slots):
+            raise InputError("soc_target_kwh must cover every slot")
+        for value in problem.soc_target_kwh:
+            if finite(value, "soc_target_kwh") < 0:
+                raise InputError("soc_target_kwh must cover every slot")
+    if bool(problem.soc_target_window) != bool(problem.soc_target_kwh):
+        raise InputError("soc_target_window must be contiguous and non-decreasing")
+    if problem.soc_target_window:
+        if len(problem.soc_target_window) != len(problem.soc_target_kwh):
+            raise InputError("soc_target_window must be contiguous and non-decreasing")
+        seen: set[int] = set()
+        previous_id = None
+        for window_id in problem.soc_target_window:
+            if isinstance(window_id, bool) or not isinstance(window_id, int):
+                raise InputError(
+                    "soc_target_window must be contiguous and non-decreasing"
+                )
+            if window_id < 0:
+                raise InputError(
+                    "soc_target_window must be contiguous and non-decreasing"
+                )
+            if previous_id is not None and window_id < previous_id:
+                raise InputError(
+                    "soc_target_window must be contiguous and non-decreasing"
+                )
+            if window_id != previous_id:
+                if window_id in seen:
+                    raise InputError(
+                        "soc_target_window must be contiguous and non-decreasing"
+                    )
+                seen.add(window_id)
+            previous_id = window_id
+    if type(problem.strategy_changed) is not bool:
+        raise InputError("strategy_changed must be boolean")
     if type(problem.limit_export_to_pv) is not bool:
         raise InputError("PV export limit must be boolean")
     for name in ("pv_generated_today_kwh", "grid_exported_today_kwh"):

@@ -6,6 +6,22 @@ Level = Literal["BOOST", "CHEAP", "NORMAL", "LIMIT"]
 MachineState = Literal[
     "CHARGE_GRID", "CHARGE_PV", "SELF_CONSUME", "DISCHARGE_GRID", "HOLD", "CURTAIL"
 ]
+Strategy = Literal[
+    "cost_min",
+    "self_sufficiency",
+    "backup_ready",
+    "pv_swap",
+    "max_export",
+    "grid_friendly",
+]
+STRATEGIES: tuple[Strategy, ...] = (
+    "cost_min",
+    "self_sufficiency",
+    "backup_ready",
+    "pv_swap",
+    "max_export",
+    "grid_friendly",
+)
 
 
 class InputError(ValueError):
@@ -74,6 +90,20 @@ class Problem:
     minimum_export_episode_benefit: float = 1.0
     initial_export_active: bool = False
     maximum_grid_charge_price: float | None = None
+    strategy: Strategy = "cost_min"
+    import_weight: float = 1.0
+    export_weight: float = 1.0
+    import_kwh_weight: float = 0.0
+    battery_export_penalty_per_kwh: float = 0.0
+    pv_export_margin: float = 0.0
+    soc_target_kwh: tuple[float, ...] = ()
+    soc_target_window: tuple[int, ...] = ()
+    soc_target_weight: float = 0.0
+    peak_import_weight: float = 0.0
+    soft_import_cap_kw: float | None = None
+    soft_export_cap_kw: float | None = None
+    cap_violation_weight: float = 0.0
+    strategy_changed: bool = False
 
 
 @dataclass(frozen=True)
@@ -97,6 +127,9 @@ class Plan:
     terminal_credit: float
     new_export_episodes: int = 0
     export_episode_reserve: float = 0.0
+    autonomy_shortfall_kwh: float = 0.0
+    cap_violation_kwh: float = 0.0
+    peak_import_kw: float = 0.0
 
 
 @dataclass(frozen=True)
