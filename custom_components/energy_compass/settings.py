@@ -15,30 +15,15 @@ from .config_models import (
     resolve_numeric,
     validate_sources,
 )
-from .engine.models import InputError
+from .engine.models import STRATEGIES, InputError
 from .engine.normalize import finite
+from .engine.strategy import STRATEGY_OWNED_KEYS
 
 DOMAIN = "energy_compass"
 
-# Mirrors engine.models.Strategy / STRATEGIES, which land in a later step of the
-# same plan; defined locally until that module exists so this one stays importable.
-STRATEGIES: tuple[str, ...] = (
-    "cost_min",
-    "self_sufficiency",
-    "backup_ready",
-    "pv_swap",
-    "max_export",
-    "grid_friendly",
-)
-# Mirrors engine.strategy.STRATEGY_OWNED_KEYS, which lands in a later step of the
-# same plan; defined locally until that module exists so this one stays importable.
-STRATEGY_OWNED_KEYS: tuple[str, ...] = (
-    "limit_export_to_pv",
-    "limit_grid_charge_price",
-    "maximum_grid_charge_price",
-    "minimum_export_episode_benefit",
-    "autonomy_reserve",
-)
+# STRATEGIES and STRATEGY_OWNED_KEYS are imported above: engine.models / engine.strategy
+# are the single source of truth, so this module and its importers just re-use the name.
+
 # Bounds also constrain helper inputs, which bypass form selectors.
 NUMBERS = {
     "capacity_kwh": ("battery", 10, 0.1, 1000, "kWh"),

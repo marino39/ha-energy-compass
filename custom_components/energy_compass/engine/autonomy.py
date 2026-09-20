@@ -8,6 +8,7 @@ grows elsewhere.
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from statistics import median
 from zoneinfo import ZoneInfo
 
 _EPSILON = 1e-9
@@ -142,3 +143,30 @@ def _find_recovery_slot(
         if min(segment) >= -_EPSILON:
             return t
     return slot_count - 1
+
+
+_NIGHT_HOURS = frozenset(
+    hour % 24 for hour in range(22, 30)
+)  # 22:00 through 05:59 local
+
+
+def autonomy_weight(slots, *, margin: float, timezone: str) -> float:
+    """Expected night rebuy price plus margin, clamped to be nonnegative.
+
+    `slots` is any sequence of objects exposing `.start` (aware datetime) and
+    `.buy_per_kwh` (float) — deliberately duck-typed rather than importing
+    `models.Slot`, so this module stays free of any dependency on `models.py`.
+    """
+    zone = ZoneInfo(timezone)
+    night = [
+        slot.buy_per_kwh
+        for slot in slots
+        if slot.start.astimezone(zone).hour in _NIGHT_HOURS
+    ]
+    sample = night or [slot.buy_per_kwh for slot in slots]
+    return max(0.0, median(sample) + margin)
+
+
+def backup_floor_kwh(capacity_kwh: float, target_percent: float) -> float:
+    """Constant floor for backup_ready, capped at capacity."""
+    return min(capacity_kwh, capacity_kwh * target_percent / 100)

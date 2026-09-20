@@ -1,16 +1,27 @@
-"""Measure deterministic advisory solve workloads in the target runtime image."""
+"""Measure deterministic advisory solve workloads in the target runtime image.
+
+Invoked by path (`python benchmarks/optimizer.py`) because the test container's
+entrypoint is bare `python`, which only puts this script's own directory on
+`sys.path`, not the repository root `custom_components` lives under.
+"""
 
 import argparse
 import json
 import resource
+import sys
 from datetime import UTC, datetime, timedelta
 from math import pi, sin
-from statistics import median
+from pathlib import Path
 from time import perf_counter
-from zoneinfo import ZoneInfo
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from custom_components.energy_compass.engine import optimize
-from custom_components.energy_compass.engine.autonomy import autonomy_targets
+from custom_components.energy_compass.engine.autonomy import (
+    autonomy_targets,
+    autonomy_weight,
+    backup_floor_kwh,
+)
 from custom_components.energy_compass.engine.consumption import analyze_consumption
 from custom_components.energy_compass.engine.models import (
     STRATEGIES,
@@ -35,7 +46,6 @@ _TIMEZONE = "Europe/Warsaw"
 # shipped serial-solve budget the acceptance rule below is checked against.
 _TOTAL_TIME_LIMIT_S = 60.0
 
-_AUTONOMY_NIGHT_HOURS = frozenset(hour % 24 for hour in range(22, 30))
 
 # strategy_weights() and the autonomy floor read these shipped settings.py
 # defaults; runtime.build_problem gets the same values from validated
@@ -65,26 +75,6 @@ def _shipped_values() -> dict[str, object]:
     values = {key: NUMBERS[key][1] for key in _STRATEGY_NUMBER_KEYS}
     values.update({key: BOOLEANS[key][1] for key in _STRATEGY_FLAG_KEYS})
     return values
-
-
-def _autonomy_weight(slots: tuple[Slot, ...], *, margin: float, timezone: str) -> float:
-    """Expected night rebuy price plus margin, clamped to be nonnegative.
-
-    Mirrors runtime._autonomy_weight; not exported by engine.autonomy.
-    """
-    zone = ZoneInfo(timezone)
-    night = [
-        slot.buy_per_kwh
-        for slot in slots
-        if slot.start.astimezone(zone).hour in _AUTONOMY_NIGHT_HOURS
-    ]
-    sample = night or [slot.buy_per_kwh for slot in slots]
-    return max(0.0, median(sample) + margin)
-
-
-def _backup_floor_kwh(capacity_kwh: float, target_percent: float) -> float:
-    """Constant floor for backup_ready, capped at capacity. Mirrors runtime._backup_floor_kwh."""
-    return min(capacity_kwh, capacity_kwh * target_percent / 100)
 
 
 def make_problem(
@@ -147,11 +137,11 @@ def make_problem(
         )
         soc_target_kwh = floor.targets_kwh[: len(slots)]
         soc_target_window = floor.window_ids[: len(slots)]
-        soc_target_weight = _autonomy_weight(
+        soc_target_weight = autonomy_weight(
             slots, margin=values["autonomy_margin_per_kwh"], timezone=_TIMEZONE
         )
         if strategy == "backup_ready":
-            floor_kwh = _backup_floor_kwh(
+            floor_kwh = backup_floor_kwh(
                 battery.capacity_kwh, values["backup_target_soc_percent"]
             )
             soc_target_kwh = tuple(max(t, floor_kwh) for t in soc_target_kwh)

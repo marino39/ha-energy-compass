@@ -62,10 +62,12 @@ The blueprint examines current favorable windows and upcoming LIMIT windows on f
 
 ## Import the strategy switch blueprint
 
-Requires two dedicated helpers, created the same way as the notification blueprint's: **Settings →
+Requires three dedicated helpers, created the same way as the notification blueprint's: **Settings →
 Devices & services → Helpers → Create helper** — one **Date and/or time** helper with **date and
-time** (`last_run`) and one **Text** helper with a max length of at least 24, long enough for
-`manual:self_sufficiency` (`manual_marker`). Leave their initial values empty.
+time** (`last_run`), one **Text** helper with a max length of at least 24, long enough for
+`manual:self_sufficiency` (`manual_marker`), and one **Text** helper with a max length of at least 20
+(`pending_marker`), which records the strategy the automation is about to apply so a restart
+mid-write can be reconciled. Leave their initial values empty.
 
 Copy [the blueprint](../blueprints/automation/energy_compass/strategy_switch.yaml) into Home
 Assistant's `config/blueprints/automation/energy_compass/strategy_switch.yaml`, then go to
@@ -73,7 +75,7 @@ Assistant's `config/blueprints/automation/energy_compass/strategy_switch.yaml`, 
 strategy switch**. Select the `select.<name>_strategy` entity, the plan and forecast-valid entities,
 a PV-forecast-for-tomorrow entity (for example a Solcast "forecast tomorrow" sensor), your typical
 daily household load, the RCE PSE next-day price sensor and its `prices`/`rce_pln`/`dtime`
-attribute names, and the two helpers above. **Enabled rules** defaults to all three opt-in rules
+attribute names, and the three helpers above. **Enabled rules** defaults to all three opt-in rules
 (`alert`, `pv_swap`, `self_sufficiency`); `cost_min` is the unconditional fallback and is never
 listed there. An **Alert entity** is optional — leave it empty to skip that rule entirely.
 

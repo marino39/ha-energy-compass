@@ -4,7 +4,6 @@ from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from itertools import pairwise
-from statistics import median
 from time import perf_counter
 from zoneinfo import ZoneInfo
 
@@ -18,7 +17,7 @@ from .daily_export import (
     daily_export_active,
     daily_export_observations,
 )
-from .engine.autonomy import autonomy_targets
+from .engine.autonomy import autonomy_targets, autonomy_weight, backup_floor_kwh
 from .engine.consumption import (
     analyze_consumption,
     analyze_flexible_loads,
@@ -56,7 +55,6 @@ from .sources.pv import sum_pv_arrays
 from .sources.throughput import resolve_daily_throughput
 
 _AUTONOMY_HORIZON_HOURS = 48
-_AUTONOMY_NIGHT_HOURS = frozenset(hour % 24 for hour in range(22, 30))
 
 
 def effective_settings(
@@ -366,23 +364,6 @@ def _load_quality(source_mode, result):
     }
 
 
-def _autonomy_weight(slots, *, margin, timezone):
-    """Expected night rebuy price plus margin, clamped to be nonnegative."""
-    zone = ZoneInfo(timezone)
-    night = [
-        slot.buy_per_kwh
-        for slot in slots
-        if slot.start.astimezone(zone).hour in _AUTONOMY_NIGHT_HOURS
-    ]
-    sample = night or [slot.buy_per_kwh for slot in slots]
-    return max(0.0, median(sample) + margin)
-
-
-def _backup_floor_kwh(capacity_kwh, target_percent):
-    """Constant floor for backup_ready, capped at capacity."""
-    return min(capacity_kwh, capacity_kwh * target_percent / 100)
-
-
 def build_problem(
     config: dict,
     states: dict,
@@ -644,13 +625,13 @@ def build_problem(
             )
             soc_target_kwh = floor.targets_kwh[: len(slots)]
             soc_target_window = floor.window_ids[: len(slots)]
-            soc_target_weight = _autonomy_weight(
+            soc_target_weight = autonomy_weight(
                 slots,
                 margin=values["autonomy_margin_per_kwh"],
                 timezone=config["timezone"],
             )
             if values["strategy"] == "backup_ready":
-                floor_kwh = _backup_floor_kwh(
+                floor_kwh = backup_floor_kwh(
                     battery.capacity_kwh, values["backup_target_soc_percent"]
                 )
                 soc_target_kwh = tuple(max(t, floor_kwh) for t in soc_target_kwh)

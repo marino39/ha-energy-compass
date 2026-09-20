@@ -300,6 +300,25 @@ async def test_alert_beats_economic_rule(hass):
 
 
 @pytest.mark.freeze_time("2026-09-20T10:00:00+00:00")
+async def test_alert_state_change_off_alert_entity_does_not_force_a_run(hass):
+    """An 'alert' trigger id alone must not bypass the retry/time gate.
+
+    The alert entity flipping to a state NOT in alert_on_states (the alert
+    clearing) is a routine event that can happen at any time of day; it must
+    not consume today's scheduled run or write the select outside the
+    run_time/retry window, only the alert rule itself (alert_match) should.
+    """
+    hass.states.async_set(DEFAULT_VARIABLES["alert_entity"], "off")
+    variables = {
+        **DEFAULT_VARIABLES,
+        "trigger": {"id": "alert", "to_state": {"state": "off"}},
+    }
+    variables["alert_match"] = render(hass, "alert_match", variables)
+    assert variables["alert_match"] is False
+    assert render(hass, "run_allowed", variables) is False
+
+
+@pytest.mark.freeze_time("2026-09-20T10:00:00+00:00")
 async def test_low_pv_forecast_and_swap_margin_selects_pv_swap(hass):
     today = date(2026, 9, 20)
     tomorrow = date(2026, 9, 21)

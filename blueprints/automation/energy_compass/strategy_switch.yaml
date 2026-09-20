@@ -362,7 +362,7 @@ actions:
       manual_override_active: "{{ (states(manual_marker_entity) | string).startswith('manual:') }}"
       retry_eligible: "{{ retry_time_window and last_run_before_today and not manual_override_active }}"
       run_allowed: >-
-        {{ trigger.id in ['run_time', 'alert']
+        {{ trigger.id == 'run_time'
            or alert_match
            or (trigger.id in ['retry', 'startup'] and retry_eligible) }}
       select_change_needed: "{{ chosen_strategy != 'none' and states(strategy_select_entity) != chosen_strategy }}"
