@@ -61,6 +61,8 @@ NUMBERS = {
     "reference_horizon_hours": ("compass", 24, 1, 48, "h"),
     "display_interval_minutes": ("compass", 60, 15, 60, "min"),
     "probe_kwh": ("compass", 1, 0.01, 5, "kWh"),
+    "flexible_load_max_power_kw": ("compass", 3, 0.01, 100, "kW"),
+    "flexible_price_degradation_percent": ("compass", 15, 0, 100, "%"),
     "boost_ceiling": ("compass", 0.01, -1000, 1000, "currency/kWh"),
     "cheap_percentile": ("compass", 25, 0, 100, "%"),
     "limit_percentile": ("compass", 75, 0, 100, "%"),
@@ -99,6 +101,7 @@ BOOLEANS = {
     "allow_fallback": ("forecast", False),
     "expose_costs": ("presentation", True),
     "expose_windows": ("presentation", True),
+    "flexible_load_enabled": ("compass", True),
     "notify_enabled": ("notifications", False),
 }
 CHOICES = {

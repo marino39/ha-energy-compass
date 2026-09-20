@@ -118,7 +118,7 @@
       </picture>
       <span>Energy<br>Compass</span>
     </a>
-    <p class="version">User guide · v0.1.2</p>
+    <p class="version">User guide · v0.1.15</p>
     <nav aria-label="Sections">
       <ul>
         <li><a href="#overview">Reading the compass</a></li>
@@ -139,7 +139,7 @@
     <header>
       <h1>Understand every recommendation.</h1>
       <p class="lead">What Energy Compass entities mean, how their values are calculated, and which assumptions sit behind the plan.</p>
-      <p>This guide describes the Home Assistant integration in <strong>v0.1.2</strong>. Examples use PLN; your installation uses its configured currency. Names are shown in English and Polish.</p>
+      <p>This guide describes the Home Assistant integration in <strong>v0.1.15</strong>. Examples use PLN; your installation uses its configured currency. Names are shown in English and Polish.</p>
     </header>
 
     <section id="overview" aria-labelledby="overview-title">
@@ -189,6 +189,7 @@
           <li>Planning, display and reference horizons: 24 hours each; configurable from 1 to 48 hours. Display and reference horizons cannot exceed the requested planning horizon.</li>
           <li>Display interval: 60 minutes; options are 15, 30 or 60 minutes. At most 96 distinct probes are allowed across display and reference horizons.</li>
           <li>Extra-energy probe: 1 kWh; UI range 0.01–5 kWh.</li>
+          <li>Flexible-load profiles: 3, 5, 10, 15 and 20 kWh; default power cap 3 kW and allowed block-price degradation 15%.</li>
           <li>BOOST ceiling: 0.01 currency/kWh. LIMIT floor: 1 currency/kWh. CHEAP/LIMIT percentiles: 25th/75th.</li>
           <li>Probe-failure policy: <code>absolute_fallback</code>. Grid charging, battery export and curtailment: disabled.</li>
           <li>Default budgets: 10 seconds for the base plan, 2 seconds per probe and 60 seconds overall. Performance allows up to 30 seconds for each solve and 300 seconds overall. Probes share the remaining time after the base calculation and a one-second finishing reserve.</li>
@@ -232,7 +233,7 @@
 
     <section id="entities" aria-labelledby="entities-title">
       <h2 id="entities-title">All 13 entities</h2>
-      <p>Each installation creates 11 sensor definitions and two binary sensors. Actual entity IDs depend on the entry name, language and registry history; use the entity picker or Developer tools → States to find yours. The keys below are stable internal identifiers, not literal entity IDs.</p>
+      <p>Each installation creates 12 sensor definitions and two binary sensors. Actual entity IDs depend on the entry name, language and registry history; use the entity picker or Developer tools → States to find yours. The keys below are stable internal identifiers, not literal entity IDs.</p>
       <p><strong>Expose costs</strong> controls the three cost sensors. <strong>Expose windows</strong> controls the four <code>next_…</code> sensors. A disabled entity is different from an enabled entity whose value is unavailable.</p>
       <section class="table-scroll" aria-label="Entity index" tabindex="0">
         <table>
@@ -241,6 +242,7 @@
           <tbody>
             <tr><th scope="row"><a href="#consumption_compass">Consumption compass</a></th><td>BOOST / CHEAP / NORMAL / LIMIT</td><td>How attractive is extra use in this display interval?</td></tr>
             <tr><th scope="row"><a href="#consumption_cost">Consumption cost</a></th><td>Currency/kWh</td><td>What does the extra-energy probe cost per kWh?</td></tr>
+            <tr><th scope="row"><a href="#flexible_energy_depth">Flexible energy depth</a></th><td>kWh</td><td>How much flexible energy fits before marginal price degrades materially?</td></tr>
             <tr><th scope="row"><a href="#next_change">Next change</a></th><td>Timestamp</td><td>When does the consumption level next change?</td></tr>
             <tr><th scope="row"><a href="#next_boost_start">Next boost start</a></th><td>Timestamp</td><td>When is the active or next BOOST window?</td></tr>
             <tr><th scope="row"><a href="#next_cheap_start">Next cheap start</a></th><td>Timestamp</td><td>When is the active or next CHEAP window?</td></tr>
@@ -282,6 +284,21 @@
         <p>The finite-difference cost of the current display interval: <code>(probe objective − baseline objective) / added kWh</code>. Positive means extra modeled cost; zero means no change; negative means the extra load reduces the modeled objective. This is neither an electricity-meter reading nor the current buy rate.</p>
         <p>Attributes include <code>method: finite_difference</code> and <code>probe_kwh</code>. Display rounding uses <code>cost_precision</code>; classification uses the unrounded value.</p>
         <p><strong>Unavailable:</strong> same gate as Consumption compass. Under the strict unavailable policy, this sensor is unavailable even if a numeric probe result survives in <code>plan.outlook</code> but its level is unknown.</p>
+      </article>
+
+      <article id="flexible_energy_depth">
+        <h3>Flexible energy depth</h3>
+        <p class="entity-meta"><code>flexible_energy_depth</code> · <span lang="pl">Głębokość elastycznego zużycia</span> · kWh</p>
+        <p>Five independent counterfactual plans add 3, 5, 10, 15 and 20 kWh of flexible demand to the same baseline. Each profile can schedule at up to the configured power cap, 3 kW by default. The optimizer includes tariffs, PV, battery losses and wear, terminal value, grid limits and operating constraints.</p>
+        <div class="formula">
+          <p>anchor price = (objective<sub>3</sub> − baseline objective) / 3</p>
+          <p>allowed block price = anchor price + 15% × |anchor price|</p>
+          <p>block price<sub>a→b</sub> = (incremental cost<sub>b</sub> − incremental cost<sub>a</sub>) / (b − a)</p>
+        </div>
+        <p>The published state is the largest consecutive profile whose next block stays at or below the allowed price. The first degraded or unknown block stops depth; a later stable block cannot skip that gap. Negative anchors use the same absolute-difference rule, so −0.10 permits values through −0.085. A zero anchor permits no unfavorable positive increase.</p>
+        <p>Attributes expose the 3 kWh anchor price, allowed block price, configured power and degradation, currency, and all profile summaries. Profiles are grouped as <code>small</code> (3/5 kWh), <code>medium</code> (10/15 kWh) and <code>large</code> (20 kWh). Each includes total incremental cost, average and marginal block prices, import/export and battery-throughput deltas, status, failure reason and nonzero schedule rows.</p>
+        <p>This sensor measures price depth, not whether electricity is cheap in absolute terms. A stable depth can still carry an expensive anchor price. Compare <code>anchor_price_per_kwh</code> with the tariff or household policy before starting a load.</p>
+        <p><strong>Unavailable:</strong> the baseline is invalid/expired, flexible-depth analysis is disabled, or the 3 kWh anchor cannot be solved within coverage, power and time limits.</p>
       </article>
 
       <article id="next_change">
@@ -352,6 +369,7 @@
             <tbody>
               <tr><th scope="row"><code>intervals</code></th><td>Baseline native slots: timestamps, prices, state, PV/load, grid flows, battery flows, curtailment and end SOC in kWh. Same fields described under Energy compass.</td></tr>
               <tr><th scope="row"><code>outlook</code></th><td>Display intervals with <code>start</code>, <code>end</code>, <code>cost_per_kwh</code> and <code>level</code>. Failed/uncovered probes contain null cost and level. Strict unavailable classification can retain a numeric cost with null level.</td></tr>
+              <tr><th scope="row"><code>flexible_load_profiles</code></th><td>Independent 3/5/10/15/20 kWh profile costs, statuses, deltas and nonzero schedules. Excluded from recorder history.</td></tr>
               <tr><th scope="row"><code>windows</code></th><td>Lists under <code>boost</code>, <code>cheap</code>, <code>limit</code> and <code>favorable</code>. Each window has start/end timestamps and the levels it contains.</td></tr>
               <tr><th scope="row"><code>favorable_windows</code></th><td>Combined adjacent BOOST/CHEAP windows; equivalent to <code>windows.favorable</code>.</td></tr>
               <tr><th scope="row"><code>window_status</code></th><td>Per-kind <code>active</code>, <code>upcoming</code> or <code>none_in_coverage</code>.</td></tr>
@@ -359,7 +377,7 @@
               <tr><th scope="row"><code>presentation</code></th><td>Configured colors, precision, label and cost/window exposure preferences.</td></tr>
               <tr><th scope="row"><code>notification_preferences</code></th><td>Opt-in preferences for the optional notification blueprint. The integration itself sends no messages.</td></tr>
               <tr><th scope="row"><code>monthly_charge_reporting_only</code></th><td>Configured fixed monthly charge, excluded from the optimizer and cost sensors.</td></tr>
-              <tr><th scope="row"><code>attribute_schema_version</code></th><td><code>1</code> for this release.</td></tr>
+              <tr><th scope="row"><code>attribute_schema_version</code></th><td><code>2</code>; adds flexible-load profiles.</td></tr>
             </tbody>
           </table>
         </section>

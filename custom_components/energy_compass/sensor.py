@@ -1,6 +1,10 @@
 """Advisory sensors with stable entry-scoped unique IDs."""
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
+from homeassistant.components.sensor import (
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 
@@ -11,6 +15,7 @@ from .sources.bindings import parse_timestamp
 SENSOR_KEYS = (
     "consumption_compass",
     "consumption_cost",
+    "flexible_energy_depth",
     "next_change",
     "next_boost_start",
     "next_cheap_start",
@@ -29,7 +34,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
     settings = entry.runtime_data.configuration["settings"]
     for key in SENSOR_KEYS:
         enabled = (
-            settings["expose_costs"]
+            settings.get("flexible_load_enabled", True)
+            if key == "flexible_energy_depth"
+            else settings["expose_costs"]
             if key in ("consumption_cost", "expected_net_cost", "expected_wear_cost")
             else settings["expose_windows"]
             if key.startswith("next_")
@@ -60,6 +67,13 @@ class EnergyCompassSensor(EnergyCompassEntity, SensorEntity):
         super().__init__(coordinator, key)
         if key.startswith("next_") or key == "plan":
             self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        if key == "flexible_energy_depth":
+            self._attr_device_class = SensorDeviceClass.ENERGY
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+            self._attr_native_unit_of_measurement = "kWh"
+            self._attr_entity_registry_enabled_default = coordinator.configuration[
+                "settings"
+            ].get("flexible_load_enabled", True)
         if key in ("consumption_cost", "expected_net_cost", "expected_wear_cost"):
             self._attr_native_unit_of_measurement = coordinator.configuration[
                 "currency"

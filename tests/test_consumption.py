@@ -5,6 +5,7 @@ import pytest
 
 from custom_components.energy_compass.engine.consumption import (
     analyze_consumption,
+    analyze_flexible_loads,
     classify_cost,
     consumption_outlook,
     machine_snapshot,
@@ -49,6 +50,87 @@ def grid_problem(prices, *, start=START, slot_minutes=60):
         (),
         "Europe/Warsaw",
     )
+
+
+def test_flexible_load_depth_stops_at_first_block_above_fifteen_percent():
+    source = grid_problem((1.0, 1.1, 1.2, 1.2, 1.2, 1.2, 1.2))
+
+    result = analyze_flexible_loads(
+        source,
+        solve(source),
+        settings=CompassSettings(),
+    )
+
+    assert tuple(profile.energy_kwh for profile in result.profiles) == (
+        3,
+        5,
+        10,
+        15,
+        20,
+    )
+    assert tuple(profile.group for profile in result.profiles) == (
+        "small",
+        "small",
+        "medium",
+        "medium",
+        "large",
+    )
+    assert result.anchor_price_per_kwh == pytest.approx(1.0)
+    assert result.allowed_block_price_per_kwh == pytest.approx(1.15)
+    assert result.profiles[1].block_cost_per_kwh == pytest.approx(1.1)
+    assert result.profiles[2].block_cost_per_kwh == pytest.approx(1.18)
+    assert tuple(profile.price_status for profile in result.profiles[:3]) == (
+        "ANCHOR",
+        "STABLE",
+        "DEGRADED",
+    )
+    assert result.depth_kwh == 5
+
+
+def test_flexible_load_negative_anchor_uses_symmetric_fifteen_percent_limit():
+    source = grid_problem((-1.0, -0.9, -0.8, -0.8, -0.8, -0.8, -0.8))
+
+    result = analyze_flexible_loads(
+        source,
+        solve(source),
+        settings=CompassSettings(),
+    )
+
+    assert result.anchor_price_per_kwh == pytest.approx(-1.0)
+    assert result.allowed_block_price_per_kwh == pytest.approx(-0.85)
+    assert result.profiles[1].block_cost_per_kwh == pytest.approx(-0.9)
+    assert result.profiles[1].price_status == "STABLE"
+    assert result.profiles[2].price_status == "DEGRADED"
+    assert result.depth_kwh == 5
+
+
+def test_flexible_load_anchor_unavailable_when_three_kwh_cannot_fit():
+    source = grid_problem((0.5,), slot_minutes=30)
+
+    result = analyze_flexible_loads(
+        source,
+        solve(source),
+        settings=CompassSettings(),
+    )
+
+    assert result.depth_kwh is None
+    assert result.anchor_price_per_kwh is None
+    assert result.allowed_block_price_per_kwh is None
+    assert all(profile.price_status == "UNKNOWN" for profile in result.profiles)
+    assert result.profiles[0].reason == "insufficient_time"
+
+
+def test_flexible_load_analysis_can_be_disabled():
+    source = grid_problem((0.5,) * 8)
+
+    result = analyze_flexible_loads(
+        source,
+        solve(source),
+        settings=CompassSettings(flexible_load_enabled=False),
+    )
+
+    assert result.depth_kwh is None
+    assert result.profiles == ()
 
 
 @pytest.mark.parametrize(
@@ -540,6 +622,8 @@ def test_repeated_local_hour_and_offset_serialization():
         CompassSettings(probe_kwh=0),
         CompassSettings(cheap_percentile=80, limit_percentile=20),
         CompassSettings(reference_horizon_hours=48, display_interval_minutes=15),
+        CompassSettings(flexible_load_max_power_kw=0),
+        CompassSettings(flexible_price_degradation_percent=101),
     ],
 )
 def test_unsupported_settings_fail_before_probing(settings):

@@ -290,3 +290,81 @@ def test_invalid_solver_time_budget_is_rejected(budget):
     source = problem(((0, 0, 0, 0),))
     with pytest.raises(InputError):
         solve(source, time_limit_s=budget)
+
+
+def test_flexible_load_uses_cheapest_slots_with_power_limit():
+    from custom_components.energy_compass.engine.models import FlexibleLoadRequest
+    from custom_components.energy_compass.engine.optimize import solve_flexible_load
+
+    source = problem(((0.5, 0, 0, 0), (0.1, 0, 0, 0), (0.2, 0, 0, 0)))
+
+    result = solve_flexible_load(
+        source,
+        FlexibleLoadRequest(energy_kwh=4, max_power_kw=3),
+    )
+
+    assert result.schedule_kwh == pytest.approx((0, 3, 1))
+    assert sum(result.schedule_kwh) == pytest.approx(4)
+    assert tuple(flow.grid_import_kwh for flow in result.plan.flows) == pytest.approx(
+        result.schedule_kwh
+    )
+    assert result.plan.objective == pytest.approx(0.5)
+
+
+def test_flexible_load_rejects_target_above_time_and_power_capacity():
+    from custom_components.energy_compass.engine.models import FlexibleLoadRequest
+    from custom_components.energy_compass.engine.optimize import solve_flexible_load
+
+    source = problem(((0.2, 0, 0, 0),))
+
+    with pytest.raises(SolveError) as error:
+        solve_flexible_load(source, FlexibleLoadRequest(3.1, 3))
+
+    assert error.value.reason == "infeasible"
+
+
+@pytest.mark.parametrize(
+    "energy,power",
+    [(0, 3), (-1, 3), (float("nan"), 3), (3, 0), (3, float("inf"))],
+)
+def test_flexible_load_request_must_be_finite_and_positive(energy, power):
+    from custom_components.energy_compass.engine.models import FlexibleLoadRequest
+    from custom_components.energy_compass.engine.optimize import solve_flexible_load
+
+    with pytest.raises(InputError, match="finite and positive"):
+        solve_flexible_load(
+            problem(((0.2, 0, 0, 0),)),
+            FlexibleLoadRequest(energy, power),
+        )
+
+
+def test_flexible_load_can_use_battery_between_cheap_and_expensive_slots():
+    from custom_components.energy_compass.engine.models import FlexibleLoadRequest
+    from custom_components.energy_compass.engine.optimize import solve_flexible_load
+
+    source = problem(
+        ((0.1, 0, 0, 0), (1.0, 0, 0, 0)),
+        battery=battery(),
+    )
+
+    result = solve_flexible_load(source, FlexibleLoadRequest(5, 3))
+
+    assert result.schedule_kwh == pytest.approx((3, 2))
+    assert result.plan.flows[0].charge_kwh == pytest.approx(2)
+    assert result.plan.flows[1].discharge_kwh == pytest.approx(2)
+    assert result.plan.objective == pytest.approx(0.7)
+
+
+def test_flexible_load_can_use_battery_for_load_when_export_is_disabled():
+    from custom_components.energy_compass.engine.models import FlexibleLoadRequest
+    from custom_components.energy_compass.engine.optimize import solve_flexible_load
+
+    source = problem(
+        ((0.1, 0, 0, 0), (1.0, 0, 0, 0)),
+        battery=battery(allow_battery_export=False),
+    )
+
+    result = solve_flexible_load(source, FlexibleLoadRequest(5, 3))
+
+    assert result.plan.flows[1].discharge_kwh == pytest.approx(2)
+    assert result.plan.flows[1].grid_export_kwh == pytest.approx(0)

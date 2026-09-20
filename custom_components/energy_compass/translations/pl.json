@@ -207,6 +207,9 @@
           "reference_horizon_hours": "Horyzont percentyli",
           "display_interval_minutes": "Rozdzielczość prezentacji",
           "probe_kwh": "Energia próby zużycia",
+          "flexible_load_max_power_kw": "Maksymalna moc elastycznego odbiornika",
+          "flexible_price_degradation_percent": "Dopuszczalne pogorszenie ceny elastycznego zużycia",
+          "flexible_load_enabled": "Włącz głębokość elastycznego zużycia",
           "boost_ceiling": "Próg zwiększania zużycia",
           "cheap_percentile": "Percentyl taniego okresu",
           "limit_percentile": "Percentyl ograniczenia",
@@ -214,7 +217,10 @@
           "short_coverage": "Polityka błędu próby"
         },
         "data_description": {
-          "short_coverage": "Używana, gdy próba pełnego przedziału odniesienia nie powiedzie się lub przekroczy budżet czasu. Nieudana próba skróconego końca pozostaje nieznana, a udane pełne przedziały zachowują percentyle."
+          "short_coverage": "Używana, gdy próba pełnego przedziału odniesienia nie powiedzie się lub przekroczy budżet czasu. Nieudana próba skróconego końca pozostaje nieznana, a udane pełne przedziały zachowują percentyle.",
+          "flexible_load_max_power_kw": "Maksymalna średnia moc dostępna dla każdego profilu elastycznego zużycia.",
+          "flexible_price_degradation_percent": "Maksymalne niekorzystne pogorszenie ceny krańcowego bloku względem profilu 3 kWh.",
+          "flexible_load_enabled": "Obliczaj niezależne profile 3, 5, 10, 15 i 20 kWh."
         },
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
       },
@@ -581,6 +587,9 @@
           "reference_horizon_hours": "Horyzont percentyli",
           "display_interval_minutes": "Rozdzielczość prezentacji",
           "probe_kwh": "Energia próby zużycia",
+          "flexible_load_max_power_kw": "Maksymalna moc elastycznego odbiornika",
+          "flexible_price_degradation_percent": "Dopuszczalne pogorszenie ceny elastycznego zużycia",
+          "flexible_load_enabled": "Włącz głębokość elastycznego zużycia",
           "boost_ceiling": "Próg zwiększania zużycia",
           "cheap_percentile": "Percentyl taniego okresu",
           "limit_percentile": "Percentyl ograniczenia",
@@ -588,7 +597,10 @@
           "short_coverage": "Polityka błędu próby"
         },
         "data_description": {
-          "short_coverage": "Używana, gdy próba pełnego przedziału odniesienia nie powiedzie się lub przekroczy budżet czasu. Nieudana próba skróconego końca pozostaje nieznana, a udane pełne przedziały zachowują percentyle."
+          "short_coverage": "Używana, gdy próba pełnego przedziału odniesienia nie powiedzie się lub przekroczy budżet czasu. Nieudana próba skróconego końca pozostaje nieznana, a udane pełne przedziały zachowują percentyle.",
+          "flexible_load_max_power_kw": "Maksymalna średnia moc dostępna dla każdego profilu elastycznego zużycia.",
+          "flexible_price_degradation_percent": "Maksymalne niekorzystne pogorszenie ceny krańcowego bloku względem profilu 3 kWh.",
+          "flexible_load_enabled": "Obliczaj niezależne profile 3, 5, 10, 15 i 20 kWh."
         },
         "description": "Zmień wartości stałe lub użyj edytora pomocników. {detail}"
       },
@@ -798,6 +810,9 @@
             }
           }
         }
+      },
+      "flexible_energy_depth": {
+        "name": "Głębokość elastycznego zużycia"
       },
       "next_change": {
         "name": "Następna zmiana",
