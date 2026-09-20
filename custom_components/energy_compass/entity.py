@@ -20,6 +20,7 @@ PLAN_ATTRIBUTES = frozenset(
         "input_ages",
         "measurements",
         "load_quality",
+        "flexible_load_profiles",
     }
 )
 
@@ -80,6 +81,8 @@ class EnergyCompassEntity(CoordinatorEntity):
             return False
         if self.key in ("consumption_compass", "consumption_cost"):
             return data.get("guidance_valid", False)
+        if self.key == "flexible_energy_depth":
+            return data.get("flexible_energy_depth") is not None
         if self.key == "next_change":
             return next_change(data) is not None
         if self.key.startswith("next_"):
@@ -134,6 +137,7 @@ class EnergyCompassEntity(CoordinatorEntity):
                         "presentation",
                         "notification_preferences",
                         "dispatch_policy",
+                        "flexible_load_profiles",
                     )
                 }
             )
@@ -148,13 +152,32 @@ class EnergyCompassEntity(CoordinatorEntity):
                     else "upcoming"
                 )
             attrs["window_status"] = window_status
-            attrs["attribute_schema_version"] = 1
+            attrs["attribute_schema_version"] = 2
             attrs["monthly_charge_reporting_only"] = data.get(
                 "monthly_charge_reporting_only"
             )
             attrs["load_quality"] = quality.get("load")
         elif self.key == "consumption_cost":
             attrs.update(method="finite_difference", probe_kwh=data.get("probe_kwh"))
+        elif self.key == "flexible_energy_depth":
+            profiles = data.get("flexible_load_profiles", [])
+            attrs.update(
+                reason=(
+                    profiles[0].get("reason")
+                    if profiles and profiles[0].get("reason")
+                    else attrs["reason"]
+                ),
+                anchor_energy_kwh=3,
+                anchor_price_per_kwh=data.get("flexible_anchor_price_per_kwh"),
+                allowed_block_price_per_kwh=data.get(
+                    "flexible_allowed_block_price_per_kwh"
+                ),
+                degradation_percent=data.get("flexible_price_degradation_percent"),
+                max_power_kw=data.get("flexible_load_max_power_kw"),
+                currency=data.get("currency"),
+                price_unit=f"{data.get('currency')}/kWh",
+                flexible_load_profiles=profiles,
+            )
         elif self.key == "energy_compass" and data.get("intervals"):
             attrs.update(data["intervals"][0])
         elif self.key == "next_change":

@@ -19,6 +19,7 @@ from .daily_export import (
 )
 from .engine.consumption import (
     analyze_consumption,
+    analyze_flexible_loads,
     machine_snapshot,
     merge_windows,
     serialize_opportunity,
@@ -630,6 +631,13 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
     analysis = analyze_consumption(
         problem, plan, settings=compass, budget_s=max(0, remaining - 1.0)
     )
+    flexible_remaining = values["total_time_limit_s"] - (perf_counter() - started)
+    flexible = analyze_flexible_loads(
+        problem,
+        plan,
+        settings=compass,
+        budget_s=max(0, flexible_remaining - 1.0),
+    )
     if perf_counter() - started > values["total_time_limit_s"]:
         raise SolveError("timeout")
     zone = ZoneInfo(config["timezone"])
@@ -677,6 +685,24 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
             * (problem.battery.wear_per_kwh if problem.battery else 0)
         )
     outlook = [serialize_opportunity(item) for item in analysis.opportunities]
+    flexible_profiles = []
+    for profile in flexible.profiles:
+        row = asdict(profile)
+        schedule = row.pop("schedule_kwh")
+        row["schedule"] = (
+            [
+                {
+                    "start": slot.start.astimezone(zone).isoformat(),
+                    "end": slot.end.astimezone(zone).isoformat(),
+                    "energy_kwh": energy_kwh,
+                }
+                for slot, energy_kwh in zip(problem.slots, schedule, strict=True)
+                if energy_kwh > 1e-6
+            ]
+            if schedule
+            else []
+        )
+        flexible_profiles.append(row)
     guidance_valid = bool(outlook and outlook[0]["level"] is not None)
     if not guidance_valid:
         quality["warnings"].append("current_guidance_unavailable")
@@ -700,6 +726,14 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
         "calibration": values["calibration"],
         "capacity_calibration": values["capacity_calibration"],
         "probe_kwh": values["probe_kwh"],
+        "flexible_energy_depth": flexible.depth_kwh,
+        "flexible_anchor_price_per_kwh": flexible.anchor_price_per_kwh,
+        "flexible_allowed_block_price_per_kwh": (flexible.allowed_block_price_per_kwh),
+        "flexible_load_max_power_kw": values["flexible_load_max_power_kw"],
+        "flexible_price_degradation_percent": values[
+            "flexible_price_degradation_percent"
+        ],
+        "flexible_load_profiles": flexible_profiles,
         "currency": config["currency"],
         "expected_net_cost": net_cost,
         "expected_wear_cost": wear_cost,

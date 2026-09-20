@@ -6,6 +6,7 @@ def test_public_contract():
     assert set(SENSOR_KEYS) == {
         "consumption_compass",
         "consumption_cost",
+        "flexible_energy_depth",
         "next_change",
         "next_boost_start",
         "next_cheap_start",
@@ -20,6 +21,7 @@ def test_public_contract():
         "intervals",
         "outlook",
         "favorable_windows",
+        "flexible_load_profiles",
         "load_quality",
     } <= PLAN_ATTRIBUTES
 
@@ -43,6 +45,10 @@ async def test_absent_window_is_unavailable_with_coverage_status(
     assert await hass.config_entries.async_setup(entry.entry_id)
     window = hass.states.get("sensor.windows_next_limit_start")
     assert window.state == "unavailable"
+    depth = hass.states.get("sensor.windows_flexible_energy_depth")
+    assert depth.state == "3.0"
+    assert depth.attributes["anchor_energy_kwh"] == 3
+    assert len(depth.attributes["flexible_load_profiles"]) == 5
     assert (
         hass.states.get("sensor.windows_plan").attributes["window_status"]["limit"]
         == "none_in_coverage"

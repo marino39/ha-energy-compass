@@ -127,6 +127,10 @@ def test_short_next_day_coverage_does_not_invent_prices():
     assert len(result["outlook"]) == 24
     assert result["outlook"][1]["level"] is not None
     assert result["outlook"][2]["level"] is None
+    assert result["flexible_energy_depth"] == 5
+    assert tuple(
+        profile["energy_kwh"] for profile in result["flexible_load_profiles"]
+    ) == (3, 5, 10, 15, 20)
     config["settings"]["short_coverage"] = "unavailable"
     strict_result = compute(config, states, now)
     assert strict_result["guidance_valid"] is True
@@ -142,7 +146,7 @@ def test_total_budget_subtracts_base_elapsed_and_finish_reserve():
     with (
         patch(
             "custom_components.energy_compass.runtime.perf_counter",
-            side_effect=[0, 7, 8],
+            side_effect=[0, 7, 8, 9],
         ),
         patch(
             "custom_components.energy_compass.runtime.analyze_consumption",

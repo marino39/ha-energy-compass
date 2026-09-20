@@ -1,5 +1,6 @@
 """Bounded advisory dispatch for grid, solar, and optional battery energy."""
 
+from dataclasses import replace
 from datetime import UTC
 from math import isfinite
 from zoneinfo import ZoneInfo
@@ -12,7 +13,15 @@ from .charge_price import price_allows_grid_charge
 from .daily_energy import daily_export_rows, day_fractions
 from .dispatch_policy import MODES, constrain_modes, validate_modes
 from .export_benefit import constrain_export_benefit, validate_export_benefit
-from .models import Flow, InputError, Plan, Problem, SolveError
+from .models import (
+    FlexibleLoadPlan,
+    FlexibleLoadRequest,
+    Flow,
+    InputError,
+    Plan,
+    Problem,
+    SolveError,
+)
 from .normalize import validate_problem
 
 _TOL = 1e-6
@@ -93,6 +102,7 @@ def _validate_solution(
     daily_fractions: list[dict[str, float]],
     budgets: dict[str, float],
 ) -> None:
+    flexible_load = "flex_load" in vectors[0]
     _check(
         len(values) == max(max(vector.values()) for vector in vectors) + 1,
         "variable count",
@@ -119,6 +129,7 @@ def _validate_solution(
             "grid_mode",
             "battery_mode",
             "reserve_discharge",
+            "load_above_solar",
             *(f"mode_{mode}" for mode in MODES),
         ):
             if name in variables:
@@ -131,6 +142,7 @@ def _validate_solution(
                 sum(value(f"mode_{mode}") for mode in MODES), 1, "one operating mode"
             )
         gin, gout, curt = value("gin"), value("gout"), value("curt")
+        extra_load = value("flex_load") if flexible_load else 0.0
         charge = value("bc") if battery else 0.0
         discharge = value("bd") if battery else 0.0
         _check(
@@ -160,7 +172,7 @@ def _validate_solution(
         )
         _close(
             slot.pv_kwh - curt + gin + discharge,
-            slot.load_kwh + gout + charge,
+            slot.load_kwh + extra_load + gout + charge,
             "site balance",
         )
         _close(
@@ -176,7 +188,7 @@ def _validate_solution(
             "grid allocation",
         )
         _close(
-            slot.load_kwh,
+            slot.load_kwh + extra_load,
             value("pv_load")
             + value("grid_load")
             + (value("battery_load") if battery else 0),
@@ -212,18 +224,24 @@ def _validate_solution(
             ):
                 _check(value("grid_battery") <= _TOL, "grid charging capability")
                 _check(
-                    charge <= max(slot.pv_kwh - slot.load_kwh, 0) + _TOL,
+                    charge <= max(slot.pv_kwh - slot.load_kwh - extra_load, 0) + _TOL,
                     "solar surplus charging",
                 )
             if not price_allows_grid_charge(problem, slot):
                 _check(
-                    charge <= max(slot.pv_kwh - curt - slot.load_kwh, 0) + _TOL,
+                    charge
+                    <= max(
+                        slot.pv_kwh - curt - slot.load_kwh - extra_load,
+                        0,
+                    )
+                    + _TOL,
                     "price ceiling after curtailment",
                 )
             if not battery.allow_battery_export:
                 _check(value("battery_grid") <= _TOL, "battery export capability")
                 _check(
-                    discharge <= max(slot.load_kwh - slot.pv_kwh, 0) + _TOL,
+                    discharge
+                    <= max(slot.load_kwh + extra_load - slot.pv_kwh, 0) + _TOL,
                     "residual load discharge",
                 )
             discharge_floor = min(
@@ -258,10 +276,51 @@ def _validate_solution(
             _check(previous_energy >= battery.initial_kwh - _TOL, "terminal SOC")
         for day, total in spent.items():
             _check(total <= budgets[day] + _TOL, f"daily throughput {day}")
+    if flexible_load:
+        _close(
+            sum(float(values[v["flex_load"]]) for v in vectors),
+            float(values[vectors[0]["flex_target"]]),
+            "flexible load energy",
+        )
 
 
 def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
     """Find a bounded least-cost advisory plan or raise a typed solver error."""
+    return _solve(problem, flexible_load=None, time_limit_s=time_limit_s).plan
+
+
+def solve_flexible_load(
+    problem: Problem,
+    request: FlexibleLoadRequest,
+    *,
+    time_limit_s: float = 10.0,
+) -> FlexibleLoadPlan:
+    """Find least-cost dispatch and schedule for one flexible energy target."""
+    try:
+        energy_kwh = float(request.energy_kwh)
+        max_power_kw = float(request.max_power_kw)
+    except (AttributeError, TypeError, ValueError) as err:
+        raise InputError("flexible load values must be finite and positive") from err
+    if (
+        not isfinite(energy_kwh)
+        or energy_kwh <= 0
+        or not isfinite(max_power_kw)
+        or max_power_kw <= 0
+    ):
+        raise InputError("flexible load values must be finite and positive")
+    return _solve(
+        problem,
+        flexible_load=FlexibleLoadRequest(energy_kwh, max_power_kw),
+        time_limit_s=time_limit_s,
+    )
+
+
+def _solve(
+    problem: Problem,
+    *,
+    flexible_load: FlexibleLoadRequest | None,
+    time_limit_s: float,
+) -> FlexibleLoadPlan:
     validate_problem(problem)
     try:
         time_limit = float(time_limit_s)
@@ -299,6 +358,10 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
             "grid_load": model.variable(upper=problem.site.grid_import_kw * duration),
             "grid_mode": model.variable(binary=True),
         }
+        if flexible_load:
+            variables["flex_load"] = model.variable(
+                upper=flexible_load.max_power_kw * duration
+            )
         if battery:
             variables.update(
                 {
@@ -370,6 +433,8 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
         model.constrain(solar, slot.pv_kwh, slot.pv_kwh)
         grid = {v["gin"]: 1, v["grid_load"]: -1}
         load = {v["pv_load"]: 1, v["grid_load"]: 1}
+        if flexible_load:
+            load[v["flex_load"]] = -1
         export = {v["gout"]: 1, v["pv_grid"]: -1}
         if battery:
             grid[v["grid_battery"]] = -1
@@ -401,12 +466,53 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
             initial = battery.initial_kwh if previous_energy_index is None else 0
             model.constrain(energy, initial, initial)
             previous_energy_index = v["energy"]
+            solar_surplus = slot.pv_kwh - slot.load_kwh
+            load_above_solar = None
+            if (
+                flexible_load
+                and solar_surplus > 0
+                and (
+                    not battery.allow_grid_charge
+                    or not price_allows_grid_charge(problem, slot)
+                    or not battery.allow_battery_export
+                )
+            ):
+                load_above_solar = model.variable(binary=True)
+                v["load_above_solar"] = load_above_solar
+                model.constrain(
+                    {
+                        v["flex_load"]: 1,
+                        load_above_solar: -model.upper[v["flex_load"]],
+                    },
+                    -np.inf,
+                    solar_surplus,
+                )
+                model.constrain(
+                    {v["flex_load"]: 1, load_above_solar: -solar_surplus},
+                    0,
+                    np.inf,
+                )
             if not battery.allow_grid_charge or not price_allows_grid_charge(
                 problem, slot
             ):
-                model.constrain(
-                    {v["bc"]: 1}, -np.inf, max(slot.pv_kwh - slot.load_kwh, 0)
-                )
+                if not flexible_load or solar_surplus <= 0:
+                    model.constrain({v["bc"]: 1}, -np.inf, max(solar_surplus, 0))
+                else:
+                    charge_cap = model.upper[v["bc"]]
+                    model.constrain(
+                        {
+                            v["bc"]: 1,
+                            v["flex_load"]: 1,
+                            load_above_solar: -model.upper[v["flex_load"]],
+                        },
+                        -np.inf,
+                        solar_surplus,
+                    )
+                    model.constrain(
+                        {v["bc"]: 1, load_above_solar: charge_cap},
+                        -np.inf,
+                        charge_cap,
+                    )
             if (
                 not price_allows_grid_charge(problem, slot)
                 and problem.site.allow_curtailment
@@ -419,14 +525,52 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
                     max(slot.pv_kwh - slot.load_kwh, 0) + slot.pv_kwh,
                 )
             if not battery.allow_battery_export:
-                model.constrain(
-                    {v["bd"]: 1}, -np.inf, max(slot.load_kwh - slot.pv_kwh, 0)
-                )
+                if not flexible_load:
+                    model.constrain(
+                        {v["bd"]: 1},
+                        -np.inf,
+                        max(slot.load_kwh - slot.pv_kwh, 0),
+                    )
+                elif solar_surplus <= 0:
+                    model.constrain(
+                        {v["bd"]: 1, v["flex_load"]: -1},
+                        -np.inf,
+                        -solar_surplus,
+                    )
+                else:
+                    discharge_cap = model.upper[v["bd"]]
+                    model.constrain(
+                        {v["bd"]: 1, load_above_solar: -discharge_cap},
+                        -np.inf,
+                        0,
+                    )
+                    model.constrain(
+                        {
+                            v["bd"]: 1,
+                            v["flex_load"]: -1,
+                            load_above_solar: discharge_cap + solar_surplus,
+                        },
+                        -np.inf,
+                        discharge_cap,
+                    )
         model.constrain(grid, 0, 0)
         model.constrain(load, slot.load_kwh, slot.load_kwh)
         model.constrain(export, 0, 0)
         vectors.append(variables)
         daily_fractions.append(day_fractions(slot.start, slot.end, zone))
+
+    if flexible_load:
+        target = model.variable(upper=flexible_load.energy_kwh)
+        model.lower[target] = flexible_load.energy_kwh
+        vectors[0]["flex_target"] = target
+        model.constrain(
+            {
+                **{variables["flex_load"]: 1 for variables in vectors},
+                target: -1,
+            },
+            0,
+            0,
+        )
 
     if problem.limit_export_to_pv:
         for row in daily_export_rows(problem):
@@ -441,7 +585,9 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
                 row["remaining_export_kwh"],
             )
     if battery:
-        constrain_modes(model, problem, vectors)
+        constrain_modes(
+            model, problem, vectors, flexible_load=flexible_load is not None
+        )
         if problem.terminal_mode == "preserve_initial":
             model.constrain({previous_energy_index: 1}, battery.initial_kwh, np.inf)
         for day, budget in budgets.items():
@@ -479,7 +625,18 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
         )
         for v in vectors
     )
-    validate_modes(problem, flows)
+    mode_problem = (
+        replace(
+            problem,
+            slots=tuple(
+                replace(slot, load_kwh=slot.load_kwh + float(values[v["flex_load"]]))
+                for slot, v in zip(problem.slots, vectors, strict=True)
+            ),
+        )
+        if flexible_load
+        else problem
+    )
+    validate_modes(mode_problem, flows)
     grid_cost = sum(
         slot.buy_per_kwh * flow.grid_import_kwh
         - slot.sell_per_kwh * flow.grid_export_kwh
@@ -501,6 +658,15 @@ def solve(problem: Problem, *, time_limit_s: float = 10.0) -> Plan:
     objective = grid_cost + wear_cost - terminal_credit
     _check(isfinite(objective), "nonfinite objective")
     episodes, reserve = validate_export_benefit(problem, vectors, values)
-    return Plan(
-        flows, objective, grid_cost, wear_cost, terminal_credit, episodes, reserve
+    return FlexibleLoadPlan(
+        Plan(
+            flows,
+            objective,
+            grid_cost,
+            wear_cost,
+            terminal_credit,
+            episodes,
+            reserve,
+        ),
+        tuple(float(values[v["flex_load"]]) for v in vectors) if flexible_load else (),
     )

@@ -100,6 +100,18 @@ class Plan:
 
 
 @dataclass(frozen=True)
+class FlexibleLoadRequest:
+    energy_kwh: float
+    max_power_kw: float
+
+
+@dataclass(frozen=True)
+class FlexibleLoadPlan:
+    plan: Plan
+    schedule_kwh: tuple[float, ...]
+
+
+@dataclass(frozen=True)
 class Opportunity:
     start: datetime
     end: datetime
@@ -149,3 +161,6 @@ class CompassSettings:
     limit_floor: float = 0.80
     short_coverage: Literal["absolute_fallback", "unavailable"] = "absolute_fallback"
     probe_time_limit_s: float = 2.0
+    flexible_load_enabled: bool = True
+    flexible_load_max_power_kw: float = 3.0
+    flexible_price_degradation_percent: float = 15.0

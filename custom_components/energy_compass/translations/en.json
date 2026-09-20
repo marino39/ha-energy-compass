@@ -207,6 +207,9 @@
           "reference_horizon_hours": "Reference horizon hours",
           "display_interval_minutes": "Display interval minutes",
           "probe_kwh": "Probe kwh",
+          "flexible_load_max_power_kw": "Flexible load maximum power",
+          "flexible_price_degradation_percent": "Allowed flexible-load price degradation",
+          "flexible_load_enabled": "Enable flexible energy depth",
           "boost_ceiling": "Boost ceiling",
           "cheap_percentile": "Cheap percentile",
           "limit_percentile": "Limit percentile",
@@ -214,7 +217,10 @@
           "short_coverage": "Probe failure policy"
         },
         "data_description": {
-          "short_coverage": "Used when a full reference-interval probe fails or its compute budget expires. A failed clipped tail stays unknown while successful full intervals keep percentile guidance."
+          "short_coverage": "Used when a full reference-interval probe fails or its compute budget expires. A failed clipped tail stays unknown while successful full intervals keep percentile guidance.",
+          "flexible_load_max_power_kw": "Maximum average power available to each flexible-load profile.",
+          "flexible_price_degradation_percent": "Maximum unfavorable marginal block-price change from the 3 kWh anchor.",
+          "flexible_load_enabled": "Calculate independent 3, 5, 10, 15 and 20 kWh profiles."
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}"
       },
@@ -581,6 +587,9 @@
           "reference_horizon_hours": "Reference horizon hours",
           "display_interval_minutes": "Display interval minutes",
           "probe_kwh": "Probe kwh",
+          "flexible_load_max_power_kw": "Flexible load maximum power",
+          "flexible_price_degradation_percent": "Allowed flexible-load price degradation",
+          "flexible_load_enabled": "Enable flexible energy depth",
           "boost_ceiling": "Boost ceiling",
           "cheap_percentile": "Cheap percentile",
           "limit_percentile": "Limit percentile",
@@ -588,7 +597,10 @@
           "short_coverage": "Probe failure policy"
         },
         "data_description": {
-          "short_coverage": "Used when a full reference-interval probe fails or its compute budget expires. A failed clipped tail stays unknown while successful full intervals keep percentile guidance."
+          "short_coverage": "Used when a full reference-interval probe fails or its compute budget expires. A failed clipped tail stays unknown while successful full intervals keep percentile guidance.",
+          "flexible_load_max_power_kw": "Maximum average power available to each flexible-load profile.",
+          "flexible_price_degradation_percent": "Maximum unfavorable marginal block-price change from the 3 kWh anchor.",
+          "flexible_load_enabled": "Calculate independent 3, 5, 10, 15 and 20 kWh profiles."
         },
         "description": "Edit fixed values or use the numeric helper editor. {detail}"
       },
@@ -798,6 +810,9 @@
             }
           }
         }
+      },
+      "flexible_energy_depth": {
+        "name": "Flexible energy depth"
       },
       "next_change": {
         "name": "Next change",

@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from .machine_state import machine_state
 from .models import (
     CompassSettings,
+    FlexibleLoadRequest,
     Flow,
     InputError,
     Level,
@@ -21,13 +22,14 @@ from .models import (
     Window,
 )
 from .normalize import aware, validate_problem
-from .optimize import solve
+from .optimize import solve, solve_flexible_load
 
 _UTC = UTC
 _TOL = 1e-6
 _PRICE_REL_TOL = 1e-12
 _PRICE_ABS_TOL = 1e-12
 _MAX_PROBES = 96
+_FLEXIBLE_LOAD_TARGETS = (3.0, 5.0, 10.0, 15.0, 20.0)
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,29 @@ class ConsumptionAnalysis:
     classification_mode: str
     coverage_reason: str
     reference_complete: bool
+
+
+@dataclass(frozen=True)
+class FlexibleLoadProfile:
+    energy_kwh: float
+    group: str
+    incremental_cost: float | None
+    average_cost_per_kwh: float | None
+    block_cost_per_kwh: float | None
+    price_status: str
+    reason: str | None
+    grid_import_delta_kwh: float | None
+    grid_export_delta_kwh: float | None
+    battery_throughput_delta_kwh: float | None
+    schedule_kwh: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class FlexibleLoadAnalysis:
+    depth_kwh: float | None
+    anchor_price_per_kwh: float | None
+    allowed_block_price_per_kwh: float | None
+    profiles: tuple[FlexibleLoadProfile, ...]
 
 
 def _finite(value: object, name: str) -> float:
@@ -77,10 +102,161 @@ def _settings(settings: CompassSettings, budget_s: float) -> float:
     probe_time = _finite(settings.probe_time_limit_s, "probe_time_limit_s")
     if not 0 < probe_time <= 30:
         raise InputError("probe_time_limit_s must be in (0, 30]")
+    if type(settings.flexible_load_enabled) is not bool:
+        raise InputError("flexible_load_enabled must be boolean")
+    flexible_power = _finite(
+        settings.flexible_load_max_power_kw, "flexible_load_max_power_kw"
+    )
+    if not 0 < flexible_power <= 100:
+        raise InputError("flexible_load_max_power_kw must be in (0, 100]")
+    degradation = _finite(
+        settings.flexible_price_degradation_percent,
+        "flexible_price_degradation_percent",
+    )
+    if not 0 <= degradation <= 100:
+        raise InputError("flexible_price_degradation_percent must be in [0, 100]")
     budget = _finite(budget_s, "budget_s")
     if not 0 <= budget <= 300:
         raise InputError("budget_s must be in [0, 300]")
     return budget
+
+
+def _flexible_group(energy_kwh: float) -> str:
+    if energy_kwh <= 5:
+        return "small"
+    if energy_kwh <= 15:
+        return "medium"
+    return "large"
+
+
+def analyze_flexible_loads(
+    problem: Problem,
+    plan: Plan,
+    *,
+    settings: CompassSettings,
+    budget_s: float = 50.0,
+) -> FlexibleLoadAnalysis:
+    """Measure cost depth for independently optimized flexible energy targets."""
+    budget = _settings(settings, budget_s)
+    validate_problem(problem)
+    if len(plan.flows) != len(problem.slots) or not isfinite(plan.objective):
+        raise InputError("baseline plan does not match problem")
+    if not settings.flexible_load_enabled:
+        return FlexibleLoadAnalysis(None, None, None, ())
+
+    deadline = perf_counter() + budget
+    capacity_kwh = sum(
+        settings.flexible_load_max_power_kw
+        * (slot.end.astimezone(_UTC) - slot.start.astimezone(_UTC)).total_seconds()
+        / 3600
+        for slot in problem.slots
+    )
+    profiles: list[FlexibleLoadProfile] = []
+    previous_energy: float | None = None
+    previous_cost: float | None = None
+    anchor_price: float | None = None
+    allowed_price: float | None = None
+    depth: float | None = None
+    chain_open = True
+    baseline_grid_import = sum(flow.grid_import_kwh for flow in plan.flows)
+    baseline_grid_export = sum(flow.grid_export_kwh for flow in plan.flows)
+    baseline_throughput = sum(
+        flow.charge_kwh + flow.discharge_kwh for flow in plan.flows
+    )
+
+    for energy_kwh in _FLEXIBLE_LOAD_TARGETS:
+        reason = None
+        candidate = None
+        if energy_kwh > capacity_kwh + _TOL:
+            reason = "insufficient_time"
+        else:
+            remaining = deadline - perf_counter()
+            if remaining <= 0:
+                reason = "timeout"
+            else:
+                try:
+                    candidate = solve_flexible_load(
+                        problem,
+                        FlexibleLoadRequest(
+                            energy_kwh,
+                            settings.flexible_load_max_power_kw,
+                        ),
+                        time_limit_s=min(remaining, settings.probe_time_limit_s),
+                    )
+                except SolveError as err:
+                    reason = err.reason
+        if candidate is None or perf_counter() > deadline:
+            reason = reason or "timeout"
+            profiles.append(
+                FlexibleLoadProfile(
+                    energy_kwh,
+                    _flexible_group(energy_kwh),
+                    None,
+                    None,
+                    None,
+                    "UNKNOWN",
+                    reason,
+                    None,
+                    None,
+                    None,
+                    (),
+                )
+            )
+            previous_energy = previous_cost = None
+            chain_open = False
+            continue
+
+        incremental_cost = candidate.plan.objective - plan.objective
+        average_cost = incremental_cost / energy_kwh
+        block_cost = (
+            None
+            if previous_energy is None or previous_cost is None
+            else (incremental_cost - previous_cost) / (energy_kwh - previous_energy)
+        )
+        if energy_kwh == _FLEXIBLE_LOAD_TARGETS[0]:
+            anchor_price = average_cost
+            allowed_price = anchor_price + (
+                settings.flexible_price_degradation_percent / 100 * abs(anchor_price)
+            )
+            status = "ANCHOR"
+            depth = energy_kwh
+        elif block_cost is None or allowed_price is None:
+            status = "UNKNOWN"
+            chain_open = False
+        elif block_cost <= allowed_price + _TOL:
+            status = "STABLE"
+            if chain_open:
+                depth = energy_kwh
+        else:
+            status = "DEGRADED"
+            chain_open = False
+        profiles.append(
+            FlexibleLoadProfile(
+                energy_kwh,
+                _flexible_group(energy_kwh),
+                incremental_cost,
+                average_cost,
+                block_cost,
+                status,
+                None,
+                sum(flow.grid_import_kwh for flow in candidate.plan.flows)
+                - baseline_grid_import,
+                sum(flow.grid_export_kwh for flow in candidate.plan.flows)
+                - baseline_grid_export,
+                sum(
+                    flow.charge_kwh + flow.discharge_kwh
+                    for flow in candidate.plan.flows
+                )
+                - baseline_throughput,
+                candidate.schedule_kwh,
+            )
+        )
+        previous_energy = energy_kwh
+        previous_cost = incremental_cost
+
+    if not profiles or profiles[0].price_status != "ANCHOR":
+        depth = anchor_price = allowed_price = None
+    return FlexibleLoadAnalysis(depth, anchor_price, allowed_price, tuple(profiles))
 
 
 def classify_cost(

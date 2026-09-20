@@ -47,6 +47,9 @@ def test_defaults_are_generic():
     assert config["settings"]["calibration"] == "unvalidated"
     assert config["settings"]["operating_floor"] == 0
     assert config["settings"]["boost_ceiling"] == 0.01
+    assert config["settings"]["flexible_load_enabled"] is True
+    assert config["settings"]["flexible_load_max_power_kw"] == 3
+    assert config["settings"]["flexible_price_degradation_percent"] == 15
 
 
 @pytest.mark.parametrize(
@@ -57,6 +60,8 @@ def test_defaults_are_generic():
         {"display_horizon_hours": 48, "horizon_hours": 24},
         {"solve_time_limit_s": 100},
         {"probe_kwh": float("nan")},
+        {"flexible_load_max_power_kw": 0},
+        {"flexible_price_degradation_percent": 101},
     ],
 )
 def test_invalid_preferences_rejected(changes):

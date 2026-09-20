@@ -63,7 +63,7 @@ def _initial(problem):
     ), problem.initial_dispatch_mode_since
 
 
-def constrain_modes(model, problem: Problem, vectors) -> None:
+def constrain_modes(model, problem: Problem, vectors, *, flexible_load=False) -> None:
     """Bind one named state to material flows and forbid premature transitions."""
     if not problem.battery or not problem.minimum_mode_minutes:
         return
@@ -78,6 +78,7 @@ def constrain_modes(model, problem: Problem, vectors) -> None:
         ).total_seconds() / 3600
         activity = problem.minimum_mode_power_kw * hours
         surplus = max(slot.pv_kwh - slot.load_kwh, 0)
+        extra_load_max = model.upper[v["flex_load"]] if flexible_load else 0
         charge_max = min(
             model.upper[v["bc"]],
             slot.pv_kwh + problem.site.inverter_kw * hours,
@@ -88,11 +89,14 @@ def constrain_modes(model, problem: Problem, vectors) -> None:
             min(
                 model.upper[v["bd"]],
                 problem.site.inverter_kw * hours - slot.pv_kwh,
-                slot.load_kwh - slot.pv_kwh + model.upper[v["gout"]],
+                slot.load_kwh + extra_load_max - slot.pv_kwh + model.upper[v["gout"]],
             ),
         )
         pv_max = min(charge_max, surplus)
-        self_max = min(discharge_max, max(slot.load_kwh - slot.pv_kwh, 0))
+        self_max = min(
+            discharge_max,
+            max(slot.load_kwh + extra_load_max - slot.pv_kwh, 0),
+        )
         curt_max = model.upper[v["curt"]]
         available = {
             "CHARGE_GRID": battery.allow_grid_charge
@@ -129,22 +133,54 @@ def constrain_modes(model, problem: Problem, vectors) -> None:
         if slot.load_kwh >= slot.pv_kwh:
             grid_direction[x["HOLD"]] = -1
         # Curtailment may put net demand on either side of zero.
-        model.constrain(grid_direction, 0, np.inf)
-        model.constrain({**grid_direction, x["CURTAIL"]: -1}, -np.inf, 0)
+        if not flexible_load:
+            model.constrain(grid_direction, 0, np.inf)
+            model.constrain({**grid_direction, x["CURTAIL"]: -1}, -np.inf, 0)
         model.constrain(
             {v["bc"]: 1, x["CHARGE_GRID"]: -charge_max, x["CHARGE_PV"]: -pv_max},
             -np.inf,
             0,
         )
-        model.constrain(
-            {
-                v["bc"]: 1,
-                x["CHARGE_GRID"]: -(surplus + activity),
-                x["CHARGE_PV"]: -activity,
-            },
-            0,
-            np.inf,
-        )
+        if flexible_load:
+            model.constrain(
+                {
+                    v["bc"]: 1,
+                    x["CHARGE_GRID"]: -activity,
+                    x["CHARGE_PV"]: -activity,
+                },
+                0,
+                np.inf,
+            )
+            if surplus:
+                model.constrain(
+                    {
+                        v["bc"]: 1,
+                        v["flex_load"]: 1,
+                        x["CHARGE_GRID"]: -(surplus + activity),
+                    },
+                    0,
+                    np.inf,
+                )
+                charge_source_max = model.upper[v["bc"]] + model.upper[v["flex_load"]]
+                model.constrain(
+                    {
+                        v["bc"]: 1,
+                        v["flex_load"]: 1,
+                        x["CHARGE_PV"]: charge_source_max,
+                    },
+                    -np.inf,
+                    surplus + charge_source_max,
+                )
+        else:
+            model.constrain(
+                {
+                    v["bc"]: 1,
+                    x["CHARGE_GRID"]: -(surplus + activity),
+                    x["CHARGE_PV"]: -activity,
+                },
+                0,
+                np.inf,
+            )
         model.constrain(
             {
                 v["bd"]: 1,
