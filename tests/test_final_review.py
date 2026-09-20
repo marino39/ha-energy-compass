@@ -11,6 +11,7 @@ from custom_components.energy_compass.config_models import LoadSource
 from custom_components.energy_compass.engine.models import ForecastSettings
 from custom_components.energy_compass.runtime import async_history
 from custom_components.energy_compass.settings import (
+    NUMBERS,
     default_configuration,
     merged_configuration,
 )
@@ -105,6 +106,13 @@ MONETARY_VALUES = {
     "monthly_charge": 25,
     "minimum_export_episode_benefit": 1,
     "maximum_grid_charge_price": 0.61,
+    "self_sufficiency_import_price_per_kwh": 6.0,
+    "self_sufficiency_export_penalty_per_kwh": 4.0,
+    "pv_swap_margin_per_kwh": 0.06,
+    "backup_shortfall_price_per_kwh": 2.5,
+    "peak_import_price_per_kw": 0.55,
+    "cap_violation_price_per_kwh": 2.5,
+    "autonomy_margin_per_kwh": 0.12,
 }
 
 
@@ -180,11 +188,8 @@ async def test_currency_review_requires_acknowledgement_and_saves_edited_amounts
     for name, old_value in MONETARY_VALUES.items():
         marker, value_selector = fields[name]
         assert marker.default() == old_value
-        assert value_selector.config["unit_of_measurement"] == (
-            "EUR"
-            if name in ("monthly_charge", "minimum_export_episode_benefit")
-            else "EUR/kWh"
-        )
+        expected_unit = NUMBERS[name][4].replace("currency", "EUR")
+        assert value_selector.config["unit_of_measurement"] == expected_unit
     reviewed = {name: value / 5 for name, value in MONETARY_VALUES.items()}
     result = await manager.async_configure(
         fid, {**reviewed, "confirm_currency_values": False}

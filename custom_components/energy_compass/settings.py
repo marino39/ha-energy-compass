@@ -1,6 +1,7 @@
 """Installation settings and shared validation for all entry flows."""
 
 import re
+from collections.abc import Mapping
 from copy import deepcopy
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -18,6 +19,26 @@ from .engine.models import InputError
 from .engine.normalize import finite
 
 DOMAIN = "energy_compass"
+
+# Mirrors engine.models.Strategy / STRATEGIES, which land in a later step of the
+# same plan; defined locally until that module exists so this one stays importable.
+STRATEGIES: tuple[str, ...] = (
+    "cost_min",
+    "self_sufficiency",
+    "backup_ready",
+    "pv_swap",
+    "max_export",
+    "grid_friendly",
+)
+# Mirrors engine.strategy.STRATEGY_OWNED_KEYS, which lands in a later step of the
+# same plan; defined locally until that module exists so this one stays importable.
+STRATEGY_OWNED_KEYS: tuple[str, ...] = (
+    "limit_export_to_pv",
+    "limit_grid_charge_price",
+    "maximum_grid_charge_price",
+    "minimum_export_episode_benefit",
+    "autonomy_reserve",
+)
 # Bounds also constrain helper inputs, which bypass form selectors.
 NUMBERS = {
     "capacity_kwh": ("battery", 10, 0.1, 1000, "kWh"),
@@ -57,6 +78,22 @@ NUMBERS = {
     "minimum_export_episode_benefit": ("planning", 1, 0, 1000, "currency"),
     "maximum_grid_charge_price": ("planning", 0, -1000, 1000, "currency/kWh"),
     "terminal_value_per_kwh": ("planning", 0, -1000, 1000, "currency/kWh"),
+    "self_sufficiency_import_price_per_kwh": ("planning", 5.0, 0, 1000, "currency/kWh"),
+    "self_sufficiency_export_penalty_per_kwh": (
+        "planning",
+        0.20,
+        0,
+        1000,
+        "currency/kWh",
+    ),
+    "pv_swap_margin_per_kwh": ("planning", 0.05, 0, 1000, "currency/kWh"),
+    "backup_target_soc_percent": ("planning", 80, 0, 100, "%"),
+    "backup_shortfall_price_per_kwh": ("planning", 2.0, 0, 1000, "currency/kWh"),
+    "peak_import_price_per_kw": ("planning", 0.50, 0, 1000, "currency/kW"),
+    "cap_violation_price_per_kwh": ("planning", 2.0, 0, 1000, "currency/kWh"),
+    "grid_friendly_import_cap_kw": ("planning", 0, 0, 1000, "kW"),
+    "grid_friendly_export_cap_kw": ("planning", 0, 0, 1000, "kW"),
+    "autonomy_margin_per_kwh": ("planning", 0.10, 0, 1000, "currency/kWh"),
     "display_horizon_hours": ("compass", 24, 1, 48, "h"),
     "reference_horizon_hours": ("compass", 24, 1, 48, "h"),
     "display_interval_minutes": ("compass", 60, 15, 60, "min"),
@@ -89,6 +126,8 @@ INTEGERS = {
     "notify_daily_max",
     "refresh_minutes",
 }
+# backup_target_soc_percent is deliberately left out of INTEGERS: it is a float
+# percent like hardware_floor/soc_disagreement_percent, not a whole-number count.
 BOOLEANS = {
     "allow_grid_charge": ("hardware", False),
     "allow_battery_export": ("hardware", False),
@@ -103,6 +142,7 @@ BOOLEANS = {
     "expose_windows": ("presentation", True),
     "flexible_load_enabled": ("compass", True),
     "notify_enabled": ("notifications", False),
+    "autonomy_reserve": ("planning", False),
 }
 CHOICES = {
     "calibration": ("tariffs", ["unvalidated", "verified"]),
@@ -110,6 +150,7 @@ CHOICES = {
     "terminal_mode": ("planning", ["preserve_initial", "value"]),
     "short_coverage": ("compass", ["absolute_fallback", "unavailable"]),
     "forecast_method": ("forecast", ["bucketed_history"]),
+    "strategy": ("planning", list(STRATEGIES)),
 }
 GROUPS = (
     "battery",
@@ -167,12 +208,47 @@ def default_configuration(currency: str, timezone: str) -> dict:
             "timestamp_policy": "auto",
             "bms_timestamp_policy": "auto",
         },
+        "strategy_changed_at": None,
+        "explicit_strategy_fields": [],
     }
 
 
 def merged_configuration(entry) -> dict:
     """Resolve one atomic options document over its structural configuration."""
     return deepcopy(dict(entry.options.get("configuration", entry.data)))
+
+
+def _default_of(key: str) -> object:
+    if key in NUMBERS:
+        return NUMBERS[key][1]
+    if key in BOOLEANS:
+        return BOOLEANS[key][1]
+    if key in CHOICES:
+        return CHOICES[key][1][0]
+    raise KeyError(key)
+
+
+def explicit_strategy_fields(settings: Mapping[str, object]) -> list[str]:
+    """Record which strategy-owned settings deviate from their shipped default."""
+    return sorted(
+        key for key in STRATEGY_OWNED_KEYS if settings.get(key) != _default_of(key)
+    )
+
+
+def stamp_strategy_change(
+    draft: dict, previous: Mapping[str, object] | None, now: datetime
+) -> None:
+    """Arm a one-shot lock release when the stored strategy actually changes.
+
+    previous is None for a brand-new entry: nothing to release, so no stamp.
+    An unrelated save must not lose a stamp that has not been consumed yet.
+    """
+    if previous is None:
+        draft["strategy_changed_at"] = None
+    elif previous["settings"].get("strategy") != draft["settings"]["strategy"]:
+        draft["strategy_changed_at"] = now.isoformat()
+    else:
+        draft["strategy_changed_at"] = previous.get("strategy_changed_at")
 
 
 def validate_configuration(

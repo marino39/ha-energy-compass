@@ -48,8 +48,9 @@ async def test_migration_preserves_choices(hass):
     entry = MockConfigEntry(domain="energy_compass", data=config, version=1)
     entry.add_to_hass(hass)
     assert await async_migrate_entry(hass, entry)
-    assert entry.version == 2
+    assert entry.version == 3
     assert entry.data["settings"]["operating_floor"] == 20
+    assert entry.data["settings"]["strategy"] == "cost_min"
 
 
 @pytest.mark.parametrize(
