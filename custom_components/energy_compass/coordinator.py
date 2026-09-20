@@ -34,6 +34,7 @@ from .runtime import (
     measurement_diagnostics,
     restore_commitment,
     restore_export_commitment,
+    restore_grid_charge_commitment,
 )
 from .settings import DOMAIN, merged_configuration
 from .sources.bindings import merge_continuations, parse_intervals, parse_timestamp
@@ -72,6 +73,10 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._dispatch_store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.dispatch")
         self._export_commitment = None
         self._export_store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.export")
+        self._grid_charge_commitment = None
+        self._grid_charge_store = Store(
+            hass, 1, f"{DOMAIN}.{entry.entry_id}.grid_charge"
+        )
         self.previous_plan = None
 
     async def async_start(self):
@@ -82,6 +87,9 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         )
         self._export_commitment = restore_export_commitment(
             await self._export_store.async_load(), dt_util.utcnow()
+        )
+        self._grid_charge_commitment = restore_grid_charge_commitment(
+            await self._grid_charge_store.async_load(), dt_util.utcnow()
         )
         self._registry_unsub = self.hass.bus.async_listen(
             er.EVENT_ENTITY_REGISTRY_UPDATED, self._registry_changed
@@ -474,6 +482,20 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                 "generated_at": rows[export_start]["start"],
             }
         )
+        grid_charge_start = current
+        if rows[current].get("dispatch_mode") == "CHARGE_GRID":
+            while (
+                grid_charge_start
+                and rows[grid_charge_start - 1].get("dispatch_mode") == "CHARGE_GRID"
+            ):
+                grid_charge_start -= 1
+        self._commit_current_grid_charge(
+            {
+                **result,
+                "intervals": rows[grid_charge_start:],
+                "generated_at": rows[grid_charge_start]["start"],
+            }
+        )
         outlook = [
             row
             for row in result.get("outlook", [])
@@ -649,6 +671,9 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                             previous_soc=self._previous_soc,
                             battery_commitment=deepcopy(self._battery_commitment),
                             export_commitment=deepcopy(self._export_commitment),
+                            grid_charge_commitment=deepcopy(
+                                self._grid_charge_commitment
+                            ),
                             **history,
                         )
                     )
@@ -739,6 +764,23 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         )
         self._export_store.async_delay_save(lambda: self._export_commitment, 1)
 
+    def _commit_current_grid_charge(self, result):
+        now = parse_timestamp(result["generated_at"])
+        until = now
+        for row in result.get("intervals", []):
+            if (
+                parse_timestamp(row["start"]) != until
+                or row.get("dispatch_mode") != "CHARGE_GRID"
+            ):
+                break
+            until = parse_timestamp(row["end"])
+        self._grid_charge_commitment = restore_grid_charge_commitment(
+            {"generated_at": now.isoformat(), "until": until.isoformat()}, now
+        )
+        self._grid_charge_store.async_delay_save(
+            lambda: self._grid_charge_commitment, 1
+        )
+
     async def async_stop(self):
         """Detach listeners and prevent late worker results from owning entities."""
         self._closed = True
@@ -761,3 +803,4 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         await self._store.async_save(self._anchors)
         await self._dispatch_store.async_save(self._battery_commitment)
         await self._export_store.async_save(self._export_commitment)
+        await self._grid_charge_store.async_save(self._grid_charge_commitment)

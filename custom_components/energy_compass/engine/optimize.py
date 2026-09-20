@@ -9,6 +9,7 @@ import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import coo_matrix
 
+from .charge_benefit import constrain_charge_benefit, validate_charge_benefit
 from .charge_price import price_allows_grid_charge
 from .daily_energy import daily_export_rows, day_fractions
 from .dispatch_policy import MODES, constrain_modes, validate_modes
@@ -120,6 +121,7 @@ def _validate_solution(
     )
     _check(bool(np.all(np.isfinite(values))), "nonfinite variables")
     validate_export_benefit(problem, vectors, values)
+    validate_charge_benefit(problem, vectors, values)
     battery = problem.battery
     previous_energy = battery.initial_kwh if battery else 0.0
     spent = {day: 0.0 for day in budgets}
@@ -676,6 +678,7 @@ def _solve(
                 model.constrain(terms, -np.inf, budget)
 
     constrain_export_benefit(model, problem, vectors)
+    constrain_charge_benefit(model, problem, vectors)
     values = model.solve(time_limit)
     _validate_solution(problem, vectors, values, daily_fractions, budgets)
     flows = tuple(
@@ -745,6 +748,7 @@ def _solve(
         float(values[vectors[0]["peak_import"]]) if "peak_import" in vectors[0] else 0.0
     )
     episodes, reserve = validate_export_benefit(problem, vectors, values)
+    charge_episodes, charge_reserve = validate_charge_benefit(problem, vectors, values)
     return FlexibleLoadPlan(
         Plan(
             flows,
@@ -754,6 +758,8 @@ def _solve(
             terminal_credit,
             episodes,
             reserve,
+            charge_episodes,
+            charge_reserve,
             autonomy_shortfall_kwh,
             cap_violation_kwh,
             peak_import_kw,

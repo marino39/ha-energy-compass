@@ -159,6 +159,17 @@ def validate_problem(problem: Problem) -> None:
         raise InputError("minimum_export_episode_benefit must be in [0, 1000]")
     if type(problem.initial_export_active) is not bool:
         raise InputError("initial_export_active must be boolean")
+    if (
+        not 0
+        <= finite(
+            problem.minimum_grid_charge_episode_benefit,
+            "minimum_grid_charge_episode_benefit",
+        )
+        <= 1000
+    ):
+        raise InputError("minimum_grid_charge_episode_benefit must be in [0, 1000]")
+    if type(problem.initial_grid_charge_active) is not bool:
+        raise InputError("initial_grid_charge_active must be boolean")
     if problem.strategy not in STRATEGIES:
         raise InputError("invalid strategy")
     for name in (
