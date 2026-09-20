@@ -106,6 +106,7 @@ class EnergyCompassEntity(CoordinatorEntity):
         attrs = {
             "generated_at": data.get("generated_at"),
             "valid_until": data.get("valid_until"),
+            "inputs_valid_until": data.get("inputs_valid_until"),
             "refreshing": data.get("refreshing", False),
             "plan_retained": data.get("plan_retained", False),
             "reasons": quality.get("warnings", [])

@@ -30,6 +30,7 @@ async def hourly_entry(
         reference_horizon_hours=4,
         display_interval_minutes=15,
         debounce_seconds=0,
+        total_time_limit_s=300,
     )
     if getattr(request, "param", None) == "helper":
         config["settings"]["refresh_minutes"] = 15
@@ -44,13 +45,18 @@ async def hourly_entry(
                 value_path="price",
                 unit="PLN/kWh",
                 value_kind="price",
+                max_age_seconds=60
+                if getattr(request, "param", None) == "short_forecast"
+                else None,
             ),
         ),
     ).to_dict()
     config["helpers"]["grid_import_kw"] = {
         "entity": {"entity_id": "sensor.limit"},
         "unit": "kW",
-        "max_age_seconds": 600,
+        "max_age_seconds": 60
+        if getattr(request, "param", None) == "short_helper"
+        else 600,
     }
     hass.states.async_set("sensor.limit", "5", {"unit_of_measurement": "kW"})
     start = dt_util.utcnow()
@@ -94,10 +100,16 @@ async def test_hourly_plan_advances_quarters_without_new_solve(
     hourly_entry, hass, freezer
 ):
     first = hourly_entry.runtime_data.data["generated_at"]
+    assert hourly_entry.runtime_data.data["valid_until"] == "2026-09-18T12:00:00+00:00"
     for minute, price in ((5, 0), (15, 0.1), (30, 0.2), (45, 0.3)):
         await advance(hass, freezer, f"2026-09-18T10:{minute:02d}:00+00:00")
         data = hourly_entry.runtime_data.data
         assert data["generated_at"] == first
+        assert data["valid_until"] == "2026-09-18T12:00:00+00:00"
+        assert (
+            data["inputs_valid_until"]
+            == (dt_util.utcnow() + timedelta(minutes=10)).isoformat()
+        )
         assert hass.states.get("binary_sensor.hourly_forecast_valid").state == "on"
         assert hass.states.get("sensor.hourly_energy_compass").attributes[
             "buy_per_kwh"
@@ -124,6 +136,68 @@ async def test_stale_helper_alerts_and_retains_without_running_optimizer(
     await advance(hass, freezer, "2026-09-18T10:11:00+00:00")
     assert coordinator.data["valid"]
     assert coordinator.data["generated_at"] != first
+
+
+@pytest.mark.parametrize(
+    "hourly_entry", ["short_helper", "short_forecast"], indirect=True
+)
+async def test_input_deadline_advances_and_expires_during_pending_solve(
+    hourly_entry, hass, freezer
+):
+    import asyncio
+    import threading
+    from unittest.mock import patch
+
+    from custom_components.energy_compass import coordinator as module
+
+    coordinator = hourly_entry.runtime_data
+    started, release = threading.Event(), threading.Event()
+    updated, invalidated = asyncio.Event(), asyncio.Event()
+    original_compute = module.compute
+    original_generation = coordinator.data["generated_at"]
+    new_deadline = "2026-09-18T10:01:20+00:00"
+    source = (
+        "sensor.limit"
+        if coordinator.configuration["helpers"]["grid_import_kw"]["max_age_seconds"]
+        == 60
+        else "sensor.market"
+    )
+
+    def delayed(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return original_compute(*args, **kwargs)
+
+    def published():
+        if coordinator.data.get("inputs_valid_until") == new_deadline:
+            updated.set()
+        if coordinator.data.get("status") == "invalid_input":
+            invalidated.set()
+
+    unsubscribe = coordinator.async_add_listener(published)
+    freezer.move_to("2026-09-18T10:00:10+00:00")
+    with patch.object(module, "compute", new=delayed):
+        job = hass.async_create_task(coordinator.async_recalculate())
+        try:
+            assert await hass.async_add_executor_job(started.wait, 2)
+            freezer.move_to("2026-09-18T10:00:20+00:00")
+            state = hass.states.get(source)
+            hass.states.async_set(
+                source, state.state, {**state.attributes, "report": 2}
+            )
+            await asyncio.wait_for(updated.wait(), 2)
+            assert coordinator.data["generated_at"] == original_generation
+            assert hass.states.get("binary_sensor.hourly_alert").state == "off"
+            freezer.move_to(new_deadline)
+            async_fire_time_changed(hass, dt_util.utcnow())
+            await asyncio.wait_for(invalidated.wait(), 2)
+            assert hass.states.get("binary_sensor.hourly_alert").state == "on"
+            assert coordinator._boundary.when() - hass.loop.time() >= 1
+        finally:
+            release.set()
+            await job
+            await hass.async_block_till_done()
+            unsubscribe()
 
 
 async def test_material_price_change_recalculates_before_hour(
@@ -273,3 +347,16 @@ async def test_identical_fresh_soc_report_recovers_on_health_tick(
     await advance(hass, freezer, "2026-09-18T10:16:00+00:00", refresh_helper=False)
     assert coordinator.data["valid"], coordinator.data
     assert coordinator.data["generated_at"] != first
+
+
+async def test_overdue_input_deadline_is_consumed_once(hourly_entry, hass, freezer):
+    coordinator = hourly_entry.runtime_data
+    freezer.move_to("2026-09-18T10:10:00+00:00")
+    coordinator._next_boundary(coordinator.configuration["settings"])
+    assert 0 < coordinator._boundary.when() - hass.loop.time() <= 0.11
+    freezer.tick(timedelta(seconds=0.2))
+    async_fire_time_changed(hass, dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.hourly_alert").state == "on"
+    assert coordinator._inputs_valid_until is None
+    assert coordinator._boundary.when() - hass.loop.time() >= 1

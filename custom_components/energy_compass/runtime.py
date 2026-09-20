@@ -200,9 +200,9 @@ def _soc(config, source, values, states, now, previous_soc=None):
 
 
 def freshness_deadline(config, states, values, now):
-    """End validity at the first required input's actual freshness deadline."""
+    """Return the first required input deadline, independent of plan lifetime."""
     source, _ = available_forecasts(SourceConfig.from_dict(config["sources"]), states)
-    deadlines = [now + timedelta(minutes=values["refresh_minutes"])]
+    deadlines = []
     _, _, export_deadline = daily_export_observations(config, states, values, now)
     if export_deadline:
         deadlines.append(export_deadline)
@@ -245,7 +245,7 @@ def freshness_deadline(config, states, values, now):
                     parse_timestamp(states[selected.entity.entity_id]["last_updated"])
                     + timedelta(seconds=selected.max_age_seconds)
                 )
-    return min(deadlines)
+    return min(deadlines, default=None)
 
 
 def measurement_diagnostics(config, states, now):
@@ -680,14 +680,17 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
     guidance_valid = bool(outlook and outlook[0]["level"] is not None)
     if not guidance_valid:
         quality["warnings"].append("current_guidance_unavailable")
+    inputs_until = freshness_deadline(config, states, values, now)
     return {
         "status": "ready",
         "valid": True,
         "guidance_valid": guidance_valid,
         "generated_at": now.isoformat(),
         "valid_until": min(
-            problem.slots[0].end, freshness_deadline(config, states, values, now)
+            problem.slots[-1].end,
+            now + timedelta(minutes=2 * values["refresh_minutes"]),
         ).isoformat(),
+        "inputs_valid_until": inputs_until.isoformat() if inputs_until else None,
         "intervals": detailed,
         "outlook": outlook,
         "windows": windows,

@@ -132,7 +132,7 @@ async def test_freshness_attributes_publish_with_unchanged_value(
     entity_id = "sensor.refresh_consumption_compass"
     original_state = hass.states.get(entity_id).state
     freezer.tick(timedelta(seconds=1))
-    new_deadline = "2026-09-17T10:30:00+00:00"
+    new_deadline = "2026-09-17T10:35:00+00:00"
     coordinator.async_set_updated_data(
         {**coordinator.data, "valid_until": new_deadline}
     )

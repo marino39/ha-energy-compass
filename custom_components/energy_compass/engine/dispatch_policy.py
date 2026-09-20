@@ -35,7 +35,11 @@ def safety_exception(problem: Problem) -> dict | None:
         battery.maximum_soc_fraction if charging else battery.minimum_soc_fraction
     )
     reason = None
-    if abs(battery.initial_kwh - bound) <= 1e-9:
+    if (
+        battery.initial_kwh >= bound - 1e-9
+        if charging
+        else battery.initial_kwh <= bound + 1e-9
+    ):
         reason = "observed_soc_maximum" if charging else "observed_soc_minimum"
     elif mode == "CHARGE_GRID" and any(
         not price_allows_grid_charge(problem, slot)

@@ -244,7 +244,7 @@ def test_zero_native_coarsening_guard():
         build_problem(config, states, now)
 
 
-def test_source_age_deadline_limits_advice_validity():
+def test_source_age_deadline_is_separate_from_plan_validity():
     now = datetime(2026, 9, 17, tzinfo=UTC)
     config = default_configuration("EUR", "UTC")
     binding = IntervalBinding(
@@ -265,7 +265,36 @@ def test_source_age_deadline_limits_advice_validity():
         }
     }
     result = compute(config, states, now)
-    assert result["valid_until"] == (now + timedelta(seconds=1)).isoformat()
+    assert result["valid_until"] == (now + timedelta(minutes=30)).isoformat()
+    assert result["inputs_valid_until"] == (now + timedelta(seconds=1)).isoformat()
+
+
+@pytest.mark.parametrize("refresh", [15, 60])
+def test_plan_lifetime_is_twice_refresh_across_slot_boundary(refresh):
+    now = datetime(2026, 9, 17, 10, 59, 55, tzinfo=UTC)
+    config = default_configuration("EUR", "UTC")
+    config["settings"].update(
+        refresh_minutes=refresh,
+        horizon_hours=4,
+        display_horizon_hours=4,
+        reference_horizon_hours=4,
+    )
+    result = compute(config, {}, now)
+    assert result["valid_until"] == (now + timedelta(minutes=2 * refresh)).isoformat()
+    assert result["inputs_valid_until"] is None
+
+
+def test_plan_lifetime_cannot_exceed_known_forecast():
+    now = datetime(2026, 9, 17, 10, tzinfo=UTC)
+    config = default_configuration("EUR", "UTC")
+    config["settings"].update(
+        refresh_minutes=60,
+        horizon_hours=1,
+        display_horizon_hours=1,
+        reference_horizon_hours=1,
+    )
+    result = compute(config, {}, now)
+    assert result["valid_until"] == (now + timedelta(hours=1)).isoformat()
 
 
 @pytest.mark.parametrize("target", ["soc", "bms_soc"])

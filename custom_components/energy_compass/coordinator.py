@@ -56,6 +56,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._debounce = None
         self._boundary = None
         self._refresh_due = None
+        self._inputs_valid_until = None
         self._source_unsub = None
         self._registry_unsub = None
         self._fingerprint = None
@@ -211,6 +212,9 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         return json.dumps(selected, sort_keys=True, default=str)
 
     def _inputs(self):
+        # A failed health check consumes the previous deadline; recovery keeps
+        # using source events and health polling, never a past 100 ms timer.
+        self._inputs_valid_until = None
         config = rebind_configuration(self.hass, merged_configuration(self.entry))
         self.configuration = config
         states = snapshot(self.hass, config)
@@ -246,6 +250,10 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             _coverage(rows, now)
         if source.battery_enabled:
             self._validate_soc(config, source, values, states, now)
+        deadline = freshness_deadline(config, states, values, now)
+        if deadline is not None and deadline <= now:
+            raise InputError("expired_inputs")
+        self._inputs_valid_until = deadline
         return config, states, now, values
 
     def _validate_soc(self, config, source, values, states, now):
@@ -340,6 +348,10 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                     (parse_timestamp(self.data["valid_until"]) - now).total_seconds(),
                 ),
             )
+        if self._inputs_valid_until is not None:
+            delay = min(
+                delay, max(0.1, (self._inputs_valid_until - now).total_seconds())
+            )
         for key in ("intervals", "outlook"):
             for row in self.data.get(key, []):
                 end = parse_timestamp(row["end"])
@@ -405,9 +417,8 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         deadline = parse_timestamp(rows[-1]["end"])
         if not retained:
             deadline = min(
-                self._refresh_due,
+                parse_timestamp(result["valid_until"]),
                 deadline,
-                freshness_deadline(self.configuration, states, values, now),
             )
         if deadline <= now:
             self._invalidate("invalid_input", "expired_inputs")
@@ -473,6 +484,13 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             "guidance_valid": guidance,
             "quality": quality,
             "valid_until": deadline.isoformat(),
+            "inputs_valid_until": (
+                self._inputs_valid_until.isoformat()
+                if self._inputs_valid_until
+                else None
+            )
+            if states is not None
+            else result.get("inputs_valid_until"),
             "dispatch_policy": policy,
             "measurements": result.get("measurements", {})
             if retained
