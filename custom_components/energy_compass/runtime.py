@@ -4,6 +4,7 @@ from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from itertools import pairwise
+from statistics import median
 from time import perf_counter
 from zoneinfo import ZoneInfo
 
@@ -17,6 +18,7 @@ from .daily_export import (
     daily_export_active,
     daily_export_observations,
 )
+from .engine.autonomy import autonomy_targets
 from .engine.consumption import (
     analyze_consumption,
     analyze_flexible_loads,
@@ -38,6 +40,7 @@ from .engine.models import (
 )
 from .engine.normalize import finite, validate_problem
 from .engine.optimize import solve
+from .engine.strategy import resolve_flags, strategy_weights
 from .settings import validate_configuration
 from .sources.battery import SocSettings, validate_soc
 from .sources.bindings import (
@@ -51,6 +54,30 @@ from .sources.history import load_for_slots_with_quality
 from .sources.prices import price_for_slots
 from .sources.pv import sum_pv_arrays
 from .sources.throughput import resolve_daily_throughput
+
+_AUTONOMY_HORIZON_HOURS = 48
+_AUTONOMY_NIGHT_HOURS = frozenset(hour % 24 for hour in range(22, 30))
+
+
+def effective_settings(
+    config: dict, states: dict, now: datetime, *, sources: bool = True
+) -> dict:
+    """Validated settings with the active strategy's bundle applied.
+
+    The only dict any runtime caller may consult for a strategy-owned flag.
+    `async_history` (reads only `lookback_days`) and the flow modules' own
+    raw-draft validation calls are deliberately exempt: they must validate
+    what the user actually typed, not a bundle-resolved view of it.
+    """
+    values = validate_configuration(config, states, now, sources=sources)
+    return {
+        **values,
+        **resolve_flags(
+            values["strategy"],
+            values,
+            tuple(config.get("explicit_strategy_fields", ())),
+        ),
+    }
 
 
 def restore_commitment(raw, now):
@@ -252,7 +279,7 @@ def freshness_deadline(config, states, values, now):
 def measurement_diagnostics(config, states, now):
     """Describe diagnostic measurements and counters used by active constraints."""
     result = {}
-    values = validate_configuration(config, states, now, sources=False)
+    values = effective_settings(config, states, now, sources=False)
     for name, selected in config.get("measurements", {}).items():
         item = {
             "usage": "diagnostic_only",
@@ -339,6 +366,23 @@ def _load_quality(source_mode, result):
     }
 
 
+def _autonomy_weight(slots, *, margin, timezone):
+    """Expected night rebuy price plus margin, clamped to be nonnegative."""
+    zone = ZoneInfo(timezone)
+    night = [
+        slot.buy_per_kwh
+        for slot in slots
+        if slot.start.astimezone(zone).hour in _AUTONOMY_NIGHT_HOURS
+    ]
+    sample = night or [slot.buy_per_kwh for slot in slots]
+    return max(0.0, median(sample) + margin)
+
+
+def _backup_floor_kwh(capacity_kwh, target_percent):
+    """Constant floor for backup_ready, capped at capacity."""
+    return min(capacity_kwh, capacity_kwh * target_percent / 100)
+
+
 def build_problem(
     config: dict,
     states: dict,
@@ -351,7 +395,7 @@ def build_problem(
     export_commitment=None,
 ):
     """Preserve native boundaries and stop at actual contiguous source coverage."""
-    values = validate_configuration(config, states, now)
+    values = effective_settings(config, states, now)
     pv_today, export_today, _ = daily_export_observations(config, states, values, now)
     source, missing = available_forecasts(
         SourceConfig.from_dict(config["sources"]), states
@@ -375,10 +419,12 @@ def build_problem(
         for group in source.pv.arrays
     )
     groups.extend(pv_groups)
+    load_forecast_group = None
     if source.load.mode == "forecast":
-        groups.append(
-            merge_continuations((parse_intervals(states, source.load.forecast, now),))
+        load_forecast_group = merge_continuations(
+            (parse_intervals(states, source.load.forecast, now),)
         )
+        groups.append(load_forecast_group)
     end = min([requested_end, *(_coverage(rows, now) for rows in groups)])
     boundaries = {now, end}
     cursor = now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
@@ -493,9 +539,130 @@ def build_problem(
                 (day.isoformat(), max(0, cap - observed) if day == local_today else cap)
                 for day in sorted(days)
             )
-    commitment = restore_commitment(battery_commitment, now) if battery else None
+    strategy_released = bool(config.get("strategy_changed_at"))
+    commitment = (
+        restore_commitment(battery_commitment, now)
+        if battery and not strategy_released
+        else None
+    )
     named = commitment if commitment and commitment["mode"] in MODES else None
     legacy = (commitment.get("legacy_direction") if named else commitment) or {}
+    weights = strategy_weights(
+        values["strategy"],
+        values,
+        max_abs_buy_per_kwh=max((abs(slot.buy_per_kwh) for slot in slots), default=0.0),
+        site_import_kw=values["grid_import_kw"],
+        site_export_kw=values["grid_export_kw"],
+    )
+    autonomy_warnings: list[str] = []
+    soc_target_kwh: tuple[float, ...] = ()
+    soc_target_window: tuple[int, ...] = ()
+    soc_target_weight = 0.0
+    if battery and values["autonomy_reserve"]:
+        if not source.pv.enabled or not source.pv.arrays:
+            autonomy_warnings.append("autonomy_floor_requires_pv")
+        else:
+            autonomy_groups = (
+                *pv_groups,
+                *((load_forecast_group,) if load_forecast_group is not None else ()),
+            )
+            tail_intervals: tuple[tuple[datetime, datetime], ...] = ()
+            tail_pv: tuple[float, ...] = ()
+            tail_loads: tuple[float, ...] = ()
+            try:
+                autonomy_end = min(
+                    now + timedelta(hours=_AUTONOMY_HORIZON_HOURS),
+                    *(_coverage(rows, now) for rows in autonomy_groups),
+                )
+                if autonomy_end > end:
+                    tail_boundaries = {end, autonomy_end}
+                    tail_cursor = now.replace(
+                        minute=0, second=0, microsecond=0
+                    ) + timedelta(hours=1)
+                    while tail_cursor < autonomy_end:
+                        if end < tail_cursor < autonomy_end:
+                            tail_boundaries.add(tail_cursor)
+                        tail_cursor += timedelta(hours=1)
+                    tail_boundaries.update(
+                        edge
+                        for rows in autonomy_groups
+                        for row in rows
+                        for edge in (row.start, row.end)
+                        if end < edge < autonomy_end
+                    )
+                    tail_intervals = tuple(pairwise(sorted(tail_boundaries)))
+                    if len(tail_intervals) > 192:
+                        coarse_boundaries = {end, autonomy_end}
+                        tail_cursor = now.replace(
+                            minute=0, second=0, microsecond=0
+                        ) + timedelta(hours=1)
+                        while tail_cursor < autonomy_end:
+                            if end < tail_cursor < autonomy_end:
+                                coarse_boundaries.add(tail_cursor)
+                            tail_cursor += timedelta(hours=1)
+                        tail_intervals = tuple(pairwise(sorted(coarse_boundaries)))
+                        autonomy_warnings.append("autonomy_tail_coarsened")
+                    tail_pv = tuple(
+                        row.value for row in sum_pv_arrays(pv_groups, tail_intervals)
+                    )
+                    tail_loads = load_for_slots_with_quality(
+                        load_source,
+                        states,
+                        now,
+                        tail_intervals,
+                        config["timezone"],
+                        forecast,
+                        statistics=statistics,
+                        power_samples=power_samples,
+                        fallback_daily_kwh=values["fallback_daily_kwh"]
+                        if values["allow_fallback"]
+                        else None,
+                    ).values
+            except InputError:
+                tail_intervals = ()
+                tail_pv = ()
+                tail_loads = ()
+                autonomy_warnings.append("autonomy_tail_unavailable")
+            combined_starts = tuple(slot.start for slot in slots) + tuple(
+                start for start, _ in tail_intervals
+            )
+            combined_durations_h = tuple(
+                (slot.end - slot.start).total_seconds() / 3600 for slot in slots
+            ) + tuple(
+                (finish - start).total_seconds() / 3600
+                for start, finish in tail_intervals
+            )
+            floor = autonomy_targets(
+                combined_starts,
+                combined_durations_h,
+                loads + tail_loads,
+                pv + tail_pv,
+                reserve_kwh=battery.capacity_kwh * battery.minimum_soc_fraction,
+                usable_capacity_kwh=battery.capacity_kwh * battery.maximum_soc_fraction,
+                eta_discharge=values["eta_discharge"],
+                timezone=config["timezone"],
+            )
+            soc_target_kwh = floor.targets_kwh[: len(slots)]
+            soc_target_window = floor.window_ids[: len(slots)]
+            soc_target_weight = _autonomy_weight(
+                slots,
+                margin=values["autonomy_margin_per_kwh"],
+                timezone=config["timezone"],
+            )
+            if values["strategy"] == "backup_ready":
+                floor_kwh = _backup_floor_kwh(
+                    battery.capacity_kwh, values["backup_target_soc_percent"]
+                )
+                soc_target_kwh = tuple(max(t, floor_kwh) for t in soc_target_kwh)
+                soc_target_weight = max(
+                    soc_target_weight, values["backup_shortfall_price_per_kwh"]
+                )
+            if (
+                values["limit_grid_charge_price"]
+                and values["maximum_grid_charge_price"]
+                < soc_target_weight - values["autonomy_margin_per_kwh"]
+            ):
+                autonomy_warnings.append("grid_charge_ceiling_below_autonomy_weight")
     problem = Problem(
         slots,
         SiteLimits(
@@ -525,6 +692,12 @@ def build_problem(
         initial_dispatch_mode_since=parse_timestamp(named["since"]) if named else None,
         initial_battery_mode=legacy.get("mode"),
         initial_battery_mode_since=parse_timestamp(legacy["since"]) if legacy else None,
+        strategy=values["strategy"],
+        strategy_changed=strategy_released,
+        soc_target_kwh=soc_target_kwh,
+        soc_target_window=soc_target_window,
+        soc_target_weight=soc_target_weight,
+        **weights,
     )
     validate_problem(problem)
     ages = {
@@ -551,6 +724,7 @@ def build_problem(
         quality["warnings"].append("unvalidated_capacity")
     if end < requested_end:
         quality["warnings"].append("short_source_coverage")
+    quality["warnings"].extend(autonomy_warnings)
     return problem, values, quality
 
 
@@ -711,6 +885,10 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
         "status": "ready",
         "valid": True,
         "guidance_valid": guidance_valid,
+        "strategy": problem.strategy,
+        "autonomy_shortfall_kwh": round(plan.autonomy_shortfall_kwh, 3),
+        "cap_violation_kwh": round(plan.cap_violation_kwh, 3),
+        "strategy_released": problem.strategy_changed,
         "generated_at": now.isoformat(),
         "valid_until": min(
             problem.slots[-1].end,

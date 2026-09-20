@@ -29,12 +29,13 @@ from .runtime import (
     async_history,
     available_forecasts,
     compute,
+    effective_settings,
     freshness_deadline,
     measurement_diagnostics,
     restore_commitment,
     restore_export_commitment,
 )
-from .settings import DOMAIN, merged_configuration, validate_configuration
+from .settings import DOMAIN, merged_configuration
 from .sources.bindings import merge_continuations, parse_intervals, parse_timestamp
 
 _LOGGER = logging.getLogger(__name__)
@@ -219,7 +220,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self.configuration = config
         states = snapshot(self.hass, config)
         now = dt_util.utcnow()
-        values = validate_configuration(config, states, now)
+        values = effective_settings(config, states, now)
         daily_export_observations(config, states, values, now)
         source, _ = available_forecasts(
             SourceConfig.from_dict(config["sources"]), states
