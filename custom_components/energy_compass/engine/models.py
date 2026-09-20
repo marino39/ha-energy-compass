@@ -164,3 +164,8 @@ class CompassSettings:
     flexible_load_enabled: bool = True
     flexible_load_max_power_kw: float = 3.0
     flexible_price_degradation_percent: float = 15.0
+
+
+def plan_monetary_cost(plan: Plan) -> float:
+    """Real currency cost of a plan, free of any strategy weighting or penalty."""
+    return plan.grid_cost + plan.wear_cost - plan.terminal_credit
