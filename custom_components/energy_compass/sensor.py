@@ -3,7 +3,6 @@
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
-    SensorStateClass,
 )
 from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
@@ -69,7 +68,6 @@ class EnergyCompassSensor(EnergyCompassEntity, SensorEntity):
             self._attr_device_class = SensorDeviceClass.TIMESTAMP
         if key == "flexible_energy_depth":
             self._attr_device_class = SensorDeviceClass.ENERGY
-            self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_native_unit_of_measurement = "kWh"
             self._attr_entity_registry_enabled_default = coordinator.configuration[
                 "settings"

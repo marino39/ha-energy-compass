@@ -47,6 +47,9 @@ async def test_absent_window_is_unavailable_with_coverage_status(
     assert window.state == "unavailable"
     depth = hass.states.get("sensor.windows_flexible_energy_depth")
     assert depth.state == "3.0"
+    assert depth.attributes["device_class"] == "energy"
+    assert depth.attributes["unit_of_measurement"] == "kWh"
+    assert "state_class" not in depth.attributes
     assert depth.attributes["anchor_energy_kwh"] == 3
     assert len(depth.attributes["flexible_load_profiles"]) == 5
     assert (
