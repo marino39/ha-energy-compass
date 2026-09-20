@@ -185,6 +185,20 @@ async def test_pending_worker_does_not_freeze_current_interval(
             unsubscribe()
 
 
+async def test_retained_plan_keeps_its_generation_strategy(
+    published_entry, hass, freezer
+):
+    """A retained plan must keep the strategy label of the generation that solved it."""
+    coordinator = published_entry.runtime_data
+    original_strategy = coordinator.data["strategy"]
+    coordinator.configuration["settings"]["strategy"] = "max_export"
+    freezer.move_to("2026-09-17T10:01:00+00:00")
+    with patch.object(module, "compute", side_effect=SolveError("timeout")):
+        await coordinator.async_recalculate()
+    assert hass.states.get("sensor.refresh_plan").attributes["plan_retained"] is True
+    assert coordinator.data["strategy"] == original_strategy
+
+
 @pytest.mark.parametrize("intermediate", ["unavailable", "78"])
 async def test_interrupted_or_oscillating_soc_restarts_stabilization(
     switching_entry, hass, freezer, intermediate
