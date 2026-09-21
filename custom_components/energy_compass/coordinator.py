@@ -52,6 +52,9 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self.data = {"status": "calculating", "valid": False}
         self._closed = False
         self._generation = 0
+        # Bumped with _generation only when a running result becomes wrong
+        # (configuration, registry or invalid input), not when it is merely old.
+        self._epoch = 0
         self._pending = False
         self._runner = None
         self._worker = None
@@ -108,6 +111,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         )
         self.configuration = rebind_configuration(self.hass, deepcopy(config))
         self._generation += 1
+        self._epoch += 1
         self._fingerprint = None
         self._pending = True
         await self.async_recalculate()
@@ -146,6 +150,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             or event.data.get("old_entity_id") in tracked
         ):
             self._generation += 1
+            self._epoch += 1
             self._fingerprint = None
             self._subscribe()
             self._schedule(0)
@@ -325,6 +330,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             content = self._content(states, values)
         except (InputError, KeyError, ValueError) as err:
             self._generation += 1
+            self._epoch += 1
             self._fingerprint = None
             self._invalidate("invalid_input", str(err))
             self._schedule(0)
@@ -417,6 +423,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                     self._publish_current(self.data, states, current_values, now)
             except (InputError, KeyError, ValueError) as err:
                 self._generation += 1
+                self._epoch += 1
                 self._fingerprint = None
                 self._invalidate("invalid_input", str(err))
             self._next_boundary(values)
@@ -645,6 +652,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             while not self._closed:
                 self._pending = False
                 generation = self._generation
+                epoch = self._epoch
                 values = self.configuration["settings"]
                 now = dt_util.utcnow()
                 seconds = values.get("refresh_minutes", 15) * 60
@@ -691,7 +699,15 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                         self._worker = None
                     if self._closed:
                         return
-                    if generation == self._generation:
+                    # A result superseded only by newer inputs is still fresher
+                    # than the retained plan. Publishing it before recalculating
+                    # guarantees progress: at 8 kW the SOC crosses the trigger
+                    # every few minutes, faster than one calculation, and
+                    # discarding every superseded result let the retained plan
+                    # expire. Configuration, registry and invalid-input changes
+                    # bump the epoch and still discard.
+                    current = generation == self._generation
+                    if current or epoch == self._epoch:
                         self._previous_soc = result["quality"].pop(
                             "soc_observation", None
                         )
@@ -699,7 +715,11 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                         self._publish_current(
                             result, current_states, current_values, published_at
                         )
-                        if result.get("strategy_released") and self.data.get("valid"):
+                        if (
+                            current
+                            and result.get("strategy_released")
+                            and self.data.get("valid")
+                        ):
                             self._clear_strategy_change()
                 except InputError as err:
                     if not self._closed and generation == self._generation:

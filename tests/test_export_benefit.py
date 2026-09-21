@@ -542,9 +542,15 @@ async def test_failed_result_preserves_current_record(export_entry, monkeypatch)
     assert coordinator._export_commitment == before
 
 
+@pytest.mark.parametrize("change", ["configuration", "inputs"])
 async def test_superseded_hold_result_cannot_clear_current_record(
-    export_entry, hass, monkeypatch
+    export_entry, hass, monkeypatch, change
 ):
+    """A result made wrong by a configuration change never touches the record.
+
+    A result that is only older than newer inputs is published before the rerun,
+    so the record must follow the plan that is actually published.
+    """
     import asyncio
     from copy import deepcopy
 
@@ -578,10 +584,16 @@ async def test_superseded_hold_result_cannot_clear_current_record(
     task = hass.async_create_task(coordinator.async_recalculate())
     await entered.wait()
     coordinator._generation += 1
+    if change == "configuration":
+        coordinator._epoch += 1
     release.set()
     await task
     assert coordinator.data["status"] == "timeout"
-    assert coordinator._export_commitment == before
+    if change == "configuration":
+        assert coordinator._export_commitment == before
+    else:
+        assert coordinator.data["intervals"][0]["discharge_kwh"] < 1e-6
+        assert coordinator._export_commitment != before
 
 
 def test_export_start_cannot_be_invented_in_an_idle_slot(monkeypatch):
