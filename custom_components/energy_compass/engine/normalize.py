@@ -291,6 +291,8 @@ def validate_problem(problem: Problem) -> None:
             raise InputError("initial SOC outside bounds")
         if finite(battery.wear_per_kwh, "wear_per_kwh") < 0:
             raise InputError("wear cost must be nonnegative")
+        if finite(battery.idle_drain_kw, "idle_drain_kw") < 0:
+            raise InputError("idle drain must be nonnegative")
         if not isinstance(battery.allow_grid_charge, bool) or not isinstance(
             battery.allow_battery_export, bool
         ):

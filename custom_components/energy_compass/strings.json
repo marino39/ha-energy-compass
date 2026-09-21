@@ -132,6 +132,7 @@
           "eta_charge": "Eta charge",
           "eta_discharge": "Eta discharge",
           "wear_per_kwh": "Wear per kwh",
+          "idle_drain_kw": "Idle drain kw",
           "daily_cycles": "Daily cycles",
           "soc_max_age_seconds": "Soc max age seconds",
           "soc_disagreement_percent": "Soc disagreement percent",
@@ -302,6 +303,7 @@
         "description": "The currency has changed to {currency}. Amounts have not been converted. Review and, where needed, edit every amount below, then confirm that these values are intentional in {currency}. Fixed values are retained even when a helper is selected. Helper and price-source currencies must match the new currency before saving. {detail}",
         "data": {
           "wear_per_kwh": "Wear per kwh",
+          "idle_drain_kw": "Idle drain kw",
           "buy_rate": "Buy rate",
           "sell_rate": "Sell rate",
           "buy_addition": "Buy addition",
@@ -529,6 +531,7 @@
           "eta_charge": "Eta charge",
           "eta_discharge": "Eta discharge",
           "wear_per_kwh": "Wear per kwh",
+          "idle_drain_kw": "Idle drain kw",
           "daily_cycles": "Daily cycles",
           "soc_max_age_seconds": "Soc max age seconds",
           "soc_disagreement_percent": "Soc disagreement percent",
@@ -699,6 +702,7 @@
         "description": "The currency has changed to {currency}. Amounts have not been converted. Review and, where needed, edit every amount below, then confirm that these values are intentional in {currency}. Fixed values are retained even when a helper is selected. Helper and price-source currencies must match the new currency before saving. {detail}",
         "data": {
           "wear_per_kwh": "Wear per kwh",
+          "idle_drain_kw": "Idle drain kw",
           "buy_rate": "Buy rate",
           "sell_rate": "Sell rate",
           "buy_addition": "Buy addition",
