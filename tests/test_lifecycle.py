@@ -640,3 +640,73 @@ async def test_missing_future_continuation_recovers_without_losing_current(
         assert entry.runtime_data.data["alert"]["code"] == "invalid_input"
     finally:
         await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_inputs_changing_faster_than_a_calculation_still_publish(
+    recorder_mock, hass, enable_custom_integrations
+):
+    """A result superseded only by newer inputs is published before the rerun.
+
+    Live failure: at 8 kW the SOC crossed the trigger every ~4 minutes while one
+    calculation took ~5, so every result was discarded and the retained plan
+    expired after two hours without a publication.
+    """
+    import asyncio
+
+    from custom_components.energy_compass import coordinator as module
+
+    config = default_configuration("EUR", "UTC")
+    config["settings"].update(
+        horizon_hours=1,
+        display_horizon_hours=1,
+        reference_horizon_hours=1,
+        debounce_seconds=0,
+    )
+    config["helpers"] = {
+        "grid_import_kw": {
+            "entity": {"entity_id": "input_number.limit"},
+            "unit": "kW",
+            "max_age_seconds": None,
+        }
+    }
+    hass.states.async_set("input_number.limit", "5", {"unit_of_measurement": "kW"})
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Starved", version=2
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+    original = module.compute
+    statuses = []
+    published_before = []
+    changes = iter(("6", "7", "8"))
+
+    async def change(value):
+        hass.states.async_set(
+            "input_number.limit", value, {"unit_of_measurement": "kW"}
+        )
+        await asyncio.sleep(0)
+
+    def busy(config, states, now, **kwargs):
+        published_before.append(statuses.count("ready"))
+        result = original(config, states, now, **kwargs)
+        value = next(changes, None)
+        if value is not None:
+            asyncio.run_coroutine_threadsafe(change(value), hass.loop).result(5)
+        return result
+
+    unsubscribe = coordinator.async_add_listener(
+        lambda: statuses.append(coordinator.data.get("status"))
+    )
+    with patch.object(module, "compute", new=busy):
+        await coordinator.async_recalculate()
+        await hass.async_block_till_done()
+    unsubscribe()
+
+    assert len(published_before) == 4
+    # Every superseded result is published before the next run starts.
+    assert published_before == [0, 1, 2, 3]
+    assert coordinator.data["valid"]
+    assert coordinator.data["status"] == "ready"
+    assert await hass.config_entries.async_unload(entry.entry_id)
