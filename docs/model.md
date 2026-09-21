@@ -96,6 +96,18 @@ Let `C = grid_cost + wear_cost - terminal_credit`, `P = minimum_grid_charge_epis
 
 A separate HA Store, `energy_compass.<entry_id>.grid_charge`, persists only `{generated_at, until}` for a published current grid-charge period, with the same continuity, expiry and restart semantics as the export store — without it, an hourly refresh mid-episode would see no prior episode and re-charge the hurdle, biasing against continuing an in-progress charge.
 
+## Inverter standby loss
+
+A hybrid inverter keeps its DC side alive from the battery whenever the pack is connected. The draw is not routed through the inverter's discharge-current limit and it does not serve site load, so a plan that treats a parked battery as a flat SOC is wrong: on one measured night the pack fell from 12 % to 1 % while the grid covered the whole house and the commanded discharge current was zero.
+
+The battery setting `idle_drain_kw` is a finite power from 0 to 10 kW, default **0 (disabled)**, so existing installs see no behaviour change until it is raised; with it at zero the solver model is byte-identical to 0.1.18. Set it to the measured standby draw — battery power while the plan commands neither charge nor discharge and PV is zero.
+
+Battery energy then advances by `charge efficiency × charge - discharge ÷ discharge efficiency - standby loss`, where the per-interval loss is `idle_drain_kw × elapsed UTC hours`. The loss is a constant, not a decision variable, so the program stays linear. It is capped by the "do nothing" SOC trajectory — the energy the pack would still hold if the plan never charged or discharged — which both keeps the leak from driving SOC below zero and makes that trajectory a feasible solution in every problem, so a positive setting can never make the program infeasible.
+
+Two bounds move with the loss. The per-interval operating-reserve floor relaxes to `max(0, min(reserve, initial SOC) - cumulative loss)`, because standby draw can carry a pack below reserve with no discharge commanded; the reserve-discharge gate is armed in that case, so the relaxed floor still cannot be spent — any interval that discharges must finish at or above the full reserve. The `preserve_initial` terminal requirement becomes `initial SOC - total loss`: standby draw is a tax rather than a decision, and holding the raw initial SOC would be infeasible for an install that can neither grid-charge nor see PV inside the horizon. Charging to cover the loss remains available and is taken whenever prices or the autonomy reserve justify it.
+
+The independent result validator applies the same per-interval loss and the same relaxed floor, so a solution that ignores the leak is rejected.
+
 ## Dispatch strategies
 
 The `strategy` Planning setting selects one of six bundles. `cost_min` is the exact objective and

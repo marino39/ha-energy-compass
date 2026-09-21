@@ -524,6 +524,7 @@ def build_problem(
             values["wear_per_kwh"],
             values["allow_grid_charge"],
             values["allow_battery_export"],
+            values["idle_drain_kw"],
         )
         if values["daily_cycles"]:
             observed = resolve_daily_throughput(config, values, states, now)

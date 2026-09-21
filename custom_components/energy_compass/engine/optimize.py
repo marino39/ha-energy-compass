@@ -14,6 +14,7 @@ from .charge_price import price_allows_grid_charge
 from .daily_energy import daily_export_rows, day_fractions
 from .dispatch_policy import MODES, constrain_modes, validate_modes
 from .export_benefit import constrain_export_benefit, validate_export_benefit
+from .idle_drain import cumulative, drain_schedule
 from .models import (
     FlexibleLoadPlan,
     FlexibleLoadRequest,
@@ -124,6 +125,7 @@ def _validate_solution(
     validate_charge_benefit(problem, vectors, values)
     battery = problem.battery
     previous_energy = battery.initial_kwh if battery else 0.0
+    drains = drain_schedule(problem)
     spent = {day: 0.0 for day in budgets}
     floor_windows = (
         _floor_windows(problem.soc_target_window)
@@ -283,8 +285,11 @@ def _validate_solution(
                 battery.capacity_kwh * battery.minimum_soc_fraction, previous_energy
             )
             previous_energy += (
-                battery.eta_charge * charge - discharge / battery.eta_discharge
+                battery.eta_charge * charge
+                - discharge / battery.eta_discharge
+                - drains[index]
             )
+            discharge_floor = max(0.0, discharge_floor - drains[index])
             _close(value("energy"), previous_energy, "battery energy")
             _check(
                 discharge_floor - _TOL
@@ -308,7 +313,12 @@ def _validate_solution(
             )
     if battery:
         if problem.terminal_mode == "preserve_initial":
-            _check(previous_energy >= battery.initial_kwh - _TOL, "terminal SOC")
+            # Standby loss is a tax, not a decision, so "leave it as you found
+            # it" is measured against what the plan actually controls. Holding
+            # the raw initial SOC here would be infeasible for an install that
+            # can neither grid-charge nor see PV inside the horizon.
+            terminal = battery.initial_kwh - sum(drains)
+            _check(previous_energy >= terminal - _TOL, "terminal SOC")
         for day, total in spent.items():
             _check(total <= budgets[day] + _TOL, f"daily throughput {day}")
     if flexible_load:
@@ -373,8 +383,10 @@ def _solve(
     daily_fractions: list[dict[str, float]] = []
     previous_energy_index: int | None = None
     battery = problem.battery
+    drains = drain_schedule(problem)
+    drained = cumulative(drains)
 
-    for slot in problem.slots:
+    for index, slot in enumerate(problem.slots):
         duration = (
             slot.end.astimezone(_UTC) - slot.start.astimezone(_UTC)
         ).total_seconds() / 3600
@@ -439,11 +451,13 @@ def _solve(
                 }
             )
             reserve = battery.capacity_kwh * battery.minimum_soc_fraction
-            model.lower[variables["energy"]] = min(reserve, battery.initial_kwh)
-            if battery.initial_kwh < reserve:
+            floor = max(0.0, min(reserve, battery.initial_kwh) - drained[index])
+            model.lower[variables["energy"]] = floor
+            if floor < reserve:
                 # Below reserve, waiting or gradual charging remains feasible.
                 # Any discharge must finish at/above the full reserve; a fixed
-                # lowered energy bound alone would allow spending partial recovery.
+                # lowered energy bound alone would allow spending partial
+                # recovery, or let standby loss open the floor to discharge.
                 gate = variables["reserve_discharge"] = model.variable(binary=True)
                 model.constrain(
                     {variables["bd"]: 1, gate: -battery.discharge_kw * duration},
@@ -518,7 +532,10 @@ def _solve(
             if previous_energy_index is not None:
                 energy[previous_energy_index] = -1
             initial = battery.initial_kwh if previous_energy_index is None else 0
-            model.constrain(energy, initial, initial)
+            # Leave the row untouched when standby loss is off, so a disabled
+            # setting keeps the solver model byte-identical to 0.1.18.
+            balance = initial - drains[index] if drains[index] else initial
+            model.constrain(energy, balance, balance)
             previous_energy_index = v["energy"]
             solar_surplus = slot.pv_kwh - slot.load_kwh
             load_above_solar = None
@@ -666,7 +683,11 @@ def _solve(
             model, problem, vectors, flexible_load=flexible_load is not None
         )
         if problem.terminal_mode == "preserve_initial":
-            model.constrain({previous_energy_index: 1}, battery.initial_kwh, np.inf)
+            model.constrain(
+                {previous_energy_index: 1},
+                battery.initial_kwh - sum(drains),
+                np.inf,
+            )
         for day, budget in budgets.items():
             terms = {}
             for variables, fractions in zip(vectors, daily_fractions, strict=True):

@@ -35,6 +35,7 @@ NUMBERS = {
     "eta_charge": ("battery", 1, 0.01, 1, ""),
     "eta_discharge": ("battery", 1, 0.01, 1, ""),
     "wear_per_kwh": ("battery", 0, 0, 1000, "currency/kWh"),
+    "idle_drain_kw": ("battery", 0, 0, 10, "kW"),
     "daily_cycles": ("battery", 0, 0, 10, ""),
     "soc_max_age_seconds": ("battery", 600, 1, 86400, "s"),
     "bms_max_age_seconds": ("battery", 600, 1, 86400, "s"),

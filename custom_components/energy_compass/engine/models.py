@@ -67,6 +67,7 @@ class Battery:
     wear_per_kwh: float
     allow_grid_charge: bool
     allow_battery_export: bool
+    idle_drain_kw: float = 0.0
 
 
 @dataclass(frozen=True)

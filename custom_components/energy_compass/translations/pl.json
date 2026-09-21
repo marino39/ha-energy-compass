@@ -132,6 +132,7 @@
           "eta_charge": "Sprawność ładowania",
           "eta_discharge": "Sprawność rozładowania",
           "wear_per_kwh": "Koszt zużycia baterii na kWh",
+          "idle_drain_kw": "Pobór własny falownika z baterii",
           "daily_cycles": "Dzienny limit cykli (0 wyłącza)",
           "soc_max_age_seconds": "Maksymalny wiek SOC",
           "soc_disagreement_percent": "Tolerancja różnicy BMS",
@@ -302,6 +303,7 @@
         "description": "Waluta została zmieniona na {currency}. Kwoty nie zostały przeliczone. Sprawdź i w razie potrzeby zmień każdą kwotę poniżej, a następnie potwierdź, że jest właściwa w {currency}. Wartości stałe są zachowywane także przy użyciu pomocników. Waluty pomocników i źródeł cen muszą być zgodne z nową walutą przed zapisem. {detail}",
         "data": {
           "wear_per_kwh": "Koszt zużycia baterii na kWh",
+          "idle_drain_kw": "Pobór własny falownika z baterii",
           "buy_rate": "Stała cena zakupu",
           "sell_rate": "Stała cena sprzedaży",
           "buy_addition": "Dodatek do ceny zakupu",
@@ -529,6 +531,7 @@
           "eta_charge": "Sprawność ładowania",
           "eta_discharge": "Sprawność rozładowania",
           "wear_per_kwh": "Koszt zużycia baterii na kWh",
+          "idle_drain_kw": "Pobór własny falownika z baterii",
           "daily_cycles": "Dzienny limit cykli (0 wyłącza)",
           "soc_max_age_seconds": "Maksymalny wiek SOC",
           "soc_disagreement_percent": "Tolerancja różnicy BMS",
@@ -699,6 +702,7 @@
         "description": "Waluta została zmieniona na {currency}. Kwoty nie zostały przeliczone. Sprawdź i w razie potrzeby zmień każdą kwotę poniżej, a następnie potwierdź, że jest właściwa w {currency}. Wartości stałe są zachowywane także przy użyciu pomocników. Waluty pomocników i źródeł cen muszą być zgodne z nową walutą przed zapisem. {detail}",
         "data": {
           "wear_per_kwh": "Koszt zużycia baterii na kWh",
+          "idle_drain_kw": "Pobór własny falownika z baterii",
           "buy_rate": "Stała cena zakupu",
           "sell_rate": "Stała cena sprzedaży",
           "buy_addition": "Dodatek do ceny zakupu",
