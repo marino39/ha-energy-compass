@@ -196,6 +196,7 @@ _PLANNING_VALUES = {
     "cap_violation_price_per_kwh": 2.0,
     "grid_friendly_import_cap_kw": 0,
     "grid_friendly_export_cap_kw": 0,
+    "import_penalty_per_kwh": 0,
 }
 
 
@@ -264,3 +265,31 @@ def test_strategy_weights_returns_the_nine_keys(strategy):
         "soft_import_cap_kw",
         "soft_export_cap_kw",
     }
+
+
+@pytest.mark.parametrize("strategy", STRATEGIES)
+def test_import_penalty_reaches_every_strategy(strategy):
+    values = dict(_PLANNING_VALUES, import_penalty_per_kwh=0.15)
+    weights = strategy_weights(
+        strategy,
+        values,
+        max_abs_buy_per_kwh=1.0,
+        site_import_kw=8.0,
+        site_export_kw=8.0,
+    )
+    if strategy == "self_sufficiency":
+        assert weights["import_kwh_weight"] == 5.0
+    else:
+        assert weights["import_kwh_weight"] == 0.15
+
+
+def test_self_sufficiency_takes_the_larger_import_penalty():
+    values = dict(_PLANNING_VALUES, import_penalty_per_kwh=9.0)
+    weights = strategy_weights(
+        "self_sufficiency",
+        values,
+        max_abs_buy_per_kwh=1.0,
+        site_import_kw=8.0,
+        site_export_kw=8.0,
+    )
+    assert weights["import_kwh_weight"] == 9.0

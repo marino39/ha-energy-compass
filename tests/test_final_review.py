@@ -114,6 +114,7 @@ MONETARY_VALUES = {
     "cap_violation_price_per_kwh": 2.5,
     "autonomy_margin_per_kwh": 0.12,
     "minimum_grid_charge_episode_benefit": 3.0,
+    "import_penalty_per_kwh": 0.12,
 }
 
 

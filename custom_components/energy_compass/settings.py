@@ -63,6 +63,7 @@ NUMBERS = {
     "minimum_mode_power_kw": ("planning", 0.1, 0.001, 1000, "kW"),
     "minimum_export_episode_benefit": ("planning", 1, 0, 1000, "currency"),
     "minimum_grid_charge_episode_benefit": ("planning", 0, 0, 1000, "currency"),
+    "import_penalty_per_kwh": ("planning", 0, 0, 1000, "currency/kWh"),
     "maximum_grid_charge_price": ("planning", 0, -1000, 1000, "currency/kWh"),
     "terminal_value_per_kwh": ("planning", 0, -1000, 1000, "currency/kWh"),
     "self_sufficiency_import_price_per_kwh": ("planning", 5.0, 0, 1000, "currency/kWh"),
