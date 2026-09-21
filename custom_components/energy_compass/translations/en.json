@@ -188,6 +188,7 @@
           "minimum_mode_power_kw": "Minimum active-mode power",
           "minimum_export_episode_benefit": "Minimum benefit per additional battery-export period",
           "minimum_grid_charge_episode_benefit": "Minimum grid-charge episode benefit",
+          "import_penalty_per_kwh": "Import penalty",
           "maximum_grid_charge_price": "Maximum grid-charging price",
           "limit_grid_charge_price": "Limit grid-charging price",
           "strategy": "Strategy",
@@ -210,6 +211,7 @@
           "minimum_mode_power_kw": "Default 0.1 kW (100 W); range 0.001–1000 kW. Minimum active power, not constant power. With duration 0 and the benefit hurdle enabled, applies only to simultaneous battery discharge and grid export. CURTAIL excludes battery charge and discharge only while the duration policy is enabled.",
           "minimum_export_episode_benefit": "Default 1 unit of installation currency (for example 1 PLN); range 0–1000, 0 disables. Each additional period must improve full-horizon physical cost versus fewer periods by at least this amount. Includes prices, losses, wear and optional terminal value; not a realized cycle-profit guarantee. An ongoing published period is exempt. With mode duration 0, the minimum power still applies to simultaneous discharge and export. Real low-power export may bridge a price valley without recharging.",
           "minimum_grid_charge_episode_benefit": "Default 0 (disabled); range 0-1000, 0 disables. Each additional grid-fed battery-charge period must improve full-horizon physical cost versus fewer periods by at least this amount. Includes prices, losses, wear and optional terminal value. An ongoing published period is exempt. Mirrors the export-episode benefit, but for grid-to-battery charging instead of battery export.",
+          "import_penalty_per_kwh": "Default 0 (disabled); range 0-1000 per kWh. A planning-only shadow price added to every kWh imported from the grid, in every strategy. It makes the planner cover demand from the battery rather than hold it for a marginally better later price, and absorbs forecast error inside an interval. Reported costs stay in real currency and never include it. Self-sufficiency uses the larger of this and its own import price.",
           "maximum_grid_charge_price": "Final purchase price after tariff adjustments, in installation currency/kWh. Prices equal to the ceiling are allowed. Range −1000–1000; zero permits only zero or negative prices. Applies only when the toggle is enabled. Household supply and surplus-PV charging remain available.",
           "limit_grid_charge_price": "Disabled by default. Blocks battery charging from the grid above the ceiling, including with mode duration zero. New charging runs need eligible prices for their full minimum duration. If a carried charging commitment conflicts with the ceiling during its remaining duration, advice pauses immediately in HOLD until the original deadline, without resetting its clock.",
           "grid_friendly_import_cap_kw": "Soft cap on grid import power under the grid_friendly strategy, in kW. 0 uses the site's grid import limit instead of a separate cap.",
@@ -313,6 +315,7 @@
           "confirm_currency_values": "I confirm these amounts in the new currency; no automatic conversion was performed",
           "minimum_export_episode_benefit": "Minimum benefit per additional battery-export period",
           "minimum_grid_charge_episode_benefit": "Minimum grid-charge episode benefit",
+          "import_penalty_per_kwh": "Import penalty",
           "maximum_grid_charge_price": "Maximum grid-charging price"
         }
       },
@@ -585,6 +588,7 @@
           "minimum_mode_power_kw": "Minimum active-mode power",
           "minimum_export_episode_benefit": "Minimum benefit per additional battery-export period",
           "minimum_grid_charge_episode_benefit": "Minimum grid-charge episode benefit",
+          "import_penalty_per_kwh": "Import penalty",
           "maximum_grid_charge_price": "Maximum grid-charging price",
           "limit_grid_charge_price": "Limit grid-charging price",
           "strategy": "Strategy",
@@ -607,6 +611,7 @@
           "minimum_mode_power_kw": "Default 0.1 kW (100 W); range 0.001–1000 kW. Minimum active power, not constant power. With duration 0 and the benefit hurdle enabled, applies only to simultaneous battery discharge and grid export. CURTAIL excludes battery charge and discharge only while the duration policy is enabled.",
           "minimum_export_episode_benefit": "Default 1 unit of installation currency (for example 1 PLN); range 0–1000, 0 disables. Each additional period must improve full-horizon physical cost versus fewer periods by at least this amount. Includes prices, losses, wear and optional terminal value; not a realized cycle-profit guarantee. An ongoing published period is exempt. With mode duration 0, the minimum power still applies to simultaneous discharge and export. Real low-power export may bridge a price valley without recharging.",
           "minimum_grid_charge_episode_benefit": "Default 0 (disabled); range 0-1000, 0 disables. Each additional grid-fed battery-charge period must improve full-horizon physical cost versus fewer periods by at least this amount. Includes prices, losses, wear and optional terminal value. An ongoing published period is exempt. Mirrors the export-episode benefit, but for grid-to-battery charging instead of battery export.",
+          "import_penalty_per_kwh": "Default 0 (disabled); range 0-1000 per kWh. A planning-only shadow price added to every kWh imported from the grid, in every strategy. It makes the planner cover demand from the battery rather than hold it for a marginally better later price, and absorbs forecast error inside an interval. Reported costs stay in real currency and never include it. Self-sufficiency uses the larger of this and its own import price.",
           "maximum_grid_charge_price": "Final purchase price after tariff adjustments, in installation currency/kWh. Prices equal to the ceiling are allowed. Range −1000–1000; zero permits only zero or negative prices. Applies only when the toggle is enabled. Household supply and surplus-PV charging remain available.",
           "limit_grid_charge_price": "Disabled by default. Blocks battery charging from the grid above the ceiling, including with mode duration zero. New charging runs need eligible prices for their full minimum duration. If a carried charging commitment conflicts with the ceiling during its remaining duration, advice pauses immediately in HOLD until the original deadline, without resetting its clock.",
           "grid_friendly_import_cap_kw": "Soft cap on grid import power under the grid_friendly strategy, in kW. 0 uses the site's grid import limit instead of a separate cap.",
@@ -710,6 +715,7 @@
           "confirm_currency_values": "I confirm these amounts in the new currency; no automatic conversion was performed",
           "minimum_export_episode_benefit": "Minimum benefit per additional battery-export period",
           "minimum_grid_charge_episode_benefit": "Minimum grid-charge episode benefit",
+          "import_penalty_per_kwh": "Import penalty",
           "maximum_grid_charge_price": "Maximum grid-charging price"
         }
       },

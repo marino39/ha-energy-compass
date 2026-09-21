@@ -113,6 +113,29 @@ def test_import_kwh_weight_avoids_import_at_negative_price():
     assert weighted.flows[0].grid_import_kwh == pytest.approx(0.0, abs=1e-6)
 
 
+def test_import_penalty_prefers_self_consumption_over_a_marginal_hold():
+    """A battery held for a later export only slightly above the buy price
+    loses to covering the house once import carries a small shadow price."""
+    rows = [(1.25, 0.70, 0.0, 1.0), (1.25, 1.35, 0.0, 0.0)]
+    b = battery(initial_kwh=3.0, wear_per_kwh=0.0, allow_grid_charge=False)
+    source = problem(
+        rows,
+        battery=b,
+        mode="value",
+        limit_export_to_pv=False,
+        minimum_export_episode_benefit=0.0,
+    )
+    baseline = solve(source)
+    assert baseline.flows[0].dispatch_mode == "HOLD"
+    assert baseline.flows[0].grid_import_kwh == pytest.approx(1.0)
+    penalised = solve(replace(source, import_kwh_weight=0.15))
+    assert penalised.flows[0].dispatch_mode == "SELF_CONSUME"
+    assert penalised.flows[0].grid_import_kwh == pytest.approx(0.0, abs=1e-6)
+    # The reported cost stays real currency: the penalty never enters it.
+    assert plan_monetary_cost(baseline) == pytest.approx(-0.10)
+    assert plan_monetary_cost(penalised) == pytest.approx(0.0, abs=1e-6)
+
+
 def test_pv_export_margin_reduces_export_value(monkeypatch):
     rows = [(0.30, 0.20, 1.0, 0.5)]
     captured = _capture_cost(monkeypatch)

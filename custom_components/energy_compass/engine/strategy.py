@@ -54,11 +54,15 @@ def strategy_weights(
     site_import_kw: float,
     site_export_kw: float,
 ) -> dict[str, float | None]:
-    """Return the Problem weight fields for one strategy. cost_min returns exact defaults."""
+    """Return the Problem weight fields for one strategy.
+
+    cost_min returns exact defaults while import_penalty_per_kwh is 0. The import
+    penalty is a planning-only shadow price that applies under every strategy.
+    """
     weights: dict[str, float | None] = {
         "import_weight": 1.0,
         "export_weight": 1.0,
-        "import_kwh_weight": 0.0,
+        "import_kwh_weight": values["import_penalty_per_kwh"],
         "battery_export_penalty_per_kwh": 0.0,
         "pv_export_margin": 0.0,
         "peak_import_weight": 0.0,
@@ -70,6 +74,7 @@ def strategy_weights(
         weights["import_kwh_weight"] = max(
             values["self_sufficiency_import_price_per_kwh"],
             max_abs_buy_per_kwh + 0.50,
+            values["import_penalty_per_kwh"],
         )
         weights["battery_export_penalty_per_kwh"] = values[
             "self_sufficiency_export_penalty_per_kwh"

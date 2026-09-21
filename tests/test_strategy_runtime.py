@@ -211,6 +211,15 @@ def test_cost_min_problem_matches_previous_defaults():
     assert problem.strategy_changed is False
 
 
+def test_import_penalty_reaches_the_cost_min_problem():
+    config = default_configuration("EUR", "UTC")
+    assert config["settings"]["import_penalty_per_kwh"] == 0
+    config["settings"]["import_penalty_per_kwh"] = 0.12
+    problem, _, _ = build_problem(config, {}, _NOW)
+    assert problem.strategy == "cost_min"
+    assert problem.import_kwh_weight == 0.12
+
+
 @pytest.mark.parametrize("strategy", STRATEGIES)
 def test_strategy_overrides_reach_the_problem(strategy):
     now = _NOW

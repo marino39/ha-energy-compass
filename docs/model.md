@@ -129,11 +129,19 @@ objective = grid + wear + episodes + autonomy + peak + caps - terminal_credit
 | strategy | changes | when |
 | --- | --- | --- |
 | `cost_min` | none — every weight at its default, autonomy reserve off | default; byte-identical to the plain objective above |
-| `self_sufficiency` | `import_kwh_weight` dominates price (`max(self_sufficiency_import_price_per_kwh, max abs buy price + 0.50)`), a `self_sufficiency_export_penalty_per_kwh` battery-export penalty; autonomy reserve on | minimize grid kWh, not currency; robust to zero or negative prices |
+| `self_sufficiency` | `import_kwh_weight` dominates price (`max(self_sufficiency_import_price_per_kwh, max abs buy price + 0.50, import_penalty_per_kwh)`), a `self_sufficiency_export_penalty_per_kwh` battery-export penalty; autonomy reserve on | minimize grid kWh, not currency; robust to zero or negative prices |
 | `backup_ready` | autonomy reserve on, its floor raised to `backup_target_soc_percent` of capacity | storm warning, planned outage, winter |
 | `pv_swap` | `pv_export_margin` (`pv_swap_margin_per_kwh`) subtracted from the sell price; `limit_export_to_pv` and the grid-charge price ceiling forced on; autonomy reserve on | small winter PV: buy cheap at night, sell the real PV production later that day |
 | `max_export` | the export-episode penalty zeroed, `limit_export_to_pv` and the grid-charge ceiling forced off; autonomy reserve off | pure arbitrage, high sell-tariff windows |
 | `grid_friendly` | a `peak_import_price_per_kw` peak-import term and `cap_violation_price_per_kwh` soft import/export caps (`grid_friendly_import_cap_kw` / `grid_friendly_export_cap_kw`, `0` = use the site's `SiteLimits` connection limit); autonomy reserve off | capacity tariffs, a weak connection |
+
+`import_penalty_per_kwh` (Planning, currency/kWh, default **0**, range 0–1000) sets
+`import_kwh_weight` under every strategy; `self_sufficiency` takes the larger of it and its own
+import price. It is a shadow price: a held battery must now beat covering the house by this
+margin, so a marginally better later price no longer leaves the house on the grid, and the plan
+keeps room for forecast error inside an interval, where import at the buy price and export at the
+sell price do not net out. With the default 0, `cost_min` stays byte-identical to the plain
+objective. The value is published under `dispatch_policy` and never enters reported costs.
 
 Every numeric field a strategy did not itself set is still open to the user: settings the entry marks
 as explicitly set (`explicit_strategy_fields`) are never overridden by the bundle, so changing a

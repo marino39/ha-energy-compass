@@ -936,6 +936,7 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
             "minimum_grid_charge_episode_benefit": values[
                 "minimum_grid_charge_episode_benefit"
             ],
+            "import_penalty_per_kwh": values["import_penalty_per_kwh"],
             "new_grid_charge_episodes": plan.new_grid_charge_episodes,
             "grid_charge_episode_reserve": plan.grid_charge_episode_reserve,
             "grid_charge_benefit_scope": "grid_fed_battery_charge_period",
