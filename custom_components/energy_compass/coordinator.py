@@ -21,6 +21,7 @@ from .daily_export import (
     daily_export_active,
     daily_export_observations,
 )
+from .engine.dispatch_policy import dwell_group
 from .engine.models import InputError, SolveError
 from .flow_schema import entity_ids, rebind_configuration, snapshot
 from .runtime import (
@@ -757,6 +758,11 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             self._battery_commitment = None
         elif policy.get("safety_exception"):
             return
+        elif self._battery_commitment and dwell_group(
+            self._battery_commitment["mode"]
+        ) == dwell_group(mode):
+            # CHARGE_PV <-> SELF_CONSUME keeps the inverter state and its clock.
+            self._battery_commitment = {**self._battery_commitment, "mode": mode}
         elif not self._battery_commitment or self._battery_commitment["mode"] != mode:
             previous = self._battery_commitment
             self._battery_commitment = {"mode": mode, "since": result["generated_at"]}

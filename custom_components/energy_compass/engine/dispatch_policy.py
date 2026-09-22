@@ -19,6 +19,24 @@ MODES = (
 ACTIVE = frozenset(MODES[:4])
 
 
+# CHARGE_PV and SELF_CONSUME both let the inverter follow PV: surplus charges
+# the battery and a deficit is drawn from it. A controller writes the same
+# registers for both, so a flip between them is not a mode change to protect.
+_DWELL_GROUPS = {"CHARGE_PV": "PV_FOLLOW", "SELF_CONSUME": "PV_FOLLOW"}
+
+
+def dwell_group(mode):
+    """Name the physical state whose minimum duration a mode shares."""
+    return _DWELL_GROUPS.get(mode, mode)
+
+
+GROUPS = tuple(dict.fromkeys(dwell_group(mode) for mode in MODES))
+
+
+def _members(group):
+    return tuple(mode for mode in MODES if dwell_group(mode) == group)
+
+
 def safety_exception(problem: Problem) -> dict | None:
     """Pause an active lock at an observed SOC bound or conflicting price ceiling."""
     battery = problem.battery
@@ -213,24 +231,31 @@ def constrain_modes(model, problem: Problem, vectors, *, flexible_load=False) ->
         held_until = since.astimezone(UTC) + dwell
         for start, v in zip(starts, vectors, strict=True):
             if start < held_until:
-                model.constrain({v[f"mode_{previous}"]: 1}, 1, 1)
+                model.constrain(
+                    {v[f"mode_{mode}"]: 1 for mode in _members(dwell_group(previous))},
+                    1,
+                    1,
+                )
     for i, v in enumerate(vectors):
-        for mode in MODES:
-            current = v[f"mode_{mode}"]
-            prior = vectors[i - 1][f"mode_{mode}"] if i else None
-            initial = int(mode == previous)
-            if mode in ACTIVE and coverage_end < starts[i] + dwell:
-                terms = {current: 1}
-                if prior is not None:
-                    terms[prior] = -1
-                model.constrain(terms, -np.inf, initial if i == 0 else 0)
+        for group in GROUPS:
+            members = _members(group)
+            # Modes are one-hot, so a group's member sum is its binary indicator.
+            current = {v[f"mode_{mode}"]: 1 for mode in members}
+            prior = (
+                {vectors[i - 1][f"mode_{mode}"]: -1 for mode in members} if i else {}
+            )
+            initial = int(previous is not None and dwell_group(previous) == group)
+            if ACTIVE.intersection(members) and coverage_end < starts[i] + dwell:
+                model.constrain({**current, **prior}, -np.inf, initial if i == 0 else 0)
             for j in range(i + 1, len(vectors)):
                 if starts[j] >= starts[i] + dwell:
                     break
-                terms = {current: 1, vectors[j][f"mode_{mode}"]: -1}
-                if prior is not None:
-                    terms[prior] = -1
-                model.constrain(terms, -np.inf, initial if i == 0 else 0)
+                following = {vectors[j][f"mode_{mode}"]: -1 for mode in members}
+                model.constrain(
+                    {**current, **following, **prior},
+                    -np.inf,
+                    initial if i == 0 else 0,
+                )
 
 
 def validate_modes(problem: Problem, flows) -> None:
@@ -282,7 +307,7 @@ def validate_modes(problem: Problem, flows) -> None:
                 raise SolveError(
                     "solver_failure", "invalid solver result: legacy direction guard"
                 )
-        if mode != previous:
+        if dwell_group(mode) != dwell_group(previous):
             if previous is not None and start < since.astimezone(UTC) + dwell:
                 raise SolveError(
                     "solver_failure", "invalid solver result: minimum mode duration"

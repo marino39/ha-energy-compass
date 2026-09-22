@@ -7,8 +7,15 @@ from itertools import groupby
 import pytest
 from test_dispatch_policy import dispatch
 
-from custom_components.energy_compass.engine.consumption import machine_state
-from custom_components.energy_compass.engine.models import SolveError
+from custom_components.energy_compass.engine.consumption import (
+    analyze_consumption,
+    machine_state,
+)
+from custom_components.energy_compass.engine.dispatch_policy import (
+    dwell_group,
+    validate_modes,
+)
+from custom_components.energy_compass.engine.models import CompassSettings, SolveError
 from custom_components.energy_compass.engine.optimize import solve
 
 ACTIVE = {"CHARGE_GRID", "CHARGE_PV", "DISCHARGE_GRID", "SELF_CONSUME"}
@@ -16,8 +23,9 @@ ACTIVE = {"CHARGE_GRID", "CHARGE_PV", "DISCHARGE_GRID", "SELF_CONSUME"}
 
 def assert_runs(problem, plan):
     rows = list(zip(problem.slots, plan.flows, strict=True))
-    for mode, group in groupby(rows, key=lambda row: machine_state(*row)):
+    for _, group in groupby(rows, key=lambda row: dwell_group(machine_state(*row))):
         run = list(group)
+        mode = machine_state(*run[0])
         elapsed = (
             run[-1][0].end.astimezone(UTC) - run[0][0].start.astimezone(UTC)
         ).total_seconds() / 60
@@ -481,3 +489,95 @@ async def test_native_failed_and_superseded_results_preserve_clock(
     assert coordinator.data["alert"]["code"] == "invalid_input"
     assert coordinator._battery_commitment == original
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+def carried_pv_problem(rows, *, locked_minutes=10, **changes):
+    """Replay 2026-09-22: a carried CHARGE_PV lock meets a PV deficit."""
+    problem = dispatch(rows, minimum_mode_minutes=15, **changes)
+    return replace(
+        problem,
+        battery=replace(problem.battery, initial_kwh=5),
+        initial_dispatch_mode="CHARGE_PV",
+        initial_dispatch_mode_since=problem.slots[0].start
+        - timedelta(minutes=15 - locked_minutes),
+    )
+
+
+def test_carried_charge_pv_backfills_deficit_from_battery():
+    # CHARGE_PV and SELF_CONSUME write the same inverter registers: when PV
+    # falls below load inside the lock, the inverter covers it from the battery.
+    # Cheap import now and dear import later make HOLD the tempting shortcut.
+    problem = carried_pv_problem(((0.1, 0, 0.1, 0.35),) + ((5.0, 0, 0, 0.5),) * 7)
+    plan = solve(problem)
+    assert plan.flows[0].dispatch_mode == "SELF_CONSUME"
+    assert plan.flows[0].discharge_kwh >= 0.025 - 1e-8
+
+
+def test_carried_pv_family_still_forbids_early_hold():
+    problem = carried_pv_problem(((0.1, 0, 0.1, 0.35),) + ((5.0, 0, 0, 0.5),) * 7)
+    plan = solve(problem)
+    flows = (replace(plan.flows[0], discharge_kwh=0, dispatch_mode="HOLD"),)
+    with pytest.raises(SolveError, match="minimum mode duration"):
+        validate_modes(problem, flows + plan.flows[1:])
+
+
+def test_probe_under_carried_charge_pv_lock_is_priced():
+    # Thin PV surplus keeps the baseline in CHARGE_PV; the 1 kWh probe turns it
+    # into a deficit, which used to make the current hour infeasible.
+    problem = carried_pv_problem(((1.25, 0.8, 0.1, 0.07),) * 8)
+    baseline = solve(problem)
+    assert baseline.flows[0].dispatch_mode == "CHARGE_PV"
+    result = analyze_consumption(
+        problem,
+        baseline,
+        settings=CompassSettings(display_horizon_hours=2, reference_horizon_hours=2),
+    )
+    assert result.opportunities[0].cost_per_kwh is not None
+    assert result.coverage_reason == "complete"
+
+
+def test_pv_family_shares_one_dwell_run():
+    # Alternating surplus and deficit: the inverter follows PV either way, so
+    # CHARGE_PV <-> SELF_CONSUME flips need no minimum duration of their own.
+    problem = dispatch(
+        tuple((2.0, 0, 1.0 if i % 2 == 0 else 0, 0.5) for i in range(8)),
+        limit_export_to_pv=False,
+    )
+    problem = replace(problem, battery=replace(problem.battery, initial_kwh=5))
+    plan = solve(problem)
+    modes = [machine_state(s, f) for s, f in zip(problem.slots, plan.flows)]
+    assert modes[:4] == ["CHARGE_PV", "SELF_CONSUME"] * 2
+    assert_runs(problem, plan)
+
+
+def test_pv_family_flip_keeps_commitment_clock():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from custom_components.energy_compass.coordinator import EnergyCompassCoordinator
+
+    since = "2026-09-22T06:45:00+00:00"
+    coordinator = SimpleNamespace(
+        _battery_commitment={"mode": "CHARGE_PV", "since": since},
+        _dispatch_store=Mock(),
+    )
+
+    def publish(mode, at):
+        EnergyCompassCoordinator._commit_battery_direction(
+            coordinator,
+            {
+                "generated_at": at,
+                "intervals": [{"dispatch_mode": mode}],
+                "dispatch_policy": {"enabled": True},
+            },
+        )
+        return coordinator._battery_commitment
+
+    assert publish("SELF_CONSUME", "2026-09-22T06:50:00+00:00") == {
+        "mode": "SELF_CONSUME",
+        "since": since,
+    }
+    assert publish("HOLD", "2026-09-22T07:05:00+00:00") == {
+        "mode": "HOLD",
+        "since": "2026-09-22T07:05:00+00:00",
+    }
