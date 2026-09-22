@@ -10,6 +10,12 @@ from .engine.normalize import finite
 from .sources.bindings import parse_timestamp
 
 DAILY_EXPORT_MEASUREMENTS = ("pv_energy_today", "grid_export_energy_today")
+# An inverter resets its daily totals on its own clock and an integration reports
+# them on its own poll, so the first minutes of a local day can still carry
+# yesterday's totals, with yesterday's or even today's timestamp.
+ROLLOVER_GRACE = timedelta(minutes=30)
+# Counter resolution and poll jitter on top of the physical accumulation bound.
+ROLLOVER_SLACK_KWH = 0.2
 
 
 def daily_export_active(values: dict) -> bool:
@@ -23,9 +29,18 @@ def daily_export_observations(config, states, values, now):
         return 0.0, 0.0, None
     zone = ZoneInfo(config["timezone"])
     today = now.astimezone(zone).date()
+    midnight = datetime.combine(today, time.min, tzinfo=zone).astimezone(UTC)
+    elapsed_hours = max(0.0, (now - midnight).total_seconds() / 3600)
     deadline = datetime.combine(
         today + timedelta(days=1), time.min, tzinfo=zone
     ).astimezone(UTC)
+    # Largest energy each counter can physically hold since local midnight. PV
+    # may exceed the AC rating, so its bound is deliberately generous.
+    export_kw = values["grid_export_kw"]
+    possible = {
+        "pv_energy_today": 2 * max(values["inverter_kw"], export_kw) * elapsed_hours,
+        "grid_export_energy_today": export_kw * elapsed_hours,
+    }
     observed = []
     for name in DAILY_EXPORT_MEASUREMENTS:
         selected = config.get("measurements", {}).get(name)
@@ -47,8 +62,25 @@ def daily_export_observations(config, states, values, now):
             if "last_reported" in state
             else state.get("last_updated")
         )
-        if stamp > now or stamp.astimezone(zone).date() != today:
+        if stamp > now:
             raise InputError(f"{name} must have a report from the current local day")
+        reset = (
+            stamp.astimezone(zone).date() == today
+            and value <= possible[name] + ROLLOVER_SLACK_KWH
+        )
+        if not reset:
+            if now - midnight >= ROLLOVER_GRACE:
+                if stamp.astimezone(zone).date() != today:
+                    raise InputError(
+                        f"{name} must have a report from the current local day"
+                    )
+                raise InputError(f"{name} did not reset for the current local day")
+            # Until the counter rolls over, assume the conservative end of what
+            # today can hold: no PV yet, and as much export as was possible.
+            # Both shrink the export budget; neither invents one.
+            observed.append(0.0 if name == "pv_energy_today" else possible[name])
+            deadline = min(deadline, midnight + ROLLOVER_GRACE)
+            continue
         if setting.max_age_seconds is not None:
             max_age = finite(setting.max_age_seconds, f"{name} age limit")
             if max_age <= 0:

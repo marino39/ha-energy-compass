@@ -308,7 +308,7 @@ def _validate_solution(
                 for v, fraction in zip(vectors, daily_fractions, strict=True)
             )
             _check(
-                planned <= row["remaining_export_kwh"] + _TOL,
+                planned <= max(0.0, row["remaining_export_kwh"]) + _TOL,
                 f"daily export exceeds PV generation: {row['date']}",
             )
     if battery:
@@ -676,7 +676,9 @@ def _solve(
                     for name in ("gout", "curt")
                 },
                 -np.inf,
-                row["remaining_export_kwh"],
+                # Export already above today's PV cannot be undone; it only
+                # forbids more. A negative bound would make every plan infeasible.
+                max(0.0, row["remaining_export_kwh"]),
             )
     if battery:
         constrain_modes(

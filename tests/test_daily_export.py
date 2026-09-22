@@ -312,3 +312,73 @@ async def test_counter_change_recalculates_without_resetting_daily_budget(
         == 1
     )
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+MIDNIGHT = datetime(2026, 9, 18, 22, tzinfo=UTC)  # 00:00 Europe/Warsaw
+
+
+def _counters(states, pv, export, stamp):
+    for key, value in (("pv_energy_today", pv), ("grid_export_energy_today", export)):
+        row = states[f"sensor.{key}"]
+        row["state"] = str(value)
+        row["last_updated"] = row["last_reported"] = stamp
+
+
+@pytest.mark.parametrize("stamp_offset", [timedelta(minutes=-3), timedelta(minutes=2)])
+def test_counters_not_yet_reset_after_midnight_use_conservative_values(stamp_offset):
+    """Yesterday's totals, reported before midnight or on the inverter's lagging
+    clock after it, never become today's budget and never block the plan."""
+    now = MIDNIGHT + timedelta(minutes=5)
+    config, states = daily_config(now)
+    _counters(states, 16, 6, MIDNIGHT + stamp_offset)
+    source, values, _ = build_problem(config, states, now)
+    assert source.pv_generated_today_kwh == 0
+    assert source.grid_exported_today_kwh == pytest.approx(8 * 5 / 60)
+    assert freshness_deadline(config, states, values, now) == MIDNIGHT + timedelta(
+        minutes=30
+    )
+    assert compute(config, states, now)["valid"]
+
+
+def test_reset_counters_after_midnight_are_used_as_reported():
+    now = MIDNIGHT + timedelta(minutes=10)
+    config, states = daily_config(now)
+    _counters(states, 0, 0.1, MIDNIGHT + timedelta(minutes=9))
+    source, _, _ = build_problem(config, states, now)
+    assert source.pv_generated_today_kwh == 0
+    assert source.grid_exported_today_kwh == pytest.approx(0.1)
+
+
+@pytest.mark.parametrize(
+    "stamp_offset,message",
+    [
+        (timedelta(minutes=-3), "must have a report from the current local day"),
+        (timedelta(minutes=35), "did not reset for the current local day"),
+    ],
+)
+def test_counters_still_not_reset_after_the_grace_block_advice(stamp_offset, message):
+    now = MIDNIGHT + timedelta(minutes=40)
+    config, states = daily_config(now)
+    _counters(states, 16, 6, MIDNIGHT + stamp_offset)
+    with pytest.raises(InputError, match=message):
+        build_problem(config, states, now)
+
+
+def test_daytime_counters_are_not_mistaken_for_yesterday():
+    now = datetime(2026, 9, 18, 10, tzinfo=UTC)  # 12:00 local
+    config, states = daily_config(now)
+    _counters(states, 30, 20, now)
+    source, _, _ = build_problem(config, states, now)
+    assert source.pv_generated_today_kwh == 30
+    assert source.grid_exported_today_kwh == 20
+
+
+def test_export_already_above_todays_pv_forbids_more_instead_of_failing():
+    """PV that fell short of its forecast can leave observed export above
+    observed PV plus the rest of the day's forecast; the plan must still solve."""
+    now = datetime(2026, 9, 18, 16, tzinfo=UTC)
+    config, states = daily_config(now)
+    _counters(states, 5, 7, now)
+    result = compute(config, states, now)
+    assert result["valid"]
+    assert all(row["grid_export_kwh"] <= 1e-6 for row in result["intervals"])
