@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
 )
+from test_hourly_schedule import switching_entry as switching_entry  # noqa: PLC0414
 
 from custom_components.energy_compass import coordinator as module
 from custom_components.energy_compass.config_models import PriceSource
@@ -461,8 +462,8 @@ async def test_input_change_waits_for_minimum_replan_pause(
     input change, so 'ready' lasted ~80 ms and a controller gated on it never
     accepted a new plan."""
     coordinator = published_entry.runtime_data
-    pause = coordinator.configuration["settings"].get("minimum_replan_seconds", 120)
-    assert pause == 120
+    pause = coordinator.configuration["settings"].get("minimum_replan_seconds", 900)
+    assert pause == 900
     original = hass.states.get("sensor.refresh_plan").state
     calls = []
     real = module.compute
@@ -478,7 +479,7 @@ async def test_input_change_waits_for_minimum_replan_pause(
         assert not calls
         assert coordinator.data["status"] == "ready"
         assert hass.states.get("sensor.refresh_plan").state == original
-        freezer.move_to("2026-09-17T10:02:01+00:00")
+        freezer.move_to("2026-09-17T10:15:01+00:00")
         async_fire_time_changed(hass, dt_util.utcnow(), fire_all=True)
         await hass.async_block_till_done()
     assert len(calls) == 1
@@ -529,8 +530,107 @@ async def test_changes_during_a_solve_rerun_after_the_pause(
         # The superseded result is published and stays ready during the pause.
         assert len(calls) == 1
         assert coordinator.data["status"] == "ready"
-        freezer.move_to("2026-09-17T10:07:01+00:00")
+        freezer.move_to("2026-09-17T10:20:01+00:00")
         async_fire_time_changed(hass, dt_util.utcnow(), fire_all=True)
         await hass.async_block_till_done()
     assert len(calls) == 2
     assert coordinator.data["status"] == "ready"
+
+
+@pytest.mark.replan_cooldown
+async def test_rate_limit_survives_a_failed_solve(published_entry, hass, freezer):
+    """Gating on 'ready' left the busiest state ungated: after a solve ended in
+    error the retained plan was still published, yet every input change started
+    another calculation immediately."""
+    coordinator = published_entry.runtime_data
+    calls = []
+
+    def failing(*args, **kwargs):
+        calls.append(dt_util.utcnow())
+        raise SolveError("infeasible")
+
+    freezer.move_to("2026-09-17T10:05:00+00:00")
+    with patch.object(module, "compute", new=failing):
+        await coordinator.async_recalculate()
+        await hass.async_block_till_done()
+        assert len(calls) == 1
+        assert coordinator.data["valid"]
+        assert coordinator.data["plan_retained"]
+        freezer.move_to("2026-09-17T10:06:00+00:00")
+        hass.states.async_set("input_number.limit", "6", {"unit_of_measurement": "kW"})
+        await hass.async_block_till_done()
+        assert len(calls) == 1
+        freezer.move_to("2026-09-17T10:20:01+00:00")
+        async_fire_time_changed(hass, dt_util.utcnow(), fire_all=True)
+        await hass.async_block_till_done()
+    assert len(calls) == 2
+
+
+@pytest.mark.replan_cooldown
+async def test_rate_limit_lifts_without_a_retained_plan(published_entry, hass, freezer):
+    """A limit that outlived the plan would leave the integration with nothing
+    to publish until it expired."""
+    coordinator = published_entry.runtime_data
+    calls = []
+    real = module.compute
+
+    def counted(*args, **kwargs):
+        calls.append(dt_util.utcnow())
+        return real(*args, **kwargs)
+
+    freezer.move_to("2026-09-17T10:00:30+00:00")
+    coordinator.data = {**coordinator.data, "valid": False}
+    with patch.object(module, "compute", new=counted):
+        hass.states.async_set("input_number.limit", "6", {"unit_of_measurement": "kW"})
+        await hass.async_block_till_done()
+        freezer.tick(timedelta(seconds=6))
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done()
+    assert len(calls) == 1
+
+
+@pytest.mark.replan_cooldown
+async def test_calculation_counts_report_the_cadence(published_entry, hass, freezer):
+    coordinator = published_entry.runtime_data
+    counts = coordinator.calculation_counts()
+    assert counts["calculations_since_load"] >= 1
+    assert counts["calculations_last_hour"] == counts["calculations_since_load"]
+    assert counts["last_calculation_started_at"] == "2026-09-17T10:00:00+00:00"
+    attrs = hass.states.get("sensor.refresh_optimizer_status").attributes
+    assert attrs["last_calculation_started_at"] == "2026-09-17T10:00:00+00:00"
+    assert attrs["calculations_since_load"] == counts["calculations_since_load"]
+    freezer.move_to("2026-09-17T11:30:00+00:00")
+    later = coordinator.calculation_counts()
+    assert later["calculations_last_hour"] == 0
+    assert later["calculations_last_24h"] == counts["calculations_last_24h"]
+
+
+async def test_soc_dead_band_holds_until_the_trigger_percent(
+    switching_entry, hass, freezer
+):
+    """A battery under load crosses small SOC steps constantly; only a move of
+    soc_trigger_percent from the last calculated value starts a new one."""
+    coordinator = switching_entry.runtime_data
+    assert coordinator.configuration["settings"]["soc_trigger_percent"] == 5
+    calls = []
+    real = module.compute
+
+    def counted(*args, **kwargs):
+        calls.append(dt_util.utcnow())
+        return real(*args, **kwargs)
+
+    with patch.object(module, "compute", new=counted):
+        freezer.move_to("2026-09-18T10:10:00+00:00")
+        hass.states.async_set("sensor.soc", "54")
+        await hass.async_block_till_done()
+        freezer.tick(timedelta(seconds=6))
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done()
+        assert not calls
+        freezer.move_to("2026-09-18T10:20:00+00:00")
+        hass.states.async_set("sensor.soc", "56")
+        await hass.async_block_till_done()
+        freezer.tick(timedelta(seconds=6))
+        async_fire_time_changed(hass, dt_util.utcnow())
+        await hass.async_block_till_done()
+    assert len(calls) == 1

@@ -6,10 +6,17 @@ async def async_get_config_entry_diagnostics(hass, entry):
     coordinator = entry.runtime_data
     data = coordinator.data
     previous = coordinator.previous_plan
+    settings = coordinator.configuration.get("settings", {})
     return {
         "status": data.get("status"),
         "valid": data.get("valid"),
         "generated_at": data.get("generated_at"),
+        "recalculation_cadence": {
+            **coordinator.calculation_counts(),
+            "minimum_replan_seconds": settings.get("minimum_replan_seconds"),
+            "soc_trigger_percent": settings.get("soc_trigger_percent"),
+            "refresh_minutes": settings.get("refresh_minutes"),
+        },
         "coverage_end": data.get("quality", {}).get("coverage_end"),
         "classification_mode": data.get("classification_mode"),
         "calibration": data.get("calibration"),
