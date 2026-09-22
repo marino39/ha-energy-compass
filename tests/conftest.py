@@ -63,3 +63,20 @@ def grid_only_problem():
         (),
         "Europe/Warsaw",
     )
+
+
+@pytest.fixture(autouse=True)
+def immediate_replan(request, monkeypatch):
+    """Pin the immediate-rerun contract most lifecycle tests assert.
+
+    The shipped minimum_replan_seconds pause has its own tests, marked
+    replan_cooldown.
+    """
+    if request.node.get_closest_marker("replan_cooldown"):
+        return
+    from custom_components.energy_compass import settings
+
+    spec = settings.NUMBERS["minimum_replan_seconds"]
+    monkeypatch.setitem(
+        settings.NUMBERS, "minimum_replan_seconds", (spec[0], 0, *spec[2:])
+    )

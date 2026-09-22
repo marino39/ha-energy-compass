@@ -85,20 +85,25 @@ async def test_soc_jump_keeps_plan_then_rebases_after_fresh_stable_reports(
     freezer.move_to("2026-09-18T10:01:00+00:00")
     hass.states.async_set("sensor.soc", "100")
     await hass.async_block_till_done()
+    # An upward jump (BMS recalibration near full) keeps the plan without an
+    # alert, so a controller does not drop it while the new level is confirmed.
     assert hass.states.get("sensor.switching_plan").state == original
-    alert = hass.states.get("binary_sensor.switching_alert")
-    assert alert.state == "on"
-    assert alert.attributes["code"] == "soc_measurement_jump"
-    assert alert.attributes["plan_retained"] is True
+    assert hass.states.get("binary_sensor.switching_alert").state == "off"
+    assert coordinator.data["status"] == "calculating"
+    assert coordinator.data["reason"] == "soc_rebase_pending"
+    assert coordinator.data["plan_retained"] is True
     # Re-reading the same timestamp is not evidence that the new level is stable.
     freezer.move_to("2026-09-18T10:02:01+00:00")
     await coordinator.async_recalculate()
     assert hass.states.get("sensor.switching_plan").state == original
-    assert hass.states.get("binary_sensor.switching_alert").state == "on"
+    assert hass.states.get("binary_sensor.switching_alert").state == "off"
+    assert coordinator.data["reason"] == "soc_rebase_pending"
+    assert coordinator._previous_soc[1] == 5
     # Identical state reports do not emit state_changed; a health tick recovers.
     hass.states.async_set("sensor.soc", "100")
     async_fire_time_changed(hass, dt_util.utcnow())
     await coordinator.async_recalculate()
+    await hass.async_block_till_done()
     assert hass.states.get("sensor.switching_plan").state != original
     assert hass.states.get("binary_sensor.switching_alert").state == "off"
     assert coordinator._previous_soc[1] == 10
@@ -214,5 +219,42 @@ async def test_interrupted_or_oscillating_soc_restarts_stabilization(
         await hass.async_block_till_done()
         await switching_entry.runtime_data.async_recalculate()
     assert hass.states.get("sensor.switching_plan").state == original
-    assert hass.states.get("binary_sensor.switching_alert").state == "on"
+    # A missing source is an error on its own; a plausible oscillation only
+    # restarts the pending upward rebase.
+    expected = "on" if intermediate == "unavailable" else "off"
+    assert hass.states.get("binary_sensor.switching_alert").state == expected
     assert switching_entry.runtime_data._previous_soc[1] == 5
+
+
+async def test_unconfirmed_upward_soc_jump_fails_after_grace(
+    switching_entry, hass, freezer
+):
+    coordinator = switching_entry.runtime_data
+    original = hass.states.get("sensor.switching_plan").state
+    freezer.move_to("2026-09-18T10:01:00+00:00")
+    hass.states.async_set("sensor.soc", "100")
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.switching_alert").state == "off"
+    # No fresh report ever confirms the new level.
+    freezer.move_to(
+        f"2026-09-18T10:0{1 + (module.SOC_REBASE_GRACE_SECONDS + 1) // 60}:"
+        f"{(module.SOC_REBASE_GRACE_SECONDS + 1) % 60:02d}+00:00"
+    )
+    await coordinator.async_recalculate()
+    alert = hass.states.get("binary_sensor.switching_alert")
+    assert alert.state == "on"
+    assert alert.attributes["code"] == "soc_measurement_jump"
+    assert hass.states.get("sensor.switching_plan").state == original
+    assert coordinator._previous_soc[1] == 5
+
+
+async def test_downward_soc_jump_still_alerts_immediately(
+    switching_entry, hass, freezer
+):
+    freezer.move_to("2026-09-18T10:01:00+00:00")
+    hass.states.async_set("sensor.soc", "0")
+    await hass.async_block_till_done()
+    alert = hass.states.get("binary_sensor.switching_alert")
+    assert alert.state == "on"
+    assert alert.attributes["code"] == "soc_measurement_jump"
+    assert switching_entry.runtime_data._soc_rebase_since is None

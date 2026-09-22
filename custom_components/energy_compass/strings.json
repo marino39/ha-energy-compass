@@ -247,6 +247,7 @@
         "title": "Performance and input quality",
         "data": {
           "debounce_seconds": "Debounce seconds",
+          "minimum_replan_seconds": "Minimum replan seconds",
           "soc_trigger_percent": "Soc trigger percent",
           "solve_time_limit_s": "Solve time limit s",
           "probe_time_limit_s": "Probe time limit s",
@@ -649,6 +650,7 @@
         "title": "Performance and input quality",
         "data": {
           "debounce_seconds": "Debounce seconds",
+          "minimum_replan_seconds": "Minimum replan seconds",
           "soc_trigger_percent": "Soc trigger percent",
           "solve_time_limit_s": "Solve time limit s",
           "probe_time_limit_s": "Probe time limit s",

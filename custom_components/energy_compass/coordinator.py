@@ -41,6 +41,9 @@ from .settings import DOMAIN, merged_configuration
 from .sources.bindings import merge_continuations, parse_intervals, parse_timestamp
 
 _LOGGER = logging.getLogger(__name__)
+# An upward SOC jump (BMS recalibration near full) keeps the retained plan for
+# this long while fresh reports confirm the new level; beyond it, it is an error.
+SOC_REBASE_GRACE_SECONDS = 300
 
 
 class EnergyCompassCoordinator(DataUpdateCoordinator):
@@ -70,6 +73,8 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._previous_soc = None
         self._soc_recovery = None
         self._soc_recovery_last = None
+        self._soc_rebase_since = None
+        self._published_at = None
         self.last_successful_plan_at = None
         self._anchors = {}
         self._store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.anchors")
@@ -315,12 +320,47 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                         self._previous_soc = observation
                         self._soc_reference = None
                         self._soc_recovery = self._soc_recovery_last = None
+                        self._soc_rebase_since = None
                         return
             if candidate is None:
                 self._soc_recovery = observation
             self._soc_recovery_last = observation
             raise
         self._soc_recovery = self._soc_recovery_last = None
+        self._soc_rebase_since = None
+
+    def _soc_rebase_deferred(self, err):
+        """Keep the retained plan while an upward SOC jump awaits confirmation.
+
+        Near full charge the BMS may correct SOC upward by several percent in a
+        minute. The retained plan then only underestimates stored energy, so
+        reporting invalid_input (which makes a controller drop the plan) costs
+        more than it protects. Downward jumps, and upward ones that are not
+        confirmed within SOC_REBASE_GRACE_SECONDS, still fail.
+        """
+        if (
+            str(err) != "SOC measurement jump"
+            or self._soc_recovery is None
+            or self._previous_soc is None
+            or self._soc_recovery[1] <= self._previous_soc[1]
+        ):
+            return False
+        now = dt_util.utcnow()
+        if self._soc_rebase_since is None:
+            self._soc_rebase_since = now
+        if (now - self._soc_rebase_since).total_seconds() > SOC_REBASE_GRACE_SECONDS:
+            return False
+        self._invalidate("calculating", "soc_rebase_pending")
+        waited = (now - self._soc_recovery[0]).total_seconds()
+        self._schedule(max(1, 61 - waited))
+        return True
+
+    def _replan_wait(self, values):
+        """Seconds before an input-only change may start another calculation."""
+        if self.data.get("status") != "ready" or self._published_at is None:
+            return 0
+        elapsed = (dt_util.utcnow() - self._published_at).total_seconds()
+        return max(0, values.get("minimum_replan_seconds", 0) - elapsed)
 
     @callback
     def _source_changed(self, event):
@@ -331,8 +371,10 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             content = self._content(states, values)
         except (InputError, KeyError, ValueError) as err:
             self._generation += 1
-            self._epoch += 1
             self._fingerprint = None
+            if isinstance(err, InputError) and self._soc_rebase_deferred(err):
+                return
+            self._epoch += 1
             self._invalidate("invalid_input", str(err))
             self._schedule(0)
             return
@@ -344,12 +386,25 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._fingerprint = content
         self._generation += 1
         self._pending = True
+        # Every solve uses its full time budget, so restarting on each input
+        # change kept the optimizer permanently calculating and 'ready' lasted
+        # milliseconds. The published plan stays ready until the pause ends.
+        wait = self._replan_wait(values)
+        if wait > 0:
+            self._schedule(max(wait, values["debounce_seconds"]))
+            return
         self._invalidate("calculating", "inputs_changed")
         self._schedule(values["debounce_seconds"])
 
     def _schedule(self, delay):
-        if self._closed or self._debounce is not None:
+        """Run a recalculation after delay; an earlier request replaces a later one."""
+        if self._closed:
             return
+        if self._debounce is not None:
+            if self._debounce.when() <= self.hass.loop.time() + delay:
+                return
+            self._debounce.cancel()
+            self._debounce = None
 
         @callback
         def run():
@@ -412,7 +467,10 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                 return
             try:
                 _, states, now, current_values = self._inputs()
-                if self.data.get("alert") and self._runner is None:
+                if (
+                    self.data.get("alert")
+                    or self.data.get("reason") == "soc_rebase_pending"
+                ) and self._runner is None:
                     # Identical SOC reports refresh last_reported without emitting
                     # state_changed. A health tick must recover those inputs too.
                     self._generation += 1
@@ -424,8 +482,10 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                     self._publish_current(self.data, states, current_values, now)
             except (InputError, KeyError, ValueError) as err:
                 self._generation += 1
-                self._epoch += 1
                 self._fingerprint = None
+                if isinstance(err, InputError) and self._soc_rebase_deferred(err):
+                    return
+                self._epoch += 1
                 self._invalidate("invalid_input", str(err))
             self._next_boundary(values)
 
@@ -716,6 +776,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                         self._publish_current(
                             result, current_states, current_values, published_at
                         )
+                        self._published_at = published_at
                         if (
                             current
                             and result.get("strategy_released")
@@ -724,6 +785,8 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                             self._clear_strategy_change()
                 except InputError as err:
                     if not self._closed and generation == self._generation:
+                        if self._soc_rebase_deferred(err):
+                            break
                         self._invalidate("invalid_input", str(err))
                 except SolveError as err:
                     if not self._closed and generation == self._generation:
@@ -741,6 +804,10 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                         _LOGGER.exception("Advisory calculation failed")
                         self._invalidate("error", type(err).__name__)
                 if not self._pending and generation == self._generation:
+                    break
+                wait = self._replan_wait(values) if epoch == self._epoch else 0
+                if wait > 0:
+                    self._schedule(wait)
                     break
         except asyncio.CancelledError:
             cancelled = True
