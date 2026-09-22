@@ -727,6 +727,9 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                         self._invalidate("invalid_input", str(err))
                 except SolveError as err:
                     if not self._closed and generation == self._generation:
+                        # The reason alone ("solver_failure") hides which
+                        # validation failed; keep the detail for diagnosis.
+                        _LOGGER.warning("Advisory calculation failed: %s", err)
                         self._invalidate(
                             err.reason
                             if err.reason in ("timeout", "infeasible")
