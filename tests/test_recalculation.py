@@ -451,3 +451,86 @@ async def test_published_strategy_comes_from_the_result_not_the_configuration(
     assert coordinator.data["strategy"] == "cost_min"
     coordinator.configuration["settings"]["strategy"] = "max_export"
     assert coordinator.data["strategy"] == "cost_min"
+
+
+@pytest.mark.replan_cooldown
+async def test_input_change_waits_for_minimum_replan_pause(
+    published_entry, hass, freezer
+):
+    """Live failure: every solve used its full budget and restarted on the next
+    input change, so 'ready' lasted ~80 ms and a controller gated on it never
+    accepted a new plan."""
+    coordinator = published_entry.runtime_data
+    pause = coordinator.configuration["settings"].get("minimum_replan_seconds", 120)
+    assert pause == 120
+    original = hass.states.get("sensor.refresh_plan").state
+    calls = []
+    real = module.compute
+
+    def counted(*args, **kwargs):
+        calls.append(dt_util.utcnow())
+        return real(*args, **kwargs)
+
+    with patch.object(module, "compute", new=counted):
+        freezer.move_to("2026-09-17T10:00:30+00:00")
+        hass.states.async_set("input_number.limit", "6", {"unit_of_measurement": "kW"})
+        await hass.async_block_till_done()
+        assert not calls
+        assert coordinator.data["status"] == "ready"
+        assert hass.states.get("sensor.refresh_plan").state == original
+        freezer.move_to("2026-09-17T10:02:01+00:00")
+        async_fire_time_changed(hass, dt_util.utcnow(), fire_all=True)
+        await hass.async_block_till_done()
+    assert len(calls) == 1
+    assert coordinator.data["status"] == "ready"
+    assert hass.states.get("sensor.refresh_plan").state != original
+
+
+@pytest.mark.replan_cooldown
+async def test_invalid_input_is_not_delayed_by_replan_pause(
+    published_entry, hass, freezer
+):
+    coordinator = published_entry.runtime_data
+    freezer.move_to("2026-09-17T10:00:30+00:00")
+    hass.states.async_set("input_number.limit", "6", {"unit_of_measurement": "kW"})
+    await hass.async_block_till_done()
+    assert coordinator.data["status"] == "ready"
+    hass.states.async_set("input_number.limit", "unavailable")
+    await hass.async_block_till_done()
+    assert coordinator.data["status"] == "invalid_input"
+    assert hass.states.get("binary_sensor.refresh_alert").state == "on"
+
+
+@pytest.mark.replan_cooldown
+async def test_changes_during_a_solve_rerun_after_the_pause(
+    published_entry, hass, freezer
+):
+    import asyncio
+
+    coordinator = published_entry.runtime_data
+    real = module.compute
+    calls = []
+
+    async def change():
+        hass.states.async_set("input_number.limit", "7", {"unit_of_measurement": "kW"})
+        await asyncio.sleep(0)
+
+    def busy(*args, **kwargs):
+        calls.append(1)
+        result = real(*args, **kwargs)
+        if len(calls) == 1:
+            asyncio.run_coroutine_threadsafe(change(), hass.loop).result(5)
+        return result
+
+    freezer.move_to("2026-09-17T10:05:00+00:00")
+    with patch.object(module, "compute", new=busy):
+        await coordinator.async_recalculate()
+        await hass.async_block_till_done()
+        # The superseded result is published and stays ready during the pause.
+        assert len(calls) == 1
+        assert coordinator.data["status"] == "ready"
+        freezer.move_to("2026-09-17T10:07:01+00:00")
+        async_fire_time_changed(hass, dt_util.utcnow(), fire_all=True)
+        await hass.async_block_till_done()
+    assert len(calls) == 2
+    assert coordinator.data["status"] == "ready"

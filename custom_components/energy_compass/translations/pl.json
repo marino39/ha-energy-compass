@@ -247,6 +247,7 @@
         "title": "Wydajność i jakość danych",
         "data": {
           "debounce_seconds": "Opóźnienie łączenia aktualizacji",
+          "minimum_replan_seconds": "Minimalna przerwa między obliczeniami (s)",
           "soc_trigger_percent": "Zmiana SOC wyzwalająca obliczenia",
           "solve_time_limit_s": "Limit czasu podstawowego planu",
           "probe_time_limit_s": "Limit czasu jednej próby",
@@ -649,6 +650,7 @@
         "title": "Wydajność i jakość danych",
         "data": {
           "debounce_seconds": "Opóźnienie łączenia aktualizacji",
+          "minimum_replan_seconds": "Minimalna przerwa między obliczeniami (s)",
           "soc_trigger_percent": "Zmiana SOC wyzwalająca obliczenia",
           "solve_time_limit_s": "Limit czasu podstawowego planu",
           "probe_time_limit_s": "Limit czasu jednej próby",
