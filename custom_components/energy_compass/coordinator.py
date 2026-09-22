@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+from collections import deque
 from copy import deepcopy
 from datetime import timedelta
 from functools import partial
@@ -75,6 +76,11 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._soc_recovery_last = None
         self._soc_rebase_since = None
         self._published_at = None
+        # The rate limit measures starts, not publications: a solve that fails
+        # or times out consumed the same budget as one that published.
+        self._calculation_started_at = None
+        self._calculation_starts = deque()
+        self._calculations = 0
         self.last_successful_plan_at = None
         self._anchors = {}
         self._store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.anchors")
@@ -356,11 +362,44 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         return True
 
     def _replan_wait(self, values):
-        """Seconds before an input-only change may start another calculation."""
-        if self.data.get("status") != "ready" or self._published_at is None:
+        """Seconds before an input-only change may start another calculation.
+
+        Measured from the previous start, so the setting is the shortest
+        interval between calculations rather than a pause that only applies
+        while the optimizer happens to sit in 'ready'. Gating on 'ready' left
+        the busiest states ungated: a solve that ended in timeout or error, or
+        one still running behind a retained plan, accepted every input change
+        immediately. The gate needs a usable plan to fall back on, so it lifts
+        as soon as no valid plan is retained.
+        """
+        if not self.data.get("valid") or self._calculation_started_at is None:
             return 0
-        elapsed = (dt_util.utcnow() - self._published_at).total_seconds()
+        elapsed = (dt_util.utcnow() - self._calculation_started_at).total_seconds()
         return max(0, values.get("minimum_replan_seconds", 0) - elapsed)
+
+    def _count_calculation(self, now):
+        """Record one calculation start for the rate limit and diagnostics."""
+        self._calculation_started_at = now
+        self._calculations += 1
+        self._calculation_starts.append(now)
+        horizon = now - timedelta(hours=24)
+        while self._calculation_starts and self._calculation_starts[0] < horizon:
+            self._calculation_starts.popleft()
+
+    def calculation_counts(self):
+        """Calculation starts observed in the last hour and the last 24 hours."""
+        now = dt_util.utcnow()
+        hour = now - timedelta(hours=1)
+        return {
+            "last_calculation_started_at": self._calculation_started_at.isoformat()
+            if self._calculation_started_at
+            else None,
+            "calculations_last_hour": sum(
+                1 for start in self._calculation_starts if start >= hour
+            ),
+            "calculations_last_24h": len(self._calculation_starts),
+            "calculations_since_load": self._calculations,
+        }
 
     @callback
     def _source_changed(self, event):
@@ -388,7 +427,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._pending = True
         # Every solve uses its full time budget, so restarting on each input
         # change kept the optimizer permanently calculating and 'ready' lasted
-        # milliseconds. The published plan stays ready until the pause ends.
+        # milliseconds. The retained plan stays published until the limit ends.
         wait = self._replan_wait(values)
         if wait > 0:
             self._schedule(max(wait, values["debounce_seconds"]))
@@ -716,6 +755,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                 epoch = self._epoch
                 values = self.configuration["settings"]
                 now = dt_util.utcnow()
+                self._count_calculation(now)
                 seconds = values.get("refresh_minutes", 15) * 60
                 self._refresh_due = now + timedelta(
                     seconds=seconds - now.timestamp() % seconds

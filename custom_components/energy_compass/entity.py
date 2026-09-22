@@ -223,6 +223,13 @@ class EnergyCompassEntity(CoordinatorEntity):
             attrs["expired_previous_generated_at"] = data.get(
                 "expired_previous_generated_at"
             )
+            # Cadence is a property of the coordinator, not of one publication:
+            # a rate-limited change never reaches data at all. Only the two
+            # values that cannot go stale between updates are published here;
+            # the rolling windows live in diagnostics, which is read on demand.
+            counts = self.coordinator.calculation_counts()
+            attrs["last_calculation_started_at"] = counts["last_calculation_started_at"]
+            attrs["calculations_since_load"] = counts["calculations_since_load"]
         return attrs
 
 
