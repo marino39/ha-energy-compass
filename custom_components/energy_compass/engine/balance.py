@@ -1,8 +1,9 @@
 """Candidate LFP balance windows and their objective weight."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-from .models import BalanceWindow, Battery, Slot
+from .models import BalanceWindow, Battery, Plan, Problem, Slot
 
 DUE_LOOKAHEAD = timedelta(hours=24)
 
@@ -79,3 +80,21 @@ def lift_slots(
         return ()
     first = max(0, min(window.slots[0] for window in windows) - 1)
     return tuple(range(first, slot_count))
+
+
+def pin_balance(problem: Problem, plan: Plan) -> Problem:
+    """Freeze the dispatch plan's balance choice for consumption probes.
+
+    A probe adds load; letting it re-decide the balance would price the
+    balance, not the load. The lift slots stay so energy bounds match.
+    """
+    if not problem.balance_windows:
+        return problem
+    if plan.balance_start is None:
+        return replace(problem, balance_windows=(), balance_miss_cost=0.0)
+    window = next(
+        w for w in problem.balance_windows if w.slots[0] == plan.balance_start
+    )
+    return replace(
+        problem, balance_windows=(window,), balance_fixed=True, balance_miss_cost=0.0
+    )

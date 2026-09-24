@@ -108,6 +108,82 @@ def _floor_windows(window_ids: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
     return tuple(tuple(window) for window in windows)
 
 
+def _constrain_balance(
+    model: _Model, problem: Problem, vectors: list[dict[str, int]]
+) -> tuple[list[int], int | None]:
+    """At most one hold window: SOC at/above threshold and no discharge inside."""
+    battery = problem.battery
+    if not battery or not problem.balance_windows:
+        return [], None
+    threshold = problem.balance_threshold_kwh
+    choices: list[int] = []
+    for number, window in enumerate(problem.balance_windows):
+        chosen = model.variable(binary=True)
+        # Registered in the slot vectors so the variable-count check covers it.
+        vectors[0][f"balance_choice_{number}"] = chosen
+        if problem.balance_fixed:
+            model.lower[chosen] = 1.0
+        first = window.slots[0]
+        if first == 0:
+            if battery.initial_kwh < threshold - _TOL:
+                model.upper[chosen] = 0.0
+        else:
+            model.constrain(
+                {vectors[first - 1]["energy"]: 1, chosen: -threshold}, 0, np.inf
+            )
+        for t in window.slots:
+            v = vectors[t]
+            model.constrain({v["energy"]: 1, chosen: -threshold}, 0, np.inf)
+            cap = model.upper[v["bd"]]
+            model.constrain({v["bd"]: 1, chosen: cap}, -np.inf, cap)
+        choices.append(chosen)
+    model.constrain(dict.fromkeys(choices, 1), -np.inf, 1)
+    miss = None
+    if not problem.balance_fixed:
+        miss = model.variable(upper=1.0, cost=problem.balance_miss_cost)
+        vectors[0]["balance_miss"] = miss
+        model.constrain({**dict.fromkeys(choices, 1), miss: 1}, 1, np.inf)
+    return choices, miss
+
+
+def _validate_balance(
+    problem: Problem,
+    vectors: list[dict[str, int]],
+    values: np.ndarray,
+    choices: list[int],
+    miss: int | None,
+) -> int | None:
+    """Independently certify the chosen hold window; return its first slot."""
+    if not choices:
+        return None
+    for index in choices:
+        value = float(values[index])
+        _check(min(abs(value), abs(value - 1)) <= _TOL, "fractional balance choice")
+    picked = [c for c, index in enumerate(choices) if values[index] > 0.5]
+    _check(len(picked) <= 1, "balance windows")
+    if problem.balance_fixed:
+        _check(len(picked) == 1, "fixed balance window")
+    else:
+        _check(len(picked) + float(values[miss]) >= 1 - _TOL, "balance coverage")
+    if not picked:
+        return None
+    window = problem.balance_windows[picked[0]]
+    threshold = problem.balance_threshold_kwh
+    first = window.slots[0]
+    start = (
+        problem.battery.initial_kwh
+        if first == 0
+        else float(values[vectors[first - 1]["energy"]])
+    )
+    _check(start >= threshold - _TOL, "balance start energy")
+    for t in window.slots:
+        _check(
+            float(values[vectors[t]["energy"]]) >= threshold - _TOL, "balance energy"
+        )
+        _check(float(values[vectors[t]["bd"]]) <= _TOL, "balance discharge")
+    return first
+
+
 def _validate_solution(
     problem: Problem,
     vectors: list[dict[str, int]],
@@ -126,6 +202,7 @@ def _validate_solution(
     battery = problem.battery
     previous_energy = battery.initial_kwh if battery else 0.0
     drains = drain_schedule(problem)
+    lifted = frozenset(problem.balance_lift_slots)
     spent = {day: 0.0 for day in budgets}
     floor_windows = (
         _floor_windows(problem.soc_target_window)
@@ -294,7 +371,12 @@ def _validate_solution(
             _check(
                 discharge_floor - _TOL
                 <= previous_energy
-                <= battery.capacity_kwh * battery.maximum_soc_fraction + _TOL,
+                <= (
+                    battery.capacity_kwh
+                    if index in lifted
+                    else battery.capacity_kwh * battery.maximum_soc_fraction
+                )
+                + _TOL,
                 "battery SOC",
             )
             for day, fraction in fractions.items():
@@ -385,6 +467,7 @@ def _solve(
     battery = problem.battery
     drains = drain_schedule(problem)
     drained = cumulative(drains)
+    lifted = frozenset(problem.balance_lift_slots)
 
     for index, slot in enumerate(problem.slots):
         duration = (
@@ -425,7 +508,9 @@ def _solve(
                         cost=battery.wear_per_kwh / 2,
                     ),
                     "energy": model.variable(
-                        upper=battery.capacity_kwh * battery.maximum_soc_fraction,
+                        upper=battery.capacity_kwh
+                        if index in lifted
+                        else battery.capacity_kwh * battery.maximum_soc_fraction,
                         cost=-problem.terminal_value_per_kwh
                         if problem.terminal_mode == "value"
                         and slot is problem.slots[-1]
@@ -641,6 +726,7 @@ def _solve(
                 target = problem.soc_target_kwh[t]
                 if target > 0:
                     model.constrain({vectors[t]["energy"]: 1, slack: 1}, target, np.inf)
+    balance_choices, balance_miss = _constrain_balance(model, problem, vectors)
 
     if problem.peak_import_weight > 0:
         peak = model.variable(
@@ -704,6 +790,9 @@ def _solve(
     constrain_charge_benefit(model, problem, vectors)
     values = model.solve(time_limit)
     _validate_solution(problem, vectors, values, daily_fractions, budgets)
+    balance_start = _validate_balance(
+        problem, vectors, values, balance_choices, balance_miss
+    )
     flows = tuple(
         Flow(
             float(values[v["gin"]]),
@@ -786,6 +875,8 @@ def _solve(
             autonomy_shortfall_kwh,
             cap_violation_kwh,
             peak_import_kw,
+            balance_start=balance_start,
+            balance_missed=bool(problem.balance_windows) and balance_start is None,
         ),
         tuple(float(values[v["flex_load"]]) for v in vectors) if flexible_load else (),
     )
