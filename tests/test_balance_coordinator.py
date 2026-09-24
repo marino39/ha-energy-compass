@@ -1,6 +1,10 @@
 from datetime import timedelta
+from unittest.mock import patch
 
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 from custom_components.energy_compass.settings import default_configuration
 from custom_components.energy_compass.sources.bindings import EntityBinding
@@ -119,6 +123,49 @@ async def test_soc_outage_gives_no_hold_credit(
     assert coordinator._balance["last_completed_at"] is None
     assert coordinator.balance_report()["phase"] == "due"
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_invalid_store_is_reseeded(
+    recorder_mock, hass, hass_storage, enable_custom_integrations, freezer, caplog
+):
+    freezer.move_to(START)
+    hass.states.async_set("sensor.soc", "60", {"unit_of_measurement": "%"})
+    config = _config()
+    config["settings"]["lfp_balance"] = False
+    for stored in (
+        "garbage",
+        {"last_completed_at": "not a time", "hold_started_at": None},
+        {"last_completed_at": "2026-09-20T10:00:00", "hold_started_at": None},
+    ):
+        entry = await _setup(hass, hass_storage, stored, config=config)
+        coordinator = entry.runtime_data
+        assert coordinator.data["valid"], coordinator.data.get("reason")
+        assert coordinator._balance == {
+            "last_completed_at": None,
+            "hold_started_at": None,
+            "last_full_at": None,
+        }
+        assert await hass.config_entries.async_unload(entry.entry_id)
+    assert "Invalid stored balance state" in caplog.text
+
+
+async def test_failed_seed_is_not_persisted(
+    recorder_mock, hass, hass_storage, enable_custom_integrations, freezer
+):
+    freezer.move_to(START)
+    hass.states.async_set("sensor.soc", "60", {"unit_of_measurement": "%"})
+    with patch(
+        "custom_components.energy_compass.coordinator.async_balance_history",
+        side_effect=RuntimeError("recorder down"),
+    ):
+        entry = await _setup(hass)
+    assert entry.runtime_data.balance_report()["phase"] == "due"
+    freezer.tick(timedelta(seconds=5))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+    assert f"energy_compass.{entry.entry_id}.balance" not in hass_storage
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    assert f"energy_compass.{entry.entry_id}.balance" not in hass_storage
 
 
 async def test_empty_store_seeds_as_due_without_history(

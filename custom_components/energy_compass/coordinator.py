@@ -19,10 +19,12 @@ from homeassistant.util import dt as dt_util
 
 from .balance_tracker import (
     balance_settings,
+    empty_state,
     observe,
     planned_window,
     seed_from_history,
     sensor_state,
+    valid_state,
 )
 from .balance_tracker import (
     status as balance_status,
@@ -105,6 +107,9 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             hass, 1, f"{DOMAIN}.{entry.entry_id}.grid_charge"
         )
         self._balance = None
+        # False while the state is only a failed seed: nothing worth persisting,
+        # so the next start retries the recorder.
+        self._balance_persist = True
         self._balance_store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.balance")
         self.previous_plan = None
 
@@ -121,6 +126,12 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             await self._grid_charge_store.async_load(), dt_util.utcnow()
         )
         self._balance = await self._balance_store.async_load()
+        if self._balance is not None and not valid_state(self._balance):
+            _LOGGER.warning(
+                "Invalid stored balance state %r; reseeding from history",
+                self._balance,
+            )
+            self._balance = None
         if self._balance is None:
             self._balance = await self._seed_balance()
         self._registry_unsub = self.hass.bus.async_listen(
@@ -154,7 +165,8 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             _LOGGER.warning(
                 "Balance history unavailable; balance is due now", exc_info=True
             )
-            samples = ()
+            self._balance_persist = False
+            return empty_state()
         # Recorder history stores changes only: a pinned SOC leaves no samples,
         # so the seed replays it gap-tolerant.
         settings = replace(
@@ -170,6 +182,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         updated = observe(self._balance, percent, at, balance_settings(values))
         if updated != self._balance:
             self._balance = updated
+            self._balance_persist = True
             self._balance_store.async_delay_save(lambda: self._balance, 1)
 
     def balance_report(self, now=None):
@@ -1010,5 +1023,5 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         await self._dispatch_store.async_save(self._battery_commitment)
         await self._export_store.async_save(self._export_commitment)
         await self._grid_charge_store.async_save(self._grid_charge_commitment)
-        if self._balance is not None:
+        if self._balance is not None and self._balance_persist:
             await self._balance_store.async_save(self._balance)
