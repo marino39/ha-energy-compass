@@ -1,5 +1,7 @@
 # Energy Compass
 
+**English** · [Polski](README.pl.md)
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="custom_components/energy_compass/brand/dark_icon@2x.png">
   <img src="custom_components/energy_compass/brand/icon@2x.png" alt="Energy Compass logo" width="160" height="160">
@@ -17,6 +19,8 @@ To try a source-independent synthetic setup, choose `Synthetic`, `EUR`, `UTC`, t
 
 ## What it shows
 
+For a diagram-based walkthrough of every state, the conditions that produce it, and each dispatch strategy, read the **states and strategies guide** ([English](docs/guide.en.md) · [Polski](docs/guide.pl.md)).
+
 Read the [published entity and calculation guide](https://marino39.github.io/ha-energy-compass/) for every entity, state, formula, quality flag and worked example. You can also open [docs/index.html](docs/index.html) from a checkout for offline viewing. The guide includes English and Polish entity names and follows your system's light or dark theme. See [publishing setup](docs/publishing.md) for GitHub Pages maintenance.
 
 The integration creates current consumption level and extra-kWh cost sensors, a flexible-energy depth sensor, optimized machine state and cost sensors, next change and next `BOOST`/`CHEAP`/`LIMIT` window timestamps, a plan with a bounded outlook, optimizer status, a forecast-valid binary sensor, and a diagnostic **Alert** binary sensor. Native entity names, diagnostics, and reasons are translated into English and Polish. Automations should compare level and machine state values using their stable uppercase names.
@@ -29,7 +33,8 @@ plain lowest-cost plan, the default), `self_sufficiency` (minimize grid kWh over
 `max_export` (unrestricted arbitrage), and `grid_friendly` (capped import/export power). The plan
 sensor's attributes gain `strategy` (the bundle that produced this plan), `autonomy_shortfall_kwh` and
 `cap_violation_kwh` (how hard the active strategy is fighting its own soft constraints, both `0` under
-`cost_min` at defaults). See [dispatch strategies](docs/model.md#dispatch-strategies) for the full
+`cost_min` at defaults). See [the strategy guide](docs/guide.en.md#dispatch-strategies) for a description of each
+strategy and [dispatch strategies](docs/model.md#dispatch-strategies) for the full
 model, and the optional [`strategy_switch` blueprint](docs/installation.md#import-the-strategy-switch-blueprint)
 for rule-based daily switching.
 

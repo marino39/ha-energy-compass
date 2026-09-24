@@ -1,0 +1,52 @@
+# Energy Compass
+
+[English](README.md) · **Polski**
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="custom_components/energy_compass/brand/dark_icon@2x.png">
+  <img src="custom_components/energy_compass/brand/icon@2x.png" alt="Logo Energy Compass" width="160" height="160">
+</picture>
+
+Energy Compass to doradcza integracja Home Assistant. Szacuje koszt krańcowy jednej kWh więcej zużycia domowego względem zoptymalizowanego planu pracy baterii i sieci, klasyfikuje najbliższe zużycie jako `BOOST`, `CHEAP`, `NORMAL` lub `LIMIT` i udostępnia nadchodzące okna jako natywne encje. Nie zapisuje niczego do falownika i sama nie wysyła powiadomień.
+
+## Instalacja
+
+Wymaga Home Assistant **2026.9.1 lub nowszego**. Integracja instaluje `scipy==1.18.1` przez swój manifest. Przetestowane połączenie ARM64 Core/Python/solver i reprezentatywne wyniki benchmarków opisuje [walidacja środowiska](docs/runtime-validation.md) (EN).
+
+W HACS otwórz **Custom repositories**, dodaj `https://github.com/marino39/ha-energy-compass` jako **Integration**, a następnie pobierz Energy Compass. Zrestartuj Home Assistant i dodaj **Energy Compass** w **Ustawienia → Urządzenia i usługi → Dodaj integrację**. Przy instalacji ręcznej skopiuj `custom_components/energy_compass` do katalogu `custom_components` w konfiguracji Home Assistant i zrestartuj. Opcjonalny blueprint powiadomień leży poza folderem instalowanym przez HACS i trzeba go [skopiować osobno](docs/installation.md#opt-in-notifications) (EN).
+
+Aby wypróbować konfigurację syntetyczną, niezależną od źródeł, wybierz `Synthetic`, `EUR`, `UTC`, preset `generic` i wyłącz PV oraz baterię. Ustaw stałe ceny zakupu i sprzedaży w **Taryfy → Stałe stawki i przeliczenia**, dzienne zużycie domu w **Prognoza zużycia** i skończony limit importu z sieci w **Możliwości sprzętu**. Następnie otwórz **Podgląd i zapis** i potwierdź. [Przewodnik instalacji](docs/installation.md) (EN) pokazuje pełną konfigurację i dashboard, a [wymagania źródeł](docs/source-requirements.md) (EN) opisują rzeczywiste encje i prognozy. Przykładowy harmonogram G11/G12/G12w znajdziesz w [przykładzie pomocnika taryfy](docs/tariff-helper.md) (EN).
+
+## Co pokazuje
+
+Opis wszystkich stanów, warunków, w których występują, oraz każdej strategii dyspozycji — z diagramami — zawiera **przewodnik po stanach i strategiach** ([Polski](docs/guide.pl.md) · [English](docs/guide.en.md)).
+
+[Opublikowany przewodnik po encjach i obliczeniach](https://marino39.github.io/ha-energy-compass/) opisuje każdą encję, stan, wzór, flagę jakości i przykład. Z lokalnej kopii repozytorium możesz otworzyć [docs/index.html](docs/index.html). Przewodnik zawiera angielskie i polskie nazwy encji oraz dopasowuje się do jasnego lub ciemnego motywu systemu.
+
+Integracja tworzy sensory bieżącego poziomu zużycia i kosztu dodatkowej kWh, sensor głębokości elastycznego zużycia, sensory zoptymalizowanego trybu pracy i kosztów, znaczniki czasu następnej zmiany i następnych okien `BOOST`/`CHEAP`/`LIMIT`, plan z ograniczonym horyzontem, stan optymalizatora, binarny sensor poprawności prognozy, diagnostyczny binarny sensor **Alert** oraz select **Strategia**. Nazwy encji, diagnostyka i powody są przetłumaczone na angielski i polski. Automatyzacje powinny porównywać poziomy i tryby pracy po ich stałych nazwach pisanych wielkimi literami.
+
+### Strategia dyspozycji
+
+Encja `select.<name>_strategy` wybiera jeden z sześciu pakietów rozwiązywanych przez optymalizator: `cost_min` (zwykły plan najniższego kosztu, domyślny), `self_sufficiency` (minimum kWh z sieci zamiast minimum kosztu), `backup_ready` (wyższa rezerwa), `pv_swap` (kup tanio w nocy, sprzedaj produkcję PV później), `max_export` (arbitraż bez ograniczeń) i `grid_friendly` (ograniczona moc importu/eksportu). Atrybuty sensora planu zawierają `strategy` (pakiet, który wyprodukował plan), `autonomy_shortfall_kwh` i `cap_violation_kwh` (na ile aktywna strategia walczy z własnymi miękkimi ograniczeniami; oba `0` dla `cost_min` przy ustawieniach domyślnych). Opis każdej strategii: [przewodnik](docs/guide.pl.md#strategie-dyspozycji); pełny model: [dispatch strategies](docs/model.md#dispatch-strategies) (EN); codzienne przełączanie wg reguł: opcjonalny [blueprint `strategy_switch`](docs/installation.md#import-the-strategy-switch-blueprint) (EN).
+
+**Głębokość elastycznego zużycia** niezależnie optymalizuje obciążenia 3, 5, 10, 15 i 20 kWh z domyślnym limitem mocy 3 kW. Kotwicą jest średni koszt krańcowy dla 3 kWh. Każdy większy blok pozostaje stabilny, dopóki jego koszt krańcowy jest najwyżej 15% gorszy od kotwicy; pierwszy pogorszony lub nieznany blok zatrzymuje publikowaną głębokość. Grupy: małe (3/5 kWh), średnie (10/15 kWh) i duże (20 kWh). Ta miara jest niezależna od godzinowej klasyfikacji CHEAP i udostępnia w atrybutach cenę kotwicy, próg, koszty profili i harmonogramy.
+
+Błędy wejść lub obliczeń włączają **Alert** z atrybutami `code`, `reason`, `since`, `plan_retained` i `last_successful_plan_at`. Pokrywający bieżący czas poprzedni plan działa dalej przez zaplanowane przedziały, także podczas ponownych prób. `plan_retained: true` oznacza rady oparte na tej wcześniejszej migawce; **Poprawna prognoza** pozostaje włączona do końca pokrycia planu. Udany plan zastępczy gasi alert. Korekty SOC mogą wrócić do normy, gdy świeże, wiarygodne odczyty obejmą co najmniej minutę. Zobacz [zachowanie planu i odzyskiwanie SOC](docs/model.md#plan-retention-and-alerts) (EN).
+
+Aktualizacje koordynatora pomijają zapis stanu encji, których wartość, dostępność i atrybuty się nie zmieniły. Zmiany poprawności prognozy, atrybutów planu, stanu odświeżania lub czasu okien są publikowane nawet przy niezmienionej wartości głównej.
+
+Powiadomienia o oknach wymagają **Włącz powiadomienia** w opcjach integracji i niepustej akcji w [opcjonalnym blueprincie](docs/installation.md#opt-in-notifications) (EN). Blueprint korzysta z bieżących preferencji integracji, chyba że włączono jego przełącznik nadpisania. Obsługuje okna korzystne i `LIMIT`. Integracja sama nie wykonuje akcji.
+
+Szacunek kosztu dodatkowej kWh zakłada plan zaproponowany przez optymalizator. Dopóki żaden sterownik go nie wykonuje, rzeczywiste oszczędności mogą różnić się przy istniejącej automatyce. Rekomendacja zależna od prognozy nie jest pomiarem oszczędności. Bilans energii, pokrycie, założenia baterii i zachowanie solvera opisuje [model i ograniczenia](docs/model.md) (EN).
+
+W **Planowaniu** opcja **Sell only PV** („sprzedawaj tylko PV”) jest domyślnie włączona i ogranicza łączny eksport do sieci do łącznej produkcji PV **w każdej lokalnej dobie kalendarzowej**. Wybierz liczniki `pv_energy_today` i `grid_export_energy_today` w **Źródłach danych**, aby uwzględnić energię już wyprodukowaną i wyeksportowaną od północy. Wyłącz opcję, aby usunąć ten budżet. Tryby pracy mają domyślnie **60 minut** minimalnego czasu i **0,1 kW (100 W)** minimalnej mocy aktywnej. Moc może się zmieniać powyżej progu; zmiana źródła PV/sieć, celu rozładowania, HOLD lub CURTAIL rozpoczyna osobny tryb. Czas zero wyłącza ograniczenia czasu i mocy trybów; osobna reguła korzyści eksportu może nadal stosować swój próg mocy eksportu. CURTAIL wyklucza aktywność baterii. Obserwowana granica SOC może chwilowo wymusić HOLD z zachowaniem istniejącego zobowiązania. Budżet eksportu obejmuje eksport bezpośrednio z PV i z baterii; pochodzenie energii w baterii nie jest śledzone. Zobacz [szczegóły polityk](docs/model.md#operating-mode-duration-and-pv-export-budget) (EN) i [tryby pracy](docs/guide.pl.md#tryby-pracy--planowany-stan-baterii).
+
+**Ogranicz cenę ładowania baterii z sieci** w **Planowaniu** opcjonalnie ustawia **Maksymalną cenę ładowania baterii z sieci** w walucie instalacji/kWh. Porównywana jest ostateczna cena taryfowa z uwzględnieniem skonfigurowanych korekt; równość jest dozwolona. Domyślnie wyłączony; zero to poprawny sufit dla cen darmowych lub ujemnych. Powyżej sufitu dostępne pozostają zasilanie domu i ładowanie z nadwyżki PV. Nowy przebieg ładowania z sieci musi mieścić się w suficie przez cały minimalny czas. Jeśli przeniesione zobowiązanie ładowania koliduje z sufitem przed swoim terminem, rada natychmiast przechodzi w HOLD do pierwotnego terminu, zachowując jego zegar. Sufit działa także przy wyłączonym czasie trybów.
+
+**Minimalna korzyść z dodatkowego okresu eksportu z baterii** również znajduje się w **Planowaniu**. Domyślnie wynosi **1 jednostkę waluty** (1 PLN w instalacji PLN); obsługiwane są wartości od 0 do 1000, a **0 wyłącza regułę**. Każdy dodatkowy okres fizycznego rozładowania baterii z jednoczesnym eksportem musi poprawić koszt ekonomiczny całego horyzontu co najmniej o tę kwotę w porównaniu z wykonalnym planem z mniejszą liczbą okresów. Ceny, straty, zużycie baterii i opcjonalna wartość końcowa już wchodzą do tego porównania. To próg planistyczny, a nie marża na kWh ani gwarancja zysku. Plan raportuje osobno `new_export_episodes` i `export_episode_reserve`. Zobacz [kontrakt matematyczny](docs/model.md#minimum-additional-export-benefit) (EN).
+
+## Licencja
+
+Kod źródłowy i oryginalna grafika Energy Compass są udostępnione na [licencji Apache 2.0](LICENSE). SciPy i NumPy instalowane są jako osobne zależności i zachowują własne licencje; ich kod nie jest tu dołączony.
+
+**Okres przeliczania** w **Planowaniu** steruje pełnym okresowym przeliczeniem (maksymalnie co godzinę). Istotne zmiany źródeł wciąż wywołują wcześniejsze przeliczenie (najwyżej raz na `minimum_replan_seconds`, domyślnie 900 s); natywne granice kwadransów przesuwają bieżący plan bez nowego rozwiązania. **Wydajność i jakość danych** pozwala ustawić łączny budżet obliczeń do pięciu minut i pojedyncze próby zużycia do 30 sekund.
