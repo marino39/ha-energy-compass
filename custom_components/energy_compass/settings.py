@@ -37,6 +37,10 @@ NUMBERS = {
     "wear_per_kwh": ("battery", 0, 0, 1000, "currency/kWh"),
     "idle_drain_kw": ("battery", 0, 0, 10, "kW"),
     "daily_cycles": ("battery", 0, 0, 10, ""),
+    "balance_interval_days": ("battery", 7, 1, 60, "d"),
+    "balance_hold_minutes": ("battery", 60, 15, 360, "min"),
+    "balance_soc_threshold": ("battery", 99, 90, 100, "%"),
+    "balance_value": ("battery", 5.0, 0, 1000, "currency"),
     "soc_max_age_seconds": ("battery", 600, 1, 86400, "s"),
     "bms_max_age_seconds": ("battery", 600, 1, 86400, "s"),
     "soc_disagreement_percent": ("battery", 5, 0, 100, "%"),
@@ -114,6 +118,8 @@ INTEGERS = {
     "cost_precision",
     "notify_daily_max",
     "refresh_minutes",
+    "balance_interval_days",
+    "balance_hold_minutes",
 }
 # backup_target_soc_percent is deliberately left out of INTEGERS: it is a float
 # percent like hardware_floor/soc_disagreement_percent, not a whole-number count.
@@ -132,6 +138,7 @@ BOOLEANS = {
     "flexible_load_enabled": ("compass", True),
     "notify_enabled": ("notifications", False),
     "autonomy_reserve": ("planning", False),
+    "lfp_balance": ("battery", False),
 }
 CHOICES = {
     "calibration": ("tariffs", ["unvalidated", "verified"]),
