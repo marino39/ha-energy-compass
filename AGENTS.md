@@ -14,15 +14,19 @@ code; when they disagree, the code is right and the docs are fixed.
    numbers. Polish UI labels come from `custom_components/energy_compass/translations/pl.json`.
 3. **Verify each claim against the code** (`engine/`, `runtime.py`, `coordinator.py`,
    `settings.py`, `translations/`), not against other docs.
-4. **Update diagrams** whose logic changed, then render every Mermaid block:
-   extract the ```` ```mermaid ```` blocks to `.mmd` files and run
-   `npx -y @mermaid-js/mermaid-cli@11 -i <file>.mmd -o <file>.png` for each.
+4. **Update diagrams** whose logic changed, then **rebuild the Pages guides**:
+   `pip install -e '.[docs]'` (or `pip install markdown==3.8`), then
+   `python tools/build_guides.py`. It renders every Mermaid block to light/dark SVGs in
+   `docs/assets/diagrams/` (Node.js/npx required) and regenerates `docs/guide.en.html` and
+   `docs/guide.pl.html`. Commit the generated files with the Markdown; edit only the `.md`.
 5. **Check links**: every relative link and `#anchor` in `README*.md` and `docs/guide.*.md`
    resolves (GitHub heading slugs).
-6. **On release**, bump the version stated in the intro of both guides.
+6. **On release**, bump the version stated in the intro of both guides and in `docs/index.html`
+   (meta description, sidebar, intro, footer), then rebuild the guides.
 
-Done when every grep hit is current, both languages match, every Mermaid block renders, and no
-link is broken. State in the PR which docs changed, or why none needed to.
+Done when every grep hit is current, both languages match, `tools/build_guides.py` runs clean
+and its output is committed, and no link is broken. State in the PR which docs changed, or why
+none needed to.
 
 ### Change → docs map
 

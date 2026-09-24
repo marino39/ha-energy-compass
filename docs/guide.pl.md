@@ -27,14 +27,8 @@ i blueprinty powiadomień.
 ## Jak to działa
 
 ```mermaid
-flowchart LR
-    subgraph Sources["Źródła w Home Assistant"]
-        P[Ceny zakupu / sprzedaży]
-        PV[Prognoza PV]
-        L[Historia zużycia]
-        B[SOC baterii / BMS]
-        D[Dzienne liczniki PV i eksportu]
-    end
+flowchart TB
+    SRC[Źródła w Home Assistant<br/>ceny zakupu / sprzedaży · prognoza PV · historia zużycia<br/>SOC baterii / BMS · dzienne liczniki PV i eksportu]
     subgraph Engine["Energy Compass"]
         C[Koordynator<br/>walidacja, kadencja,<br/>zobowiązania trybów]
         S[Pakiet strategii<br/>flagi + wagi]
@@ -48,7 +42,7 @@ flowchart LR
         E3[Plan + okna + koszty]
         E4[Stan optymalizatora / Alert /<br/>Poprawna prognoza]
     end
-    Sources --> C
+    SRC --> C
     C --> S --> O
     O -->|plan bazowy| K
     O -->|plan bazowy| F

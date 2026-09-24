@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Energy Compass v0.1.2: every Home Assistant entity, state, calculation, planning assumption and forecast-quality signal explained.">
+  <meta name="description" content="Energy Compass v0.1.24: every Home Assistant entity, state, calculation, planning assumption and forecast-quality signal explained.">
   <title>Energy Compass — Entity and calculation guide</title>
   <style>
     :root {
@@ -118,7 +118,7 @@
       </picture>
       <span>Energy<br>Compass</span>
     </a>
-    <p class="version">User guide · v0.1.16</p>
+    <p class="version">User guide · v0.1.24</p>
     <nav aria-label="Sections">
       <ul>
         <li><a href="#overview">Reading the compass</a></li>
@@ -131,6 +131,8 @@
         <li><a href="#examples">Worked examples</a></li>
         <li><a href="#curtailment">Curtailment</a></li>
         <li><a href="#reference">Source reference</a></li>
+        <li><a href="guide.en.html">States and strategies guide</a></li>
+        <li><a href="guide.pl.html" lang="pl">Przewodnik: stany i strategie</a></li>
       </ul>
     </nav>
     <a class="download" href="https://github.com/marino39/ha-energy-compass/blob/main/README.md">Repository and installation</a>
@@ -139,7 +141,7 @@
     <header>
       <h1>Understand every recommendation.</h1>
       <p class="lead">What Energy Compass entities mean, how their values are calculated, and which assumptions sit behind the plan.</p>
-      <p>This guide describes the Home Assistant integration in <strong>v0.1.16</strong>. Examples use PLN; your installation uses its configured currency. Names are shown in English and Polish.</p>
+      <p>This guide describes the Home Assistant integration in <strong>v0.1.24</strong>. Examples use PLN; your installation uses its configured currency. Names are shown in English and Polish.</p>
     </header>
 
     <section id="overview" aria-labelledby="overview-title">
@@ -462,7 +464,7 @@
             </tbody>
           </table>
         </section>
-        <p>Strategies change planning weights and a few policy flags only; reported costs stay real currency. A new selection releases the carried operating-mode commitment for the next plan. The plan sensor reports <code>strategy</code>, <code>autonomy_shortfall_kwh</code> and <code>cap_violation_kwh</code>. Each strategy, its conditions and the automatic switch blueprint are described with diagrams in the <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/guide.en.md#dispatch-strategies">states and strategies guide</a> (<a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/guide.pl.md#strategie-dyspozycji" lang="pl">wersja polska</a>).</p>
+        <p>Strategies change planning weights and a few policy flags only; reported costs stay real currency. A new selection releases the carried operating-mode commitment for the next plan. The plan sensor reports <code>strategy</code>, <code>autonomy_shortfall_kwh</code> and <code>cap_violation_kwh</code>. Each strategy, its conditions and the automatic switch blueprint are described with diagrams in the <a href="guide.en.html#dispatch-strategies">states and strategies guide</a> (<a href="guide.pl.html#strategie-dyspozycji" lang="pl">wersja polska</a>).</p>
       </article>
     </section>
 
@@ -568,7 +570,7 @@
       <h2 id="reference-title">Source reference and further reading</h2>
       <p>This guide follows the released implementation. When updating calculations or entity behavior, update the corresponding explanations here.</p>
       <ul>
-        <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/guide.en.md">States and strategies guide with diagrams</a> · <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/guide.pl.md" lang="pl">Przewodnik po stanach i strategiach (PL)</a></li>
+        <li><a href="guide.en.html">States and strategies guide with diagrams</a> · <a href="guide.pl.html" lang="pl">Przewodnik po stanach i strategiach (PL)</a></li>
         <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md">Installation, source selection, dashboards and notifications</a></li>
         <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/source-requirements.md">Source requirements, tariff entities and daily throughput</a></li>
         <li><a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/model.md">Detailed optimizer and incremental-consumption model</a></li>
@@ -581,7 +583,7 @@
       </ul>
     </section>
     <footer>
-      <p>Energy Compass v0.1.2 · This guide works online and offline from a repository checkout. Theme follows your system preference. Supporting documentation and source-code links open GitHub.</p>
+      <p>Energy Compass v0.1.24 · This guide works online and offline from a repository checkout. Theme follows your system preference. Supporting documentation and source-code links open GitHub.</p>
       <p><a href="#overview">Back to the guide</a> · <a href="https://github.com/marino39/ha-energy-compass/blob/main/LICENSE">Apache License 2.0</a></p>
     </footer>
   </main>

@@ -27,14 +27,8 @@ blueprints decide whether to act on the plan.
 ## How it works
 
 ```mermaid
-flowchart LR
-    subgraph Sources["Home Assistant sources"]
-        P[Buy / sell prices]
-        PV[PV forecast]
-        L[Load history]
-        B[Battery SOC / BMS]
-        D[Daily PV and export counters]
-    end
+flowchart TB
+    SRC[Home Assistant sources<br/>buy / sell prices · PV forecast · load history<br/>battery SOC / BMS · daily PV and export counters]
     subgraph Engine["Energy Compass"]
         C[Coordinator<br/>validation, cadence,<br/>commitments]
         S[Strategy bundle<br/>flags + weights]
@@ -48,7 +42,7 @@ flowchart LR
         E3[Plan + windows + costs]
         E4[Optimizer status / Alert /<br/>Forecast valid]
     end
-    Sources --> C
+    SRC --> C
     C --> S --> O
     O -->|base plan| K
     O -->|base plan| F
