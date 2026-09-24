@@ -2,8 +2,10 @@
 """Periodic LFP balance bookkeeping: pure state, no Home Assistant imports.
 
 A balance counts once SOC stays at or above the threshold for the whole hold.
-Completion is evaluated lazily, so an unchanged full SOC completes the hold
-without needing another state event.
+Only observed time counts: readings further apart than the SOC max age break
+the hold, and a hold whose latest full reading went stale neither holds nor
+completes. Completion is evaluated lazily while the hold is fresh, so an
+unchanged full SOC completes the hold without needing another state event.
 """
 
 from collections.abc import Iterable, Mapping
@@ -13,7 +15,11 @@ from datetime import datetime, timedelta
 from .settings import NUMBERS
 
 SENSOR_STATES = ("ok", "eligible", "scheduled", "holding", "overdue")
+STATE_KEYS = ("last_completed_at", "hold_started_at", "last_full_at")
 _LEAD = timedelta(days=2)
+# Capacity-derived percentages land a hair under round thresholds (99 % of
+# 24.6 kWh reads 98.99999999999999).
+_EPSILON = 1e-6
 
 
 @dataclass(frozen=True)
@@ -21,6 +27,9 @@ class BalanceSettings:
     interval_days: int
     hold_minutes: int
     threshold_percent: float
+    # None: gap-tolerant, for changes-only recorder history where a pinned SOC
+    # leaves no samples.
+    max_gap_seconds: float | None
 
     @property
     def interval(self) -> timedelta:
@@ -34,6 +43,12 @@ class BalanceSettings:
     def lead(self) -> timedelta:
         return min(_LEAD, self.interval / 2)
 
+    @property
+    def max_gap(self) -> timedelta | None:
+        if self.max_gap_seconds is None:
+            return None
+        return timedelta(seconds=self.max_gap_seconds)
+
 
 def balance_settings(values: Mapping) -> BalanceSettings:
     def get(key):
@@ -43,11 +58,33 @@ def balance_settings(values: Mapping) -> BalanceSettings:
         int(get("balance_interval_days")),
         int(get("balance_hold_minutes")),
         float(get("balance_soc_threshold")),
+        float(get("soc_max_age_seconds")),
     )
 
 
 def empty_state() -> dict:
-    return {"last_completed_at": None, "hold_started_at": None}
+    return dict.fromkeys(STATE_KEYS)
+
+
+def valid_state(raw) -> bool:
+    """Stored state is a dict of known keys, each None or an aware ISO time."""
+    if not isinstance(raw, dict) or not set(raw) <= set(STATE_KEYS):
+        return False
+    for key in STATE_KEYS[:2]:
+        if key not in raw:
+            return False
+    for value in raw.values():
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            return False
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return False
+        if parsed.tzinfo is None:
+            return False
+    return True
 
 
 def _time(raw: str | None) -> datetime | None:
@@ -58,6 +95,12 @@ def _iso(value: datetime | None) -> str | None:
     return None if value is None else value.isoformat()
 
 
+def _fresh(last_full: datetime | None, at: datetime, settings: BalanceSettings):
+    if settings.max_gap is None:
+        return True
+    return last_full is not None and at - last_full <= settings.max_gap
+
+
 def observe(
     state: dict, soc_percent: float | None, at: datetime, settings: BalanceSettings
 ) -> dict:
@@ -66,19 +109,44 @@ def observe(
         return dict(state)
     last = _time(state.get("last_completed_at"))
     started = _time(state.get("hold_started_at"))
-    if started is not None and at - started >= settings.hold:
-        last = max(filter(None, (last, started + settings.hold)))
-        # Still full: the next hold continues from this completion.
-        started = last if soc_percent >= settings.threshold_percent else None
-        return {"last_completed_at": _iso(last), "hold_started_at": _iso(started)}
-    if soc_percent >= settings.threshold_percent:
-        return {"last_completed_at": _iso(last), "hold_started_at": _iso(started or at)}
-    return {"last_completed_at": _iso(last), "hold_started_at": None}
+    last_full = _time(state.get("last_full_at"))
+    full = soc_percent >= settings.threshold_percent - _EPSILON
+    fresh = _fresh(last_full, at, settings)
+    if started is not None:
+        # Time proven full: up to this reading while readings stay close
+        # (or, in gap-tolerant history, until the value changed); otherwise
+        # only up to the latest full reading.
+        covered = at if fresh and (full or settings.max_gap is None) else last_full
+        end = started + settings.hold
+        if covered is not None and covered >= end:
+            last = end if last is None else max(last, end)
+            # Still full: the next hold continues from this completion.
+            started = (end if fresh else at) if full else None
+        elif not full:
+            started = None
+        elif not fresh:
+            started = at
+    elif full:
+        started = at
+    if full:
+        last_full = at
+    return {
+        "last_completed_at": _iso(last),
+        "hold_started_at": _iso(started),
+        "last_full_at": _iso(last_full),
+    }
+
+
+def _fresh_hold(state: dict, now: datetime, settings: BalanceSettings):
+    started = _time(state.get("hold_started_at"))
+    if started is None or not _fresh(_time(state.get("last_full_at")), now, settings):
+        return None
+    return started
 
 
 def _completed(state: dict, now: datetime, settings: BalanceSettings):
     last = _time(state.get("last_completed_at"))
-    started = _time(state.get("hold_started_at"))
+    started = _fresh_hold(state, now, settings)
     if started is not None and now - started >= settings.hold:
         candidate = started + settings.hold
         return candidate if last is None or candidate > last else last
@@ -87,7 +155,7 @@ def _completed(state: dict, now: datetime, settings: BalanceSettings):
 
 def _holding(state: dict, now: datetime, settings: BalanceSettings) -> bool:
     last = _time(state.get("last_completed_at"))
-    started = _time(state.get("hold_started_at"))
+    started = _fresh_hold(state, now, settings)
     return (
         started is not None
         and (last is None or started > last)
@@ -95,17 +163,18 @@ def _holding(state: dict, now: datetime, settings: BalanceSettings) -> bool:
     )
 
 
+def _due_phase(last: datetime | None, now: datetime, settings: BalanceSettings):
+    if last is None or now - last >= settings.interval:
+        return "due"
+    if now - last >= settings.interval - settings.lead:
+        return "eligible"
+    return "ok"
+
+
 def status(state: dict, now: datetime, settings: BalanceSettings) -> dict:
     last = _completed(state, now, settings)
     holding = _holding(state, now, settings)
-    if holding:
-        phase = "holding"
-    elif last is None or now - last >= settings.interval:
-        phase = "due"
-    elif now - last >= settings.interval - settings.lead:
-        phase = "eligible"
-    else:
-        phase = "ok"
+    due_phase = _due_phase(last, now, settings)
     overdue = 0
     if last is not None and now - last >= settings.interval:
         overdue = (now - last - settings.interval).days
@@ -114,7 +183,10 @@ def status(state: dict, now: datetime, settings: BalanceSettings) -> dict:
         started = _time(state["hold_started_at"])
         progress = round((now - started).total_seconds() / 60, 1)
     return {
-        "phase": phase,
+        "phase": "holding" if holding else due_phase,
+        # Phase ignoring an active hold: a hold right after a completion is
+        # tracked but not worth scheduling.
+        "due_phase": due_phase,
         "last_completed": _iso(last),
         "next_due": _iso(last + settings.interval) if last else None,
         "days_overdue": overdue,

@@ -29,9 +29,9 @@ def _config():
     return config
 
 
-async def _setup(hass, hass_storage=None, stored=None):
+async def _setup(hass, hass_storage=None, stored=None, config=None):
     entry = MockConfigEntry(
-        domain="energy_compass", data=_config(), title="Home", version=3
+        domain="energy_compass", data=config or _config(), title="Home", version=3
     )
     entry.add_to_hass(hass)
     if stored is not None:
@@ -54,11 +54,12 @@ async def test_full_soc_completes_a_hold(
     entry = await _setup(hass)
     coordinator = entry.runtime_data
     assert coordinator.balance_report()["phase"] == "holding"
-    freezer.tick(timedelta(minutes=61))
-    hass.states.async_set(
-        "sensor.soc", "100", {"unit_of_measurement": "%"}, force_update=True
-    )
-    await hass.async_block_till_done()
+    for _ in range(13):
+        freezer.tick(timedelta(minutes=5))
+        hass.states.async_set(
+            "sensor.soc", "100", {"unit_of_measurement": "%"}, force_update=True
+        )
+        await hass.async_block_till_done()
     assert coordinator.balance_report()["phase"] == "ok"
     assert coordinator._balance["last_completed_at"].startswith("2026-09-24T11:00")
     assert await hass.config_entries.async_unload(entry.entry_id)
@@ -69,7 +70,11 @@ async def test_hold_survives_restart(
 ):
     freezer.move_to(START)
     hass.states.async_set("sensor.soc", "100", {"unit_of_measurement": "%"})
-    stored = {"last_completed_at": None, "hold_started_at": "2026-09-24T09:30:00+00:00"}
+    stored = {
+        "last_completed_at": None,
+        "hold_started_at": "2026-09-24T09:30:00+00:00",
+        "last_full_at": "2026-09-24T09:55:00+00:00",
+    }
     entry = await _setup(hass, hass_storage, stored)
     report = entry.runtime_data.balance_report()
     assert report["phase"] == "holding"
@@ -82,11 +87,37 @@ async def test_unavailable_soc_does_not_reset_hold(
 ):
     freezer.move_to(START)
     hass.states.async_set("sensor.soc", "100", {"unit_of_measurement": "%"})
-    stored = {"last_completed_at": None, "hold_started_at": "2026-09-24T09:50:00+00:00"}
+    stored = {
+        "last_completed_at": None,
+        "hold_started_at": "2026-09-24T09:50:00+00:00",
+        "last_full_at": "2026-09-24T09:55:00+00:00",
+    }
     entry = await _setup(hass, hass_storage, stored)
     hass.states.async_set("sensor.soc", "unavailable")
     await hass.async_block_till_done()
     assert entry.runtime_data._balance["hold_started_at"] == "2026-09-24T09:50:00+00:00"
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_soc_outage_gives_no_hold_credit(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    freezer.move_to(START)
+    hass.states.async_set("sensor.soc", "100", {"unit_of_measurement": "%"})
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    freezer.tick(timedelta(minutes=10))
+    hass.states.async_set(
+        "sensor.soc", "100", {"unit_of_measurement": "%"}, force_update=True
+    )
+    await hass.async_block_till_done()
+    hass.states.async_set("sensor.soc", "unavailable")
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(minutes=80))
+    hass.states.async_set("sensor.soc", "90", {"unit_of_measurement": "%"})
+    await hass.async_block_till_done()
+    assert coordinator._balance["last_completed_at"] is None
+    assert coordinator.balance_report()["phase"] == "due"
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 

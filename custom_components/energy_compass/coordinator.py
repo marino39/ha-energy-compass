@@ -5,6 +5,7 @@ import json
 import logging
 from collections import deque
 from copy import deepcopy
+from dataclasses import replace
 from datetime import timedelta
 from functools import partial
 
@@ -154,9 +155,12 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                 "Balance history unavailable; balance is due now", exc_info=True
             )
             samples = ()
-        state = seed_from_history(
-            samples, balance_settings(self.configuration["settings"])
+        # Recorder history stores changes only: a pinned SOC leaves no samples,
+        # so the seed replays it gap-tolerant.
+        settings = replace(
+            balance_settings(self.configuration["settings"]), max_gap_seconds=None
         )
+        state = seed_from_history(samples, settings)
         self._balance_store.async_delay_save(lambda: self._balance, 1)
         return state
 
