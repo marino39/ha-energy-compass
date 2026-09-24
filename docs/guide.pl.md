@@ -488,20 +488,27 @@ następny. Sam licznik dalej obserwuje SOC i przesuwa swój stan nawet przy wył
 | `balance_value` | 5,0 | Wartość zbalansowania w dniu terminu |
 
 Balans **kończy się**, gdy SOC utrzymuje się na/ponad progiem przez cały czas trzymania. Odczyt
-poniżej progu resetuje trzymanie; niedostępny SOC wstrzymuje je. Zakończenie jest oceniane
-leniwie — niezmieniony pełny SOC kończy trzymanie przy najbliższym sprawdzeniu, bez potrzeby
-kolejnego zdarzenia stanu. Fazy: `ok` → `eligible` (wcześniejsze z: 2 dni lub pół odstępu przed
-terminem) → `due`; `holding` nakłada się na aktywną fazę podczas trwania trzymania.
+poniżej progu resetuje trzymanie. Liczy się tylko zaobserwowany czas: niedostępny lub nieaktualny
+SOC nie daje zaliczenia, a dwa pełne odczyty odległe o więcej niż `soc_max_age_seconds` zaczynają
+trzymanie od nowa od późniejszego z nich (trzymanie, którego ostatni pełny odczyt jest starszy,
+nie trwa ani się nie kończy). Zakończenie jest oceniane leniwie — dopóki napływają pełne odczyty,
+trzymanie kończy się przy najbliższym sprawdzeniu, bez potrzeby zmiany stanu. Fazy: `ok` →
+`eligible` (wcześniejsze z: 2 dni lub pół odstępu przed terminem) → `due`; `holding` nakłada się
+na aktywną fazę podczas trwania trzymania. Trzymanie, które zaczyna się, gdy balans jest jeszcze
+w fazie `ok` (np. SOC znów 100 % dzień po balansie), jest śledzone i się kończy, ale nie jest
+planowane: optymalizator nie dostaje dla niego okna ani kosztu pominięcia.
 
 Optymalizator może wybrać jedno okno trzymania wyrównane do pełnej godziny: kandydujące okna
 zaczynają się tylko o pełnej godzinie, a w fazie `due` — tylko w ciągu następnych 24 h (faza
 `eligible` może szukać w całym horyzoncie). W wybranym oknie SOC utrzymuje się na/ponad progiem, a
-bateria się nie rozładowuje. Pominięcie kosztuje 10 % `balance_value` w fazie eligible (używana
-jest tylko darmowa PV), `balance_value × (1 + dni po terminie)` w fazie due i 10 × `balance_value`
-podczas trzymania. Okno jest publikowane jako **CHARGE_PV**, gdy PV pokrywa zużycie w każdym jego
-przedziale, albo jako **CHARGE_GRID** dla okna mieszanego PV/sieć — co dodatkowo wymaga, aby
-ładowanie z sieci było dozwolone i (jeśli włączony) sufit ceny ładowania z sieci był
-zachowany — z `balance_hold: true` w każdym wierszu. Od przedziału przed najwcześniejszym
+bateria się nie rozładowuje. Pominięcie kosztuje 10 % `balance_value` w fazie eligible — mało,
+więc planista zwykle balansuje tylko na taniej lub darmowej energii, ale wybierze okno z siecią,
+jeśli kosztuje mniej — `balance_value × (1 + dni po terminie)` w fazie due i 10 × `balance_value`
+podczas trzymania w fazie eligible lub due. Okno jest publikowane jako **CHARGE_PV** tylko wtedy,
+gdy PV pokrywa zużycie w każdym jego przedziale; w przeciwnym razie (okno mieszane PV/sieć albo
+czysto sieciowe, np. nocne) jako **CHARGE_GRID**, co dodatkowo wymaga, aby ładowanie z sieci było
+dozwolone i (jeśli włączony) sufit ceny ładowania z sieci był zachowany w każdym przedziale — z
+`balance_hold: true` w każdym wierszu. Od przedziału przed najwcześniejszym
 kandydującym oknem do końca horyzontu energia baterii może wzrosnąć aż do pełnej pojemności, a nie
 tylko do skonfigurowanego sufitu SOC, więc trzymanie nie jest blokowane przez `soc_ceiling` poniżej
 100 % — to podniesienie ma znaczenie tylko wtedy, gdy sufit jest poniżej 100 %. Próby zużycia

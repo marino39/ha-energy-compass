@@ -138,7 +138,9 @@ For the window whose first slot is slot 0, `E_{start(c)}` is the battery's known
 instead of a decision variable, so `y_c` is simply forced to 0 when the initial energy is already
 below threshold. The solver's internal objective carries `+ m · miss`, where `m =
 balance_miss_cost` is `10% × balance_value` while eligible, `balance_value × (1 + days overdue)`
-once due, and `10 × balance_value` during an active hold (`engine/balance.miss_cost`) — this term
+once due, and `10 × balance_value` during an active hold (`engine/balance.miss_cost`); a hold
+that starts while the balance is still `ok` is tracked but offers no window and no miss cost —
+this term
 steers the solver away from skipping a due or in-progress balance but is **not** part of the
 returned `Plan.objective`, which stays exactly `grid_cost + wear_cost - terminal_credit`; balancing
 is priced as a soft planning preference, not a physical cost.

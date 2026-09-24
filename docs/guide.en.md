@@ -480,22 +480,30 @@ windows and the diagnostic sensor.
 | `balance_value` | 5.0 | Value of balancing on the due day |
 
 A balance **completes** after SOC stays at or above the threshold for the whole
-hold. A reading below the threshold restarts the hold; an unavailable SOC pauses
-it. Completion is evaluated lazily — an unchanged full SOC completes the hold on
-the next check without needing another state event. Phases: `ok` → `eligible`
-(the earlier of 2 days or half the interval before due) → `due`; `holding`
-overlays whichever phase is active while a hold is running.
+hold. A reading below the threshold restarts the hold. Only observed time
+counts: an unavailable or stale SOC gives no credit, and two full readings more
+than `soc_max_age_seconds` apart restart the hold from the later one (a hold
+whose last full reading is older than that is neither holding nor complete).
+Completion is evaluated lazily — while full readings keep arriving, the hold
+completes on the next check without needing a state change. Phases: `ok` →
+`eligible` (the earlier of 2 days or half the interval before due) → `due`;
+`holding` overlays whichever phase is active while a hold is running. A hold that
+starts while the balance is still `ok` (for example SOC back at 100 % the day
+after a balance) is tracked and completes, but is not scheduled: the optimizer
+gets no hold window and no miss cost for it.
 
 The optimizer may pick one hour-aligned hold window: candidate windows start only
 on the whole hour, and while `due`, only within the next 24 h (an `eligible`
 balance may look anywhere across the horizon). Inside the chosen window SOC stays
 at or above the threshold and the battery does not discharge. Skipping costs 10 %
-of `balance_value` while eligible (only free PV is used), `balance_value × (1 +
-days overdue)` once due, and 10 × `balance_value` during a hold. A window is
-published as **CHARGE_PV** when PV covers load in every one of its slots, or as
-**CHARGE_GRID** for a mixed PV/grid window — which additionally requires grid
-charging to be allowed and the grid-charge price ceiling (if any) to pass — with
-`balance_hold: true` on every row. From the slot before the earliest candidate
+of `balance_value` while eligible — small, so the planner normally balances only
+on cheap or free energy, but it still picks a grid window that costs less than
+that — `balance_value × (1 + days overdue)` once due, and 10 × `balance_value`
+during a hold that is eligible or due. A window is published as **CHARGE_PV**
+only when PV covers load in every one of its slots; otherwise (mixed PV/grid or
+pure grid, such as a night window) it is **CHARGE_GRID**, which additionally
+requires grid charging to be allowed and the grid-charge price ceiling (if any)
+to pass in every slot — with `balance_hold: true` on every row. From the slot before the earliest candidate
 window to the horizon end, the battery's energy may rise up to full capacity
 instead of the configured SOC ceiling, so a hold is never blocked by
 `soc_ceiling` below 100 %; that lift only matters when the ceiling is below
