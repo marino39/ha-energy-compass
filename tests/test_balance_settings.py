@@ -64,9 +64,15 @@ def test_balance_bounds(key, value):
 
 def test_balance_labels_in_every_translation_section():
     root = Path("custom_components/energy_compass")
-    for name in ("strings.json", "translations/en.json", "translations/pl.json"):
+    anchors = {
+        "strings.json": '"idle_drain_kw"',
+        "translations/en.json": '"soc_ceiling"',
+        "translations/pl.json": '"idle_drain_kw"',
+    }
+    for name, anchor in anchors.items():
         text = (root / name).read_text()
         json.loads(text)
-        sections = text.count('"idle_drain_kw"')
+        sections = text.count(anchor)
+        assert sections > 0, (name, anchor)
         for key in KEYS:
             assert text.count(f'"{key}"') == sections, (name, key)
