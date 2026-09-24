@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime
 from math import isfinite
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .models import STRATEGIES, InputError, Problem
+from .models import STRATEGIES, BalanceWindow, InputError, Problem
 
 
 @dataclass(frozen=True)
@@ -269,6 +269,41 @@ def validate_problem(problem: Problem) -> None:
             0
         ].start.astimezone(UTC):
             raise InputError("initial battery mode starts in the future")
+    balance_active = bool(
+        problem.balance_windows
+        or problem.balance_threshold_kwh
+        or problem.balance_fixed
+        or problem.balance_lift_slots
+    )
+    if balance_active:
+        if problem.battery is None:
+            raise InputError("balance requires a battery")
+        threshold = finite(problem.balance_threshold_kwh, "balance_threshold_kwh")
+        if not 0 < threshold <= problem.battery.capacity_kwh:
+            raise InputError("balance threshold must be within capacity")
+        if finite(problem.balance_miss_cost, "balance_miss_cost") < 0:
+            raise InputError("balance_miss_cost must be nonnegative")
+        if type(problem.balance_fixed) is not bool:
+            raise InputError("balance_fixed must be boolean")
+        if problem.balance_fixed and len(problem.balance_windows) != 1:
+            raise InputError("a fixed balance needs exactly one window")
+        count = len(problem.slots)
+        for window in problem.balance_windows:
+            if (
+                not isinstance(window, BalanceWindow)
+                or window.mode not in ("CHARGE_PV", "CHARGE_GRID")
+                or not window.slots
+                or any(type(i) is not int for i in window.slots)
+                or window.slots
+                != tuple(range(window.slots[0], window.slots[0] + len(window.slots)))
+                or window.slots[0] < 0
+                or window.slots[-1] >= count
+            ):
+                raise InputError("invalid balance window")
+        if any(
+            type(i) is not int or not 0 <= i < count for i in problem.balance_lift_slots
+        ):
+            raise InputError("invalid balance lift slot")
     if problem.battery is not None:
         battery = problem.battery
         if finite(battery.capacity_kwh, "capacity_kwh") <= 0:
@@ -287,7 +322,12 @@ def validate_problem(problem: Problem) -> None:
             raise InputError("battery floor must be below ceiling")
         initial = finite(battery.initial_kwh, "initial_kwh")
         # The reserve limits planned discharge, not valid observed depletion.
-        if not 0 <= initial <= battery.capacity_kwh * battery.maximum_soc_fraction:
+        ceiling = (
+            battery.capacity_kwh
+            if problem.balance_threshold_kwh
+            else battery.capacity_kwh * battery.maximum_soc_fraction
+        )
+        if not 0 <= initial <= ceiling:
             raise InputError("initial SOC outside bounds")
         if finite(battery.wear_per_kwh, "wear_per_kwh") < 0:
             raise InputError("wear cost must be nonnegative")
