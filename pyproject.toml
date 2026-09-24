@@ -11,6 +11,9 @@ test = [
     "pytest-homeassistant-custom-component==0.13.364",
     "ruff==0.16.8",
 ]
+docs = [
+    "markdown==3.8",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
