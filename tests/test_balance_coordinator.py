@@ -100,3 +100,56 @@ async def test_empty_store_seeds_as_due_without_history(
     assert report["phase"] == "due"
     assert report["state"] in ("scheduled", "overdue")
     assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_battery_balance_sensor(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    freezer.move_to(START)
+    hass.states.async_set("sensor.soc", "100", {"unit_of_measurement": "%"})
+    entry = await _setup(hass)
+    state = hass.states.get("sensor.home_battery_balance")
+    assert state.state == "holding"
+    assert state.attributes["hold_required_minutes"] == 60
+    assert state.attributes["threshold_percent"] == 99
+    assert set(state.attributes["options"]) == {
+        "ok",
+        "eligible",
+        "scheduled",
+        "holding",
+        "overdue",
+    }
+    for key in (
+        "last_completed",
+        "next_due",
+        "days_overdue",
+        "planned_start",
+        "planned_end",
+        "planned_mode",
+        "hold_progress_minutes",
+    ):
+        assert key in state.attributes
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_battery_balance_sensor_disabled_when_feature_off(
+    recorder_mock, hass, enable_custom_integrations, freezer
+):
+    from homeassistant.helpers import entity_registry as er
+
+    freezer.move_to(START)
+    hass.states.async_set("sensor.soc", "60", {"unit_of_measurement": "%"})
+    config = _config()
+    config["settings"]["lfp_balance"] = False
+    entry = MockConfigEntry(
+        domain="energy_compass", data=config, title="Off", version=3
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", "energy_compass", f"{entry.entry_id}_battery_balance"
+    )
+    assert registry.async_get(entity_id).disabled_by is not None
+    assert await hass.config_entries.async_unload(entry.entry_id)

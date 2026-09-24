@@ -1122,6 +1122,16 @@
             }
           }
         }
+      },
+      "battery_balance": {
+        "name": "Battery balance",
+        "state": {
+          "ok": "OK",
+          "eligible": "Eligible",
+          "scheduled": "Scheduled",
+          "holding": "Holding",
+          "overdue": "Overdue"
+        }
       }
     },
     "select": {

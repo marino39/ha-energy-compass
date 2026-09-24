@@ -82,7 +82,7 @@ def recommendation_states(hass):
     return {
         key: hass.states.get(f"sensor.refresh_{key}")
         for key in SENSOR_KEYS
-        if key != "optimizer_status"
+        if key not in ("optimizer_status", "battery_balance")
     }
 
 
@@ -93,7 +93,9 @@ async def test_unchanged_entities_are_not_reported_again(
     """Duplicate coordinator publications must not write unchanged entity states."""
     coordinator = published_entry.runtime_data
     entity_ids = [
-        f"sensor.refresh_{key}" for key in SENSOR_KEYS if not key.startswith("next_")
+        f"sensor.refresh_{key}"
+        for key in SENSOR_KEYS
+        if not key.startswith("next_") and key != "battery_balance"
     ] + ["binary_sensor.refresh_forecast_valid"]
     reported = {
         entity_id: hass.states.get(entity_id).last_reported for entity_id in entity_ids

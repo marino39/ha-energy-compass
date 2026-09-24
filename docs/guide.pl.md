@@ -113,20 +113,28 @@ flowchart TD
 | `sensor.<name>_expected_net_cost` | Expected net cost | Przewidywany koszt netto | waluta w horyzoncie |
 | `sensor.<name>_expected_wear_cost` | Expected wear cost | Przewidywany koszt zużycia baterii | waluta w horyzoncie |
 | `sensor.<name>_optimizer_status` | Optimizer status | Stan optymalizatora | stan obliczeń (diagnostyczny) |
+| `sensor.<name>_battery_balance` | Battery balance | Balansowanie baterii | `ok` / `eligible` / `scheduled` / `holding` / `overdue` (diagnostyczny) |
 | `binary_sensor.<name>_forecast_valid` | Forecast valid | Poprawna prognoza | `on` / `off` |
 | `binary_sensor.<name>_alert` | Alert | Alert | `on` / `off` (diagnostyczny, problem) |
 | `select.<name>_strategy` | Strategy | Strategia | jedna z sześciu strategii |
 
 Sensory kosztów można wyłączyć opcją **Prezentacja → Włącz encje kosztów**, znaczniki okien —
 **Włącz encje okresów**, a głębokość elastycznego zużycia — **Prognoza kosztu zużycia → Włącz
-głębokość elastycznego zużycia**.
+głębokość elastycznego zużycia**. Balansowanie baterii jest domyślnie wyłączone i włącza się je
+ustawieniem **LFP balance**; jego atrybuty to `last_completed`, `next_due`, `days_overdue`,
+`planned_start`, `planned_end`, `planned_mode`, `hold_progress_minutes`, `hold_required_minutes`
+i `threshold_percent`.
 
 ### Reguła dostępności
 
 ```mermaid
 flowchart TD
     A{Encja to Stan optymalizatora,<br/>Alert lub Poprawna prognoza?} -- tak --> ON[Zawsze dostępna]
-    A -- nie --> B{Opublikowany plan jest ważny<br/>i przed valid_until,<br/>albo trwa przeliczenie?}
+    A -- nie --> BB{Encja to Balansowanie baterii?}
+    BB -- tak --> BBR{Licznik balansowania wczytany?}
+    BBR -- tak --> AV
+    BBR -- nie --> UN
+    BB -- nie --> B{Opublikowany plan jest ważny<br/>i przed valid_until,<br/>albo trwa przeliczenie?}
     B -- nie --> UN[unavailable]
     B -- tak --> C{Która encja?}
     C -- Kompas / koszt zużycia --> G{Bieżąca próba znana?<br/>guidance_valid}

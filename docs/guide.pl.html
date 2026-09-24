@@ -285,6 +285,12 @@ i blueprinty powiadomień.</p>
 <td>stan obliczeń (diagnostyczny)</td>
 </tr>
 <tr>
+<td><code>sensor.&lt;name&gt;_battery_balance</code></td>
+<td>Battery balance</td>
+<td>Balansowanie baterii</td>
+<td><code>ok</code> / <code>eligible</code> / <code>scheduled</code> / <code>holding</code> / <code>overdue</code> (diagnostyczny)</td>
+</tr>
+<tr>
 <td><code>binary_sensor.&lt;name&gt;_forecast_valid</code></td>
 <td>Forecast valid</td>
 <td>Poprawna prognoza</td>
@@ -306,9 +312,12 @@ i blueprinty powiadomień.</p>
 </table></section>
 <p>Sensory kosztów można wyłączyć opcją <strong>Prezentacja → Włącz encje kosztów</strong>, znaczniki okien —
 <strong>Włącz encje okresów</strong>, a głębokość elastycznego zużycia — <strong>Prognoza kosztu zużycia → Włącz
-głębokość elastycznego zużycia</strong>.</p>
+głębokość elastycznego zużycia</strong>. Balansowanie baterii jest domyślnie wyłączone i włącza się je
+ustawieniem <strong>LFP balance</strong>; jego atrybuty to <code>last_completed</code>, <code>next_due</code>, <code>days_overdue</code>,
+<code>planned_start</code>, <code>planned_end</code>, <code>planned_mode</code>, <code>hold_progress_minutes</code>, <code>hold_required_minutes</code>
+i <code>threshold_percent</code>.</p>
 <h3 id="reguła-dostępności">Reguła dostępności</h3>
-<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-04e58ee4f08b-dark.svg"><img src="assets/diagrams/diagram-04e58ee4f08b.svg" alt="Diagram 3" loading="lazy"></picture></figure>
+<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-2f6bcf12dd4c-dark.svg"><img src="assets/diagrams/diagram-2f6bcf12dd4c.svg" alt="Diagram 3" loading="lazy"></picture></figure>
 <h2 id="stan-optymalizatora--cykl-obliczeń">Stan optymalizatora — cykl obliczeń</h2>
 <figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-9df4b681a75a-dark.svg"><img src="assets/diagrams/diagram-9df4b681a75a.svg" alt="Diagram 4" loading="lazy"></picture></figure>
 <section class="table-scroll"><table>

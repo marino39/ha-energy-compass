@@ -16,6 +16,7 @@ def test_public_contract():
         "expected_net_cost",
         "expected_wear_cost",
         "optimizer_status",
+        "battery_balance",
     }
     assert {
         "intervals",

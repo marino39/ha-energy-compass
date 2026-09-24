@@ -283,6 +283,12 @@ blueprints decide whether to act on the plan.</p>
 <td>calculation status (diagnostic)</td>
 </tr>
 <tr>
+<td><code>sensor.&lt;name&gt;_battery_balance</code></td>
+<td>Battery balance</td>
+<td>Balansowanie baterii</td>
+<td><code>ok</code> / <code>eligible</code> / <code>scheduled</code> / <code>holding</code> / <code>overdue</code> (diagnostic)</td>
+</tr>
+<tr>
 <td><code>binary_sensor.&lt;name&gt;_forecast_valid</code></td>
 <td>Forecast valid</td>
 <td>Poprawna prognoza</td>
@@ -303,9 +309,12 @@ blueprints decide whether to act on the plan.</p>
 </tbody>
 </table></section>
 <p>Cost sensors can be disabled with <strong>Presentation → Expose costs</strong>, window timestamps with
-<strong>Expose windows</strong>, and flexible depth with <strong>Consumption outlook → Enable flexible energy depth</strong>.</p>
+<strong>Expose windows</strong>, and flexible depth with <strong>Consumption outlook → Enable flexible energy depth</strong>.
+Battery balance is disabled by default and enabled with the <strong>LFP balance</strong> setting; its
+attributes carry <code>last_completed</code>, <code>next_due</code>, <code>days_overdue</code>, <code>planned_start</code>, <code>planned_end</code>,
+<code>planned_mode</code>, <code>hold_progress_minutes</code>, <code>hold_required_minutes</code> and <code>threshold_percent</code>.</p>
 <h3 id="availability-rule">Availability rule</h3>
-<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-2ee95de8f7e8-dark.svg"><img src="assets/diagrams/diagram-2ee95de8f7e8.svg" alt="Diagram 3" loading="lazy"></picture></figure>
+<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-8f0236fbff5e-dark.svg"><img src="assets/diagrams/diagram-8f0236fbff5e.svg" alt="Diagram 3" loading="lazy"></picture></figure>
 <h2 id="optimizer-status--calculation-lifecycle">Optimizer status — calculation lifecycle</h2>
 <figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-9c3f93a1af87-dark.svg"><img src="assets/diagrams/diagram-9c3f93a1af87.svg" alt="Diagram 4" loading="lazy"></picture></figure>
 <section class="table-scroll"><table>

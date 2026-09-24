@@ -111,19 +111,27 @@ flowchart TD
 | `sensor.<name>_expected_net_cost` | Expected net cost | Przewidywany koszt netto | currency over the horizon |
 | `sensor.<name>_expected_wear_cost` | Expected wear cost | Przewidywany koszt zużycia baterii | currency over the horizon |
 | `sensor.<name>_optimizer_status` | Optimizer status | Stan optymalizatora | calculation status (diagnostic) |
+| `sensor.<name>_battery_balance` | Battery balance | Balansowanie baterii | `ok` / `eligible` / `scheduled` / `holding` / `overdue` (diagnostic) |
 | `binary_sensor.<name>_forecast_valid` | Forecast valid | Poprawna prognoza | `on` / `off` |
 | `binary_sensor.<name>_alert` | Alert | Alert | `on` / `off` (diagnostic, problem) |
 | `select.<name>_strategy` | Strategy | Strategia | one of six strategies |
 
 Cost sensors can be disabled with **Presentation → Expose costs**, window timestamps with
 **Expose windows**, and flexible depth with **Consumption outlook → Enable flexible energy depth**.
+Battery balance is disabled by default and enabled with the **LFP balance** setting; its
+attributes carry `last_completed`, `next_due`, `days_overdue`, `planned_start`, `planned_end`,
+`planned_mode`, `hold_progress_minutes`, `hold_required_minutes` and `threshold_percent`.
 
 ### Availability rule
 
 ```mermaid
 flowchart TD
     A{Entity is Optimizer status,<br/>Alert or Forecast valid?} -- yes --> ON[Always available]
-    A -- no --> B{Published plan is valid and<br/>before valid_until,<br/>or a refresh is running?}
+    A -- no --> BB{Entity is Battery balance?}
+    BB -- yes --> BBR{Balance tracker loaded?}
+    BBR -- yes --> AV
+    BBR -- no --> UN
+    BB -- no --> B{Published plan is valid and<br/>before valid_until,<br/>or a refresh is running?}
     B -- no --> UN[unavailable]
     B -- yes --> C{Which entity?}
     C -- Consumption compass / cost --> G{Current probe known?<br/>guidance_valid}

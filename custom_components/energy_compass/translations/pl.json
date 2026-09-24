@@ -1122,6 +1122,16 @@
             }
           }
         }
+      },
+      "battery_balance": {
+        "name": "Balansowanie baterii",
+        "state": {
+          "ok": "OK",
+          "eligible": "Możliwe",
+          "scheduled": "Zaplanowane",
+          "holding": "Trwa trzymanie",
+          "overdue": "Zaległe"
+        }
       }
     },
     "select": {
