@@ -149,7 +149,7 @@
 <p><a href="guide.en.html">English</a> · <strong>Polski</strong></p>
 <p>Przewodnik opisuje działanie Energy Compass, wszystkie stany, jakie mogą zgłaszać jego encje,
 warunki, w których każdy stan występuje, oraz sześć strategii dyspozycji. Dotyczy wersji
-<strong>0.1.24</strong>. Matematyczny kontrakt każdej reguły opisuje <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/model.md">model i ograniczenia</a> (EN), a
+<strong>0.1.25</strong>. Matematyczny kontrakt każdej reguły opisuje <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/model.md">model i ograniczenia</a> (EN), a
 instalację i dashboardy — <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md">przewodnik instalacji</a> (EN).</p>
 <p>Energy Compass jest <strong>doradczy</strong>. Liczy plan i publikuje go jako encje Home Assistant. Nigdy nie
 zapisuje rejestrów falownika i sam nie wysyła powiadomień; o wykonaniu planu decydują sterowniki
@@ -503,6 +503,9 @@ integracji ani restartu Home Assistant.</p>
 <p>Przy wyłączonym minimalnym czasie trybu (<code>minimum_mode_minutes = 0</code>) stan wyświetlany wynika z
 przepływów wg pierwszeństwa: CURTAIL → CHARGE_GRID → CHARGE_PV → DISCHARGE_GRID → SELF_CONSUME →
 HOLD.</p>
+<p>Zaplanowane <a href="#balansowanie-lfp">trzymanie balansu LFP</a> nie dodaje osobnego trybu: jego wiersze
+korzystają z <code>CHARGE_PV</code> lub <code>CHARGE_GRID</code> i mają <code>balance_hold: true</code> w atrybucie <code>intervals</code>
+planu.</p>
 <h3 id="przejścia-i-minimalny-czas-trwania">Przejścia i minimalny czas trwania</h3>
 <figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-bd870a451d2c-dark.svg"><img src="assets/diagrams/diagram-bd870a451d2c.svg" alt="Diagram 7" loading="lazy"></picture></figure>
 <p>Diagram jest uproszczony — HOLD pokazano jako węzeł centralny: po minimalnym czasie każdy tryb może
@@ -837,6 +840,65 @@ oczekiwana cena nocnego odkupu (mediana nocnych cen zakupu) + <code>autonomy_mar
 patrzy 48 h do przodu na prognozy PV/zużycia, nawet zanim zostaną opublikowane jutrzejsze ceny.
 Jest <strong>miękki</strong>: naruszenie trafia do <code>autonomy_shortfall_kwh</code> planu zamiast dawać brak rozwiązania.
 Wymaga źródła PV (inaczej <code>autonomy_floor_requires_pv</code>).</p>
+<h3 id="balansowanie-lfp">Balansowanie LFP</h3>
+<p>Pakiety LFP potrzebują okresowego pełnego naładowania i krótkiego przetrzymania na górze, aby BMS
+mógł zbalansować cele i ponownie wyzerować odczyt SOC. Przy włączonej opcji <strong>Okresowe
+balansowanie LFP</strong> (<code>lfp_balance</code>) Energy Compass śledzi ostatnio zakończony balans i planuje
+następny. Sam licznik dalej obserwuje SOC i przesuwa swój stan nawet przy wyłączonym
+<code>lfp_balance</code> — ustawienie włącza tylko publikowanie okien balansu i encji diagnostycznej.</p>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Ustawienie</th>
+<th>Domyślnie</th>
+<th>Znaczenie</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>balance_interval_days</code></td>
+<td>7</td>
+<td>Dni między zakończonymi balansami</td>
+</tr>
+<tr>
+<td><code>balance_hold_minutes</code></td>
+<td>60</td>
+<td>Minuty, które SOC musi utrzymać na/ponad progiem</td>
+</tr>
+<tr>
+<td><code>balance_soc_threshold</code></td>
+<td>99 %</td>
+<td>SOC uznawany za pełny</td>
+</tr>
+<tr>
+<td><code>balance_value</code></td>
+<td>5,0</td>
+<td>Wartość zbalansowania w dniu terminu</td>
+</tr>
+</tbody>
+</table></section>
+<p>Balans <strong>kończy się</strong>, gdy SOC utrzymuje się na/ponad progiem przez cały czas trzymania. Odczyt
+poniżej progu resetuje trzymanie; niedostępny SOC wstrzymuje je. Zakończenie jest oceniane
+leniwie — niezmieniony pełny SOC kończy trzymanie przy najbliższym sprawdzeniu, bez potrzeby
+kolejnego zdarzenia stanu. Fazy: <code>ok</code> → <code>eligible</code> (wcześniejsze z: 2 dni lub pół odstępu przed
+terminem) → <code>due</code>; <code>holding</code> nakłada się na aktywną fazę podczas trwania trzymania.</p>
+<p>Optymalizator może wybrać jedno okno trzymania wyrównane do pełnej godziny: kandydujące okna
+zaczynają się tylko o pełnej godzinie, a w fazie <code>due</code> — tylko w ciągu następnych 24 h (faza
+<code>eligible</code> może szukać w całym horyzoncie). W wybranym oknie SOC utrzymuje się na/ponad progiem, a
+bateria się nie rozładowuje. Pominięcie kosztuje 10 % <code>balance_value</code> w fazie eligible (używana
+jest tylko darmowa PV), <code>balance_value × (1 + dni po terminie)</code> w fazie due i 10 × <code>balance_value</code>
+podczas trzymania. Okno jest publikowane jako <strong>CHARGE_PV</strong>, gdy PV pokrywa zużycie w każdym jego
+przedziale, albo jako <strong>CHARGE_GRID</strong> dla okna mieszanego PV/sieć — co dodatkowo wymaga, aby
+ładowanie z sieci było dozwolone i (jeśli włączony) sufit ceny ładowania z sieci był
+zachowany — z <code>balance_hold: true</code> w każdym wierszu. Od przedziału przed najwcześniejszym
+kandydującym oknem do końca horyzontu energia baterii może wzrosnąć aż do pełnej pojemności, a nie
+tylko do skonfigurowanego sufitu SOC, więc trzymanie nie jest blokowane przez <code>soc_ceiling</code> poniżej
+100 % — to podniesienie ma znaczenie tylko wtedy, gdy sufit jest poniżej 100 %. Próby zużycia
+utrzymują wybrane okno bez zmian, aby dodatkowe obciążenie wyceniało zużycie, a nie wybór balansu.</p>
+<p>Diagnostyczny sensor <strong>Balansowanie baterii</strong> (<code>sensor.&lt;name&gt;_battery_balance</code>) zgłasza <code>ok</code>,
+<code>eligible</code>, <code>scheduled</code>, <code>holding</code> lub <code>overdue</code>, z atrybutami <code>last_completed</code>, <code>next_due</code>,
+<code>days_overdue</code>, <code>planned_start</code>, <code>planned_end</code>, <code>planned_mode</code>, <code>hold_progress_minutes</code>,
+<code>hold_required_minutes</code>, <code>threshold_percent</code>.</p>
 <h3 id="cost_min--minimalizacja-kosztów"><code>cost_min</code> — minimalizacja kosztów</h3>
 <ul>
 <li><strong>Cel:</strong> najniższy prognozowany koszt: zakupy − sprzedaż + zużycie baterii − wartość końcowa.</li>
@@ -1008,7 +1070,7 @@ wyłącznie ręcznie. Konfiguracja: <a href="https://github.com/marino39/ha-ener
 </tr>
 <tr>
 <td><code>reference_horizon_uncovered</code></td>
-<td>Zarezerwowany w tłumaczeniach; nie jest emitowany w 0.1.24.</td>
+<td>Zarezerwowany w tłumaczeniach; nie jest emitowany w 0.1.25.</td>
 </tr>
 <tr>
 <td><code>reference_probe_failed</code></td>
@@ -1086,7 +1148,27 @@ wyłącznie ręcznie. Konfiguracja: <a href="https://github.com/marino39/ha-ener
 </tr>
 <tr>
 <td><code>grid_charge_price_limit</code></td>
-<td>Przeniesione CHARGE_GRID trwałoby przy cenie powyżej sufitu ładowania z sieci.</td>
+<td>Przeniesione CHARGE_GRID kontynuowałoby powyżej sufitu ceny ładowania z sieci.</td>
+</tr>
+</tbody>
+</table></section>
+<h3 id="ostrzeżenia-balansowania">Ostrzeżenia balansowania</h3>
+<p>To są surowe kody, nietłumaczone.</p>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Kod</th>
+<th>Znaczenie</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>balance_overdue</code></td>
+<td>Faza balansu to <code>due</code>, ale w planie nie zmieściło się żadne okno trzymania; balans w tym horyzoncie został pominięty.</td>
+</tr>
+<tr>
+<td><code>balance_no_window_in_horizon</code></td>
+<td>Faza balansu to <code>eligible</code> lub <code>due</code>, ale w horyzoncie nie istnieje żadne kandydujące okno trzymania (żaden wyrównany start nie spełnia wymogów PV/ładowania z sieci).</td>
 </tr>
 </tbody>
 </table></section>

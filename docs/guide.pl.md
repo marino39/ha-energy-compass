@@ -4,7 +4,7 @@
 
 Przewodnik opisuje działanie Energy Compass, wszystkie stany, jakie mogą zgłaszać jego encje,
 warunki, w których każdy stan występuje, oraz sześć strategii dyspozycji. Dotyczy wersji
-**0.1.24**. Matematyczny kontrakt każdej reguły opisuje [model i ograniczenia](model.md) (EN), a
+**0.1.25**. Matematyczny kontrakt każdej reguły opisuje [model i ograniczenia](model.md) (EN), a
 instalację i dashboardy — [przewodnik instalacji](installation.md) (EN).
 
 Energy Compass jest **doradczy**. Liczy plan i publikuje go jako encje Home Assistant. Nigdy nie
@@ -263,6 +263,10 @@ Przy wyłączonym minimalnym czasie trybu (`minimum_mode_minutes = 0`) stan wyś
 przepływów wg pierwszeństwa: CURTAIL → CHARGE_GRID → CHARGE_PV → DISCHARGE_GRID → SELF_CONSUME →
 HOLD.
 
+Zaplanowane [trzymanie balansu LFP](#balansowanie-lfp) nie dodaje osobnego trybu: jego wiersze
+korzystają z `CHARGE_PV` lub `CHARGE_GRID` i mają `balance_hold: true` w atrybucie `intervals`
+planu.
+
 ### Przejścia i minimalny czas trwania
 
 ```mermaid
@@ -468,6 +472,46 @@ patrzy 48 h do przodu na prognozy PV/zużycia, nawet zanim zostaną opublikowane
 Jest **miękki**: naruszenie trafia do `autonomy_shortfall_kwh` planu zamiast dawać brak rozwiązania.
 Wymaga źródła PV (inaczej `autonomy_floor_requires_pv`).
 
+### Balansowanie LFP
+
+Pakiety LFP potrzebują okresowego pełnego naładowania i krótkiego przetrzymania na górze, aby BMS
+mógł zbalansować cele i ponownie wyzerować odczyt SOC. Przy włączonej opcji **Okresowe
+balansowanie LFP** (`lfp_balance`) Energy Compass śledzi ostatnio zakończony balans i planuje
+następny. Sam licznik dalej obserwuje SOC i przesuwa swój stan nawet przy wyłączonym
+`lfp_balance` — ustawienie włącza tylko publikowanie okien balansu i encji diagnostycznej.
+
+| Ustawienie | Domyślnie | Znaczenie |
+| --- | --- | --- |
+| `balance_interval_days` | 7 | Dni między zakończonymi balansami |
+| `balance_hold_minutes` | 60 | Minuty, które SOC musi utrzymać na/ponad progiem |
+| `balance_soc_threshold` | 99 % | SOC uznawany za pełny |
+| `balance_value` | 5,0 | Wartość zbalansowania w dniu terminu |
+
+Balans **kończy się**, gdy SOC utrzymuje się na/ponad progiem przez cały czas trzymania. Odczyt
+poniżej progu resetuje trzymanie; niedostępny SOC wstrzymuje je. Zakończenie jest oceniane
+leniwie — niezmieniony pełny SOC kończy trzymanie przy najbliższym sprawdzeniu, bez potrzeby
+kolejnego zdarzenia stanu. Fazy: `ok` → `eligible` (wcześniejsze z: 2 dni lub pół odstępu przed
+terminem) → `due`; `holding` nakłada się na aktywną fazę podczas trwania trzymania.
+
+Optymalizator może wybrać jedno okno trzymania wyrównane do pełnej godziny: kandydujące okna
+zaczynają się tylko o pełnej godzinie, a w fazie `due` — tylko w ciągu następnych 24 h (faza
+`eligible` może szukać w całym horyzoncie). W wybranym oknie SOC utrzymuje się na/ponad progiem, a
+bateria się nie rozładowuje. Pominięcie kosztuje 10 % `balance_value` w fazie eligible (używana
+jest tylko darmowa PV), `balance_value × (1 + dni po terminie)` w fazie due i 10 × `balance_value`
+podczas trzymania. Okno jest publikowane jako **CHARGE_PV**, gdy PV pokrywa zużycie w każdym jego
+przedziale, albo jako **CHARGE_GRID** dla okna mieszanego PV/sieć — co dodatkowo wymaga, aby
+ładowanie z sieci było dozwolone i (jeśli włączony) sufit ceny ładowania z sieci był
+zachowany — z `balance_hold: true` w każdym wierszu. Od przedziału przed najwcześniejszym
+kandydującym oknem do końca horyzontu energia baterii może wzrosnąć aż do pełnej pojemności, a nie
+tylko do skonfigurowanego sufitu SOC, więc trzymanie nie jest blokowane przez `soc_ceiling` poniżej
+100 % — to podniesienie ma znaczenie tylko wtedy, gdy sufit jest poniżej 100 %. Próby zużycia
+utrzymują wybrane okno bez zmian, aby dodatkowe obciążenie wyceniało zużycie, a nie wybór balansu.
+
+Diagnostyczny sensor **Balansowanie baterii** (`sensor.<name>_battery_balance`) zgłasza `ok`,
+`eligible`, `scheduled`, `holding` lub `overdue`, z atrybutami `last_completed`, `next_due`,
+`days_overdue`, `planned_start`, `planned_end`, `planned_mode`, `hold_progress_minutes`,
+`hold_required_minutes`, `threshold_percent`.
+
 ### `cost_min` — minimalizacja kosztów
 
 - **Cel:** najniższy prognozowany koszt: zakupy − sprzedaż + zużycie baterii − wartość końcowa.
@@ -615,7 +659,7 @@ wyłącznie ręcznie. Konfiguracja: [przewodnik instalacji](installation.md#impo
 | --- | --- |
 | `complete` | Pełne pokrycie odniesienia, wszystkie próby udane. |
 | `available_reference_horizon` | Pokrycie źródeł krótsze niż żądany horyzont odniesienia; percentyle z dostępnych danych. |
-| `reference_horizon_uncovered` | Zarezerwowany w tłumaczeniach; nie jest emitowany w 0.1.24. |
+| `reference_horizon_uncovered` | Zarezerwowany w tłumaczeniach; nie jest emitowany w 0.1.25. |
 | `reference_probe_failed` | Co najmniej jedna próba odniesienia nie powiodła się lub zabrakło czasu. |
 | `short_source_coverage` | Pokrycie cen/prognoz kończy się przed żądanym horyzontem planowania. |
 | `current_guidance_unavailable` | Próba dla bieżącego przedziału nieznana; późniejsze okna mogą być poprawne. |
@@ -639,4 +683,13 @@ wyłącznie ręcznie. Konfiguracja: [przewodnik instalacji](installation.md#impo
 | --- | --- |
 | `observed_soc_maximum` | Aktywne zobowiązanie ładowania, a SOC już na maksimum. |
 | `observed_soc_minimum` | Aktywne zobowiązanie rozładowania, a SOC na lub poniżej rezerwy. |
-| `grid_charge_price_limit` | Przeniesione CHARGE_GRID trwałoby przy cenie powyżej sufitu ładowania z sieci. |
+| `grid_charge_price_limit` | Przeniesione CHARGE_GRID kontynuowałoby powyżej sufitu ceny ładowania z sieci. |
+
+### Ostrzeżenia balansowania
+
+To są surowe kody, nietłumaczone.
+
+| Kod | Znaczenie |
+| --- | --- |
+| `balance_overdue` | Faza balansu to `due`, ale w planie nie zmieściło się żadne okno trzymania; balans w tym horyzoncie został pominięty. |
+| `balance_no_window_in_horizon` | Faza balansu to `eligible` lub `due`, ale w horyzoncie nie istnieje żadne kandydujące okno trzymania (żaden wyrównany start nie spełnia wymogów PV/ładowania z sieci). |
