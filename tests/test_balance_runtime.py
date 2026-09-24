@@ -125,3 +125,29 @@ def test_probes_keep_chosen_window():
     # Pinned probes price load, not the balance: never cheaper than free and
     # never above the highest tariff in the fixture divided by efficiency.
     assert all(-1e-6 <= cost <= 10 for cost in costs)
+
+
+def _holding(last_completed):
+    return {
+        "last_completed_at": last_completed,
+        "hold_started_at": (NOW - timedelta(minutes=20)).isoformat(),
+        "last_full_at": (NOW - timedelta(minutes=2)).isoformat(),
+    }
+
+
+def test_hold_after_recent_completion_is_not_scheduled():
+    state = _holding((NOW - timedelta(days=1)).isoformat())
+    problem, _, quality = build_problem(
+        _config(), _states("100"), NOW, balance_state=state
+    )
+    assert problem.balance_windows == ()
+    assert problem.balance_miss_cost == 0.0
+    assert quality["balance_phase"] == "holding"
+
+
+def test_hold_while_due_offers_the_current_window():
+    state = _holding((NOW - timedelta(days=8)).isoformat())
+    problem, _, _ = build_problem(_config(), _states("100"), NOW, balance_state=state)
+    assert len(problem.balance_windows) == 1
+    assert problem.balance_windows[0].slots[0] == 0
+    assert problem.balance_miss_cost == 10 * 50.0

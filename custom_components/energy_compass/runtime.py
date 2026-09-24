@@ -715,9 +715,12 @@ def build_problem(
         tracker = balance_settings(values)
         report = balance_status(balance_state or empty_state(), now, tracker)
         balance_phase = report["phase"]
+        # A hold right after a completion is still tracked (and completes), but
+        # is not worth a window or a miss cost.
+        window_phase = "ok" if report["due_phase"] == "ok" else balance_phase
         windows = candidate_windows(
             slots,
-            phase=balance_phase,
+            phase=window_phase,
             now=now,
             hold_minutes=tracker.hold_minutes,
             remaining_minutes=report["hold_remaining_minutes"],
@@ -735,7 +738,7 @@ def build_problem(
             * tracker.threshold_percent
             / 100,
             balance_miss_cost=miss_cost(
-                balance_phase, values["balance_value"], report["days_overdue"]
+                window_phase, values["balance_value"], report["days_overdue"]
             ),
             balance_lift_slots=lift_slots(windows, battery, len(slots)),
         )
