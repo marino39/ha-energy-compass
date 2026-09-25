@@ -183,6 +183,27 @@ def test_seed_counts_a_pinned_full_soc_across_sparse_history():
     assert seed_from_history(samples, S)["last_completed_at"] is None
 
 
+def test_seed_breaks_a_hold_at_an_unavailable_sample():
+    # History stores changes only, so an explicit unavailable sample means SOC
+    # was unknown from then on; the gap must not count as a hold.
+    samples = [
+        (T0, 100.0),
+        (T0 + timedelta(minutes=10), None),
+        (T0 + timedelta(minutes=90), 90.0),
+    ]
+    assert seed_from_history(samples, SEED)["last_completed_at"] is None
+
+
+def test_seed_keeps_a_hold_completed_before_an_unavailable_sample():
+    samples = [
+        (T0, 100.0),
+        (T0 + timedelta(minutes=70), None),
+        (T0 + timedelta(minutes=90), 90.0),
+    ]
+    state = seed_from_history(samples, SEED)
+    assert state["last_completed_at"] == (T0 + timedelta(hours=1)).isoformat()
+
+
 def test_seed_without_history_is_due():
     assert seed_from_history([], SEED) == empty_state()
 

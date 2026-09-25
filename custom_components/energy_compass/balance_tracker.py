@@ -11,6 +11,7 @@ unchanged full SOC completes the hold without needing another state event.
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from math import inf
 
 from .settings import NUMBERS
 
@@ -202,10 +203,15 @@ def status(state: dict, now: datetime, settings: BalanceSettings) -> dict:
 def seed_from_history(
     samples: Iterable[tuple[datetime, float | None]], settings: BalanceSettings
 ) -> dict:
-    """Replay recorder SOC history; no qualifying hold means due now."""
+    """Replay recorder SOC history; no qualifying hold means due now.
+
+    History stores changes only, so an unavailable sample is itself an
+    observation: SOC was unknown from then on. Replay it as below threshold so
+    a hold ends there instead of spanning the gap.
+    """
     state = empty_state()
     for at, value in sorted(samples, key=lambda item: item[0]):
-        state = observe(state, value, at, settings)
+        state = observe(state, -inf if value is None else value, at, settings)
     return state
 
 
