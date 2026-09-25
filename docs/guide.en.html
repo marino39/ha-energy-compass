@@ -140,6 +140,7 @@
         <li><a href="#dispatch-strategies">Dispatch strategies</a></li>
         <li><a href="#automatic-strategy-switching">Automatic strategy switching</a></li>
         <li><a href="#window-notifications">Window notifications</a></li>
+        <li><a href="#cost-card">Cost card</a></li>
         <li><a href="#deye-inverter-controller-solarman">Deye inverter controller (Solarman)</a></li>
         <li><a href="#reason-code-reference">Reason code reference</a></li>
       </ul>
@@ -169,6 +170,7 @@ inverters through Solarman: see <a href="#deye-inverter-controller-solarman">Dey
 <li><a href="#dispatch-strategies">Dispatch strategies</a></li>
 <li><a href="#automatic-strategy-switching">Automatic strategy switching</a></li>
 <li><a href="#window-notifications">Window notifications</a></li>
+<li><a href="#cost-card">Cost card</a></li>
 <li><a href="#deye-inverter-controller-solarman">Deye inverter controller (Solarman)</a></li>
 <li><a href="#reason-code-reference">Reason code reference</a></li>
 </ol>
@@ -1127,6 +1129,48 @@ charging. The action receives <code>notification_title</code>, <code>notificatio
 </tr>
 </tbody>
 </table></section>
+<h2 id="cost-card">Cost card</h2>
+<p>The optional card <code>custom:energy-compass-cost-card</code> (<a href="https://github.com/marino39/ha-energy-compass/blob/main/cards/cost"><code>cards/cost/</code></a>) shows the
+purchase cost of grid energy, the value of exported energy (the prosumer deposit in Polish
+net-billing) and the balance <strong>purchase − deposit</strong>: today measured and planned to midnight, and
+month and year from statistics. Install and full description: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/cost-card.md">cost card guide</a>.</p>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cost_entity</code>, <code>import_entity</code>, <code>export_entity</code></td>
+<td>purchase cost (statistics), grid import and export energy (kWh) — required</td>
+</tr>
+<tr>
+<td><code>plan_entity</code>, <code>valid_entity</code>, <code>export_prices_entity</code></td>
+<td>Plan, Forecast valid and the export price forecast (<code>prices</code>) — required</td>
+</tr>
+<tr>
+<td><code>import_price_entity</code></td>
+<td>buy price used to fill a purchase-cost gap after a restart</td>
+</tr>
+<tr>
+<td><code>deposit_entity</code>, <code>deposit_backfill</code></td>
+<td>export value sensor and the backfilled history statistic, for month and year</td>
+</tr>
+<tr>
+<td><code>runtime_entity</code>, <code>mode_entity</code></td>
+<td>Deye controller runtime and mode, to say whether the plan is executed</td>
+</tr>
+<tr>
+<td><code>currency</code>, <code>language</code>, <code>tariff_label</code>, <code>footnote</code></td>
+<td>presentation</td>
+</tr>
+</tbody>
+</table></section>
+<p>The month and year deposit comes from the <a href="https://github.com/marino39/ha-energy-compass/blob/main/blueprints/automation/energy_compass/export_value_counter.yaml">export value counter blueprint</a>:
+it adds every increase of the export meter (<code>export_energy</code>), valued at the price forecast
+(<code>export_prices</code>), to a Number helper (<code>counter</code>); jumps above <code>max_step_kwh</code> are ignored.</p>
 <h2 id="deye-inverter-controller-solarman">Deye inverter controller (Solarman)</h2>
 <p>Energy Compass itself never writes to an inverter. The optional blueprint
 <a href="https://github.com/marino39/ha-energy-compass/blob/main/blueprints/automation/energy_compass/deye_solarman_controller.yaml"><code>deye_solarman_controller.yaml</code></a>

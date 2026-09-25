@@ -15,6 +15,9 @@ BLUEPRINT = ROOT / "blueprints/automation/energy_compass/deye_solarman_controlle
 PACKAGE = ROOT / "packages/energy_compass_deye.yaml"
 GENERATOR = ROOT / "tools/deye_controller/build.py"
 NOTIFICATIONS = ROOT / "blueprints/automation/energy_compass/notifications.yaml"
+COUNTER = ROOT / "blueprints/automation/energy_compass/export_value_counter.yaml"
+COST_CARD = ROOT / "cards/cost/energy-compass-cost-card.js"
+COST_DOC = ROOT / "docs/cost-card.md"
 GUIDES = [ROOT / "docs/guide.en.md", ROOT / "docs/guide.pl.md"]
 INSTALLATION = ROOT / "docs/installation.md"
 
@@ -101,4 +104,29 @@ def test_guides_document_notification_inputs(guide, identifier):
     assert f"`{identifier}`" in guide.read_text(), (
         f"{guide.name} does not mention notification input `{identifier}`; "
         "follow AGENTS.md Documentation sweep"
+    )
+
+
+def cost_card_keys():
+    text = COST_CARD.read_text()
+    keys = set(re.findall(r"(?:cfg|this\.config|config\?)\.([a-z_]+)", text)) - {
+        "time_zone"
+    }
+    return sorted(keys)
+
+
+def counter_inputs():
+    doc = yaml.load(COUNTER.read_text(), Loader=_Loader)
+    return sorted(doc["blueprint"]["input"])
+
+
+def test_cost_card_keys_are_found():
+    assert {"cost_entity", "deposit_backfill", "tariff_label"} <= set(cost_card_keys())
+
+
+@pytest.mark.parametrize("doc", [*GUIDES, COST_DOC], ids=lambda path: path.name)
+@pytest.mark.parametrize("identifier", [*cost_card_keys(), *counter_inputs()])
+def test_docs_document_cost_card_and_counter(doc, identifier):
+    assert f"`{identifier}`" in doc.read_text(), (
+        f"{doc.name} does not mention `{identifier}`; follow AGENTS.md Documentation sweep"
     )

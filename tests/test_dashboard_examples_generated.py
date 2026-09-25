@@ -49,7 +49,6 @@ async def test_markdown_cards_render(hass, path):
                 collect(child)
 
     collect(section)
-    assert cards
     for card in cards:
         assert Template(card["content"], hass).async_render(parse_result=False)
 

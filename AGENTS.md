@@ -46,6 +46,8 @@ passes. State in the PR which docs changed, or why none needed to.
 | Deye controller: input, default, profile, plan acceptance, write/confirm rule, runtime code | `guide.*` § Deye inverter controller (inputs table, profiles table, runtime codes, diagram), `docs/installation.md` § Deye inverter controller |
 | Deye package: helper, template sensor, TOU prefix | `guide.*` § Deye inverter controller → Package entities, `docs/installation.md` § Deye inverter controller step 1 |
 | Plan attribute or state consumed by the controller (`intervals`, `dispatch_policy`, `balance_hold`, `generated_at`, `valid_until`, `refreshing`, `plan_retained`) | the controller generator and its tests first, then `guide.*` § Deye inverter controller |
+| Cost card (`cards/cost/`): config key, view, notice, string | `docs/cost-card.md` (configuration table), `guide.*` § Cost card (keys table); every user-visible string lives in the card's `TEXT.en` and `TEXT.pl` — change both; `node --test test-*.mjs` in `cards/cost/` |
+| Export value counter blueprint or `tools/export_value_backfill.py` | `docs/cost-card.md` § Export value, `guide.*` § Cost card |
 | Dashboard example added/changed | `docs/installation.md` § Dashboard examples, `guide.*` § Deye inverter controller → Dashboard examples; new section or input role → `FIELDS`/`SECTIONS` in `tools/build_builder.py` |
 | Source requirements, units, tariffs; `examples/tariff-helper.yaml`, `examples/rce-sell-price.yaml` | `docs/source-requirements.md`, `docs/source-contracts.md`, `docs/tariff-helper.md`; a changed setting line in either example → `EXAMPLES` in `tools/build_builder.py`, then rebuild the builder |
 | Home Assistant / SciPy / runtime requirement | `README*.md` § Install, `docs/runtime-validation.md` |
@@ -63,9 +65,11 @@ Edit the source, rebuild, and commit source and output together. A change to eit
 `docs/index.html` also requires `python tools/build_builder.py`. `docs/assets/builder/builder.js` is
 hand-written and must only validate and substitute tokens — never re-implement generator logic in it.
 CI runs all three builders with
-`--check` and fails on any difference. `tests/test_deye_controller_docs.py` fails when a blueprint
-input, package entity or runtime code is missing from either guide, or a dashboard example is not
-linked from `docs/installation.md` — fix the docs, never weaken the test.
+`--check` and fails on any difference. `tests/test_deye_controller_docs.py` fails when a Deye
+controller input, package entity or runtime code, a notification blueprint input, a cost-card config
+key or an export value counter input is missing from either guide (card keys and counter inputs also
+from `docs/cost-card.md`), or a dashboard example is not linked from `docs/installation.md` — fix the
+docs, never weaken the test. CI also runs the cost card's Node tests (`cards/cost/test-*.mjs`).
 
 The controller behaviour is covered by `tests/test_deye_controller.py` (templates and action tree
 against a sanitized state sample) and `tests/test_deye_controller_blueprint.py` (the blueprint and

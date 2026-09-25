@@ -38,6 +38,12 @@ VALUES = {
     "afternoon_window": "seasonal",
     "multiplier": "1.23",
     "floor": "-10",
+    "import_cost": "sensor.import_cost",
+    "import_energy": "sensor.import_energy",
+    "export_energy": "sensor.export_energy",
+    "import_price": "sensor.buy_price",
+    "export_prices": "sensor.sell_prices",
+    "deposit": "sensor.export_value",
     "capacity": "12.5",
     "prefix": "inverter_2_program_",
 }

@@ -183,6 +183,42 @@ FIELDS = {
         "Sell price floor in PLN/MWh (net-billing 0)",
         "Minimalna cena sprzedaży w PLN/MWh (net-billing 0)",
     ),
+    "import_cost": (
+        "entity",
+        "sensor.inverter_total_energy_import_cost",
+        "Grid import cost (Energy dashboard cost sensor)",
+        "Koszt importu z sieci (sensor kosztu z panelu Energia)",
+    ),
+    "import_energy": (
+        "entity",
+        "sensor.inverter_total_energy_import",
+        "Grid import energy (kWh, total)",
+        "Energia pobrana z sieci (kWh, licznik)",
+    ),
+    "export_energy": (
+        "entity",
+        "sensor.inverter_total_energy_export",
+        "Grid export energy (kWh, total)",
+        "Energia oddana do sieci (kWh, licznik)",
+    ),
+    "import_price": (
+        "entity",
+        "sensor.energy_compass_tariff_price",
+        "Current buy price (for gaps after a restart)",
+        "Bieżąca cena zakupu (do luk po restarcie)",
+    ),
+    "export_prices": (
+        "entity",
+        "sensor.energy_compass_rce_export_forecast",
+        "Export price forecast (prices attribute)",
+        "Prognoza ceny sprzedaży (atrybut prices)",
+    ),
+    "deposit": (
+        "entity",
+        "sensor.export_value",
+        "Export value sensor (from the counter)",
+        "Sensor wartości eksportu (z licznika)",
+    ),
     "capacity": (
         "number",
         "25",
@@ -204,6 +240,10 @@ SECTIONS = {
     ),
     "panel": ("Deye controller panel", "Panel sterownika Deye"),
     "diagnostics": ("Deye controller diagnostics", "Diagnostyka sterownika Deye"),
+    "cost": (
+        "Cost card (purchase, deposit, balance)",
+        "Karta kosztów (zakup, depozyt, bilans)",
+    ),
     "package": ("Deye controller package", "Pakiet sterownika Deye"),
     "tariff": ("Buy price: G11/G12/G12w tariff", "Cena zakupu: taryfa G11/G12/G12w"),
     "rce": ("Sell price: RCE (net-billing)", "Cena sprzedaży: RCE (net-billing)"),

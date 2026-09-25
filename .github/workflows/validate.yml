@@ -29,6 +29,14 @@ jobs:
       - name: Check dependencies
         run: docker run --rm ha-energy-compass-test:2026.9.1 -m pip check
 
+  cards:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Test the cost card (Node built-in test runner)
+        working-directory: cards/cost
+        run: node --test test-*.mjs
+
   hassfest:
     runs-on: ubuntu-24.04
     steps:
