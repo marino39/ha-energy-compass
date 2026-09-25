@@ -140,6 +140,7 @@
         <li><a href="#strategie-dyspozycji">Strategie dyspozycji</a></li>
         <li><a href="#automatyczne-przełączanie-strategii">Automatyczne przełączanie strategii</a></li>
         <li><a href="#powiadomienia-o-oknach">Powiadomienia o oknach</a></li>
+        <li><a href="#karta-kosztów">Karta kosztów</a></li>
         <li><a href="#sterownik-falownika-deye-solarman">Sterownik falownika Deye (Solarman)</a></li>
         <li><a href="#słownik-kodów-powodów">Słownik kodów powodów</a></li>
       </ul>
@@ -169,6 +170,7 @@ Solarman: zob. <a href="#sterownik-falownika-deye-solarman">Sterownik falownika 
 <li><a href="#strategie-dyspozycji">Strategie dyspozycji</a></li>
 <li><a href="#automatyczne-przełączanie-strategii">Automatyczne przełączanie strategii</a></li>
 <li><a href="#powiadomienia-o-oknach">Powiadomienia o oknach</a></li>
+<li><a href="#karta-kosztów">Karta kosztów</a></li>
 <li><a href="#sterownik-falownika-deye-solarman">Sterownik falownika Deye (Solarman)</a></li>
 <li><a href="#słownik-kodów-powodów">Słownik kodów powodów</a></li>
 </ol>
@@ -1135,6 +1137,48 @@ Akcja dostaje <code>notification_title</code>, <code>notification_message</code>
 </tr>
 </tbody>
 </table></section>
+<h2 id="karta-kosztów">Karta kosztów</h2>
+<p>Opcjonalna karta <code>custom:energy-compass-cost-card</code> (<a href="https://github.com/marino39/ha-energy-compass/blob/main/cards/cost"><code>cards/cost/</code></a>) pokazuje koszt
+zakupu energii z sieci, wartość energii oddanej (depozyt prosumencki w polskim net-billingu) i bilans
+<strong>zakup − depozyt</strong>: dziś z pomiarów i planu do północy, a miesiąc i rok ze statystyk. Instalacja
+i pełny opis: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/cost-card.md">przewodnik karty kosztów</a> (EN).</p>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Klucz</th>
+<th>Znaczenie</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cost_entity</code>, <code>import_entity</code>, <code>export_entity</code></td>
+<td>koszt zakupu (statystyki), energia pobrana i oddana (kWh) — wymagane</td>
+</tr>
+<tr>
+<td><code>plan_entity</code>, <code>valid_entity</code>, <code>export_prices_entity</code></td>
+<td>Plan, Poprawna prognoza i prognoza ceny sprzedaży (<code>prices</code>) — wymagane</td>
+</tr>
+<tr>
+<td><code>import_price_entity</code></td>
+<td>cena zakupu do uzupełnienia luki w koszcie po restarcie</td>
+</tr>
+<tr>
+<td><code>deposit_entity</code>, <code>deposit_backfill</code></td>
+<td>sensor wartości eksportu i statystyka historii z backfillu, dla miesiąca i roku</td>
+</tr>
+<tr>
+<td><code>runtime_entity</code>, <code>mode_entity</code></td>
+<td>stan i tryb sterownika Deye, żeby pokazać, czy plan jest wykonywany</td>
+</tr>
+<tr>
+<td><code>currency</code>, <code>language</code>, <code>tariff_label</code>, <code>footnote</code></td>
+<td>prezentacja</td>
+</tr>
+</tbody>
+</table></section>
+<p>Depozyt miesięczny i roczny pochodzi z <a href="https://github.com/marino39/ha-energy-compass/blob/main/blueprints/automation/energy_compass/export_value_counter.yaml">blueprintu licznika wartości eksportu</a>:
+dodaje każdy przyrost licznika eksportu (<code>export_energy</code>), wyceniony według prognozy ceny
+(<code>export_prices</code>), do pomocnika liczbowego (<code>counter</code>); skoki powyżej <code>max_step_kwh</code> są pomijane.</p>
 <h2 id="sterownik-falownika-deye-solarman">Sterownik falownika Deye (Solarman)</h2>
 <p>Sam Energy Compass nigdy nie zapisuje do falownika. Robi to opcjonalny blueprint
 <a href="https://github.com/marino39/ha-energy-compass/blob/main/blueprints/automation/energy_compass/deye_solarman_controller.yaml"><code>deye_solarman_controller.yaml</code></a>:

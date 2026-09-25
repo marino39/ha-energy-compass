@@ -44,6 +44,12 @@ ENTITIES = {
     "charge_limit": "number.replace_with_battery_max_charging_current",
     "discharge_limit": "number.replace_with_battery_max_discharging_current",
     "grid_limit": "number.replace_with_battery_grid_charging_current",
+    "import_cost": "sensor.replace_with_import_cost",
+    "import_energy": "sensor.replace_with_import_energy",
+    "export_energy": "sensor.replace_with_export_energy",
+    "import_price": "sensor.replace_with_import_price",
+    "export_prices": "sensor.energy_compass_rce_export_forecast",
+    "deposit": "sensor.replace_with_export_value",
 }
 CAPACITY_KWH = (
     25  # Must match the Energy Compass battery capacity, not the BMS capacity.
@@ -1026,11 +1032,31 @@ def diagnostics_section(entities=ENTITIES, lang="en"):
     }
 
 
+def cost_section(entities=ENTITIES, lang="en"):
+    """The cost card (cards/cost/) configured for one installation."""
+    e = entities
+    card = {
+        "type": "custom:energy-compass-cost-card",
+        "language": lang,
+        "currency": "PLN",
+        "cost_entity": e["import_cost"],
+        "import_entity": e["import_energy"],
+        "export_entity": e["export_energy"],
+        "import_price_entity": e["import_price"],
+        "export_prices_entity": e["export_prices"],
+        "deposit_entity": e["deposit"],
+        "plan_entity": e["plan"],
+        "valid_entity": e["valid"],
+    }
+    return {"type": "grid", "column_span": 4, "cards": [card]}
+
+
 SECTIONS = {
     "plan": plan_section,
     "consumer": consumer_section,
     "panel": panel_section,
     "diagnostics": diagnostics_section,
+    "cost": cost_section,
 }
 
 
@@ -1046,6 +1072,7 @@ def outputs():
         OUT / "consumer_compass_chart.yaml": dump(consumer_section()),
         OUT / "controller_panel.yaml": dump(panel_section()),
         OUT / "controller_diagnostics.yaml": dump(diagnostics_section()),
+        OUT / "cost_card.yaml": dump(cost_section()),
     }
 
 

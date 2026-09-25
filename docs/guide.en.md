@@ -24,8 +24,9 @@ inverters through Solarman: see [Deye inverter controller](#deye-inverter-contro
 8. [Dispatch strategies](#dispatch-strategies)
 9. [Automatic strategy switching](#automatic-strategy-switching)
 10. [Window notifications](#window-notifications)
-11. [Deye inverter controller (Solarman)](#deye-inverter-controller-solarman)
-12. [Reason code reference](#reason-code-reference)
+11. [Cost card](#cost-card)
+12. [Deye inverter controller (Solarman)](#deye-inverter-controller-solarman)
+13. [Reason code reference](#reason-code-reference)
 
 ## How it works
 
@@ -697,6 +698,26 @@ charging. The action receives `notification_title`, `notification_message` and `
 | `use_blueprint_overrides` | off: use the integration's notification preferences; on: use the inputs below |
 | `enabled_events`, `minimum_hours`, `limit_lead_minutes`, `quiet_start`, `quiet_end`, `cooldown_minutes`, `daily_cap` | overrides: events, minimum favorable time remaining, LIMIT lead, quiet hours, cooldown, messages per local day |
 | `notification_actions` | the action to run, for example a mobile app notify action |
+
+## Cost card
+
+The optional card `custom:energy-compass-cost-card` ([`cards/cost/`](../cards/cost/)) shows the
+purchase cost of grid energy, the value of exported energy (the prosumer deposit in Polish
+net-billing) and the balance **purchase − deposit**: today measured and planned to midnight, and
+month and year from statistics. Install and full description: [cost card guide](cost-card.md).
+
+| Key | Meaning |
+| --- | --- |
+| `cost_entity`, `import_entity`, `export_entity` | purchase cost (statistics), grid import and export energy (kWh) — required |
+| `plan_entity`, `valid_entity`, `export_prices_entity` | Plan, Forecast valid and the export price forecast (`prices`) — required |
+| `import_price_entity` | buy price used to fill a purchase-cost gap after a restart |
+| `deposit_entity`, `deposit_backfill` | export value sensor and the backfilled history statistic, for month and year |
+| `runtime_entity`, `mode_entity` | Deye controller runtime and mode, to say whether the plan is executed |
+| `currency`, `language`, `tariff_label`, `footnote` | presentation |
+
+The month and year deposit comes from the [export value counter blueprint](../blueprints/automation/energy_compass/export_value_counter.yaml):
+it adds every increase of the export meter (`export_energy`), valued at the price forecast
+(`export_prices`), to a Number helper (`counter`); jumps above `max_step_kwh` are ignored.
 
 ## Deye inverter controller (Solarman)
 

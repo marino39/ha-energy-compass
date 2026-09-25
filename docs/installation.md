@@ -53,6 +53,7 @@ The timeline shows forecast-dependent incremental cost, not measured savings. Th
 Ready-made sections live in [`examples/dashboards/`](../examples/dashboards/). Paste one into a Sections view with **Edit dashboard → ⋮ → Raw configuration editor** and replace the `replace_with_…` entity IDs with your own:
 
 - [`controller_panel.yaml`](../examples/dashboards/controller_panel.yaml) — the Deye controller panel: health warning, battery now and mode selector, Compass decision, next 24 h of plan states, SOC forecast, consumption hint and 24 h history. Uses the [controller package](#deye-inverter-controller) entities and ApexCharts Card for the SOC forecast.
+- [`cost_card.yaml`](../examples/dashboards/cost_card.yaml) — the [cost card](cost-card.md): purchase cost, export deposit and balance, today with the plan, month and year from statistics. Needs the card's JavaScript as a dashboard resource.
 - [`controller_diagnostics.yaml`](../examples/dashboards/controller_diagnostics.yaml) — controller diagnostics table and inverter current-limit read-back; native cards only.
 - [`plan_chart.yaml`](../examples/dashboards/plan_chart.yaml) — 12 h of measured load, grid, PV and SoC with the next 24 h of the plan, dashed, over plan-state background bands. Set the battery capacity in the SoC generator to your Energy Compass capacity.
 - [`consumer_compass_chart.yaml`](../examples/dashboards/consumer_compass_chart.yaml) — Consumer Compass levels, 4 h history and 20 h forecast.

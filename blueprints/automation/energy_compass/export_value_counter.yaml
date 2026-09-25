@@ -1,0 +1,107 @@
+blueprint:
+  name: Energy Compass export value counter
+  description: >-
+    Adds the value of every increase of an exported-energy meter to a Number
+    helper, priced at the export price forecast's record for that moment (for
+    example the RCE net-billing deposit price from examples/rce-sell-price.yaml).
+    The cost card's month and year views read the helper through a Template
+    sensor with long-term statistics. Only numeric-to-numeric increases up to
+    the maximum step are counted; increases across unknown or unavailable gaps
+    are skipped. Without a price for the moment, nothing is added and a warning
+    is written to the system log.
+  domain: automation
+  source_url: https://github.com/marino39/ha-energy-compass/blob/main/blueprints/automation/energy_compass/export_value_counter.yaml
+  homeassistant:
+    min_version: 2026.9.1
+  input:
+    export_energy:
+      name: Exported energy meter
+      description: Total increasing exported energy in kWh.
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    export_prices:
+      name: Export price forecast
+      description: >-
+        Sensor whose `prices` attribute holds {start, end, price} records in the
+        installation currency per kWh; its state is the current price fallback.
+      selector:
+        entity:
+          filter:
+            domain: sensor
+    counter:
+      name: Value counter
+      description: >-
+        Dedicated Number helper (minimum 0, large maximum, step 0.0001, box mode).
+        Do not set an initial value, or it resets on every restart.
+      selector:
+        entity:
+          filter:
+            domain: input_number
+    max_step_kwh:
+      name: Maximum counted step
+      description: Larger jumps (meter resets, replays) are ignored.
+      default: 5
+      selector:
+        number:
+          min: 0.1
+          max: 100
+          step: 0.1
+          unit_of_measurement: kWh
+          mode: box
+
+mode: queued
+max: 50
+
+variables:
+  export_prices: !input export_prices
+  counter: !input counter
+  max_step_kwh: !input max_step_kwh
+
+triggers:
+  - trigger: state
+    entity_id: !input export_energy
+
+conditions:
+  - condition: template
+    value_template: >-
+      {{ trigger.from_state is not none and trigger.to_state is not none
+         and is_number(trigger.from_state.state) and is_number(trigger.to_state.state)
+         and 0 < (trigger.to_state.state | float - trigger.from_state.state | float) <= max_step_kwh | float }}
+
+actions:
+  - variables:
+      delta: "{{ trigger.to_state.state | float - trigger.from_state.state | float }}"
+      price: >-
+        {% set t = as_timestamp(trigger.to_state.last_updated) %}
+        {% set ns = namespace(p=none) %}
+        {% for r in state_attr(export_prices, 'prices') or [] if r is mapping %}
+          {% set s = as_timestamp(r.get('start'), none) %}
+          {% set e = as_timestamp(r.get('end'), none) %}
+          {% if s is none %}{% set s = as_timestamp(strptime(r.get('start') | string, '%Y%m%dT%H%M%z', none), none) %}{% endif %}
+          {% if e is none %}{% set e = as_timestamp(strptime(r.get('end') | string, '%Y%m%dT%H%M%z', none), none) %}{% endif %}
+          {% if ns.p is none and s is not none and e is not none and s <= t < e and is_number(r.get('price')) %}
+            {% set ns.p = r.price | float %}
+          {% endif %}
+        {% endfor %}
+        {% if ns.p is none and is_number(states(export_prices)) %}{% set ns.p = states(export_prices) | float %}{% endif %}
+        {{ ns.p if ns.p is not none else 'missing' }}
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ is_number(price) }}"
+        sequence:
+          - action: input_number.set_value
+            target:
+              entity_id: "{{ counter }}"
+            data:
+              value: "{{ (states(counter) | float(0) + delta * (price | float)) | round(4) }}"
+    default:
+      - action: system_log.write
+        data:
+          level: warning
+          logger: energy_compass.export_value_counter
+          message: >-
+            Export value counter: no price for {{ delta | round(3) }} kWh exported
+            at {{ trigger.to_state.last_updated }}

@@ -225,6 +225,60 @@ window.EC_BUILDER = {
     "pl": "Minimalna cena sprzedaży w PLN/MWh (net-billing 0)"
    }
   },
+  "import_cost": {
+   "token": "__EC_IMPORT_COST__",
+   "kind": "entity",
+   "example": "sensor.inverter_total_energy_import_cost",
+   "label": {
+    "en": "Grid import cost (Energy dashboard cost sensor)",
+    "pl": "Koszt importu z sieci (sensor kosztu z panelu Energia)"
+   }
+  },
+  "import_energy": {
+   "token": "__EC_IMPORT_ENERGY__",
+   "kind": "entity",
+   "example": "sensor.inverter_total_energy_import",
+   "label": {
+    "en": "Grid import energy (kWh, total)",
+    "pl": "Energia pobrana z sieci (kWh, licznik)"
+   }
+  },
+  "export_energy": {
+   "token": "__EC_EXPORT_ENERGY__",
+   "kind": "entity",
+   "example": "sensor.inverter_total_energy_export",
+   "label": {
+    "en": "Grid export energy (kWh, total)",
+    "pl": "Energia oddana do sieci (kWh, licznik)"
+   }
+  },
+  "import_price": {
+   "token": "__EC_IMPORT_PRICE__",
+   "kind": "entity",
+   "example": "sensor.energy_compass_tariff_price",
+   "label": {
+    "en": "Current buy price (for gaps after a restart)",
+    "pl": "Bieżąca cena zakupu (do luk po restarcie)"
+   }
+  },
+  "export_prices": {
+   "token": "__EC_EXPORT_PRICES__",
+   "kind": "entity",
+   "example": "sensor.energy_compass_rce_export_forecast",
+   "label": {
+    "en": "Export price forecast (prices attribute)",
+    "pl": "Prognoza ceny sprzedaży (atrybut prices)"
+   }
+  },
+  "deposit": {
+   "token": "__EC_DEPOSIT__",
+   "kind": "entity",
+   "example": "sensor.export_value",
+   "label": {
+    "en": "Export value sensor (from the counter)",
+    "pl": "Sensor wartości eksportu (z licznika)"
+   }
+  },
   "capacity": {
    "token": "__EC_CAPACITY__",
    "kind": "number",
@@ -267,6 +321,12 @@ window.EC_BUILDER = {
    "label": {
     "en": "Deye controller diagnostics",
     "pl": "Diagnostyka sterownika Deye"
+   }
+  },
+  "cost": {
+   "label": {
+    "en": "Cost card (purchase, deposit, balance)",
+    "pl": "Karta kosztów (zakup, depozyt, bilans)"
    }
   },
   "package": {
@@ -388,6 +448,34 @@ window.EC_BUILDER = {
      "charge_limit",
      "discharge_limit",
      "grid_limit"
+    ]
+   }
+  },
+  "cost": {
+   "en": {
+    "yaml": "type: grid\ncolumn_span: 4\ncards:\n- type: custom:energy-compass-cost-card\n  language: en\n  currency: PLN\n  cost_entity: __EC_IMPORT_COST__\n  import_entity: __EC_IMPORT_ENERGY__\n  export_entity: __EC_EXPORT_ENERGY__\n  import_price_entity: __EC_IMPORT_PRICE__\n  export_prices_entity: __EC_EXPORT_PRICES__\n  deposit_entity: __EC_DEPOSIT__\n  plan_entity: __EC_PLAN__\n  valid_entity: __EC_VALID__\n",
+    "fields": [
+     "plan",
+     "valid",
+     "import_cost",
+     "import_energy",
+     "export_energy",
+     "import_price",
+     "export_prices",
+     "deposit"
+    ]
+   },
+   "pl": {
+    "yaml": "type: grid\ncolumn_span: 4\ncards:\n- type: custom:energy-compass-cost-card\n  language: pl\n  currency: PLN\n  cost_entity: __EC_IMPORT_COST__\n  import_entity: __EC_IMPORT_ENERGY__\n  export_entity: __EC_EXPORT_ENERGY__\n  import_price_entity: __EC_IMPORT_PRICE__\n  export_prices_entity: __EC_EXPORT_PRICES__\n  deposit_entity: __EC_DEPOSIT__\n  plan_entity: __EC_PLAN__\n  valid_entity: __EC_VALID__\n",
+    "fields": [
+     "plan",
+     "valid",
+     "import_cost",
+     "import_energy",
+     "export_energy",
+     "import_price",
+     "export_prices",
+     "deposit"
     ]
    }
   },

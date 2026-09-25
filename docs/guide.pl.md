@@ -24,8 +24,9 @@ Solarman: zob. [Sterownik falownika Deye](#sterownik-falownika-deye-solarman).
 8. [Strategie dyspozycji](#strategie-dyspozycji)
 9. [Automatyczne przełączanie strategii](#automatyczne-przełączanie-strategii)
 10. [Powiadomienia o oknach](#powiadomienia-o-oknach)
-11. [Sterownik falownika Deye (Solarman)](#sterownik-falownika-deye-solarman)
-12. [Słownik kodów powodów](#słownik-kodów-powodów)
+11. [Karta kosztów](#karta-kosztów)
+12. [Sterownik falownika Deye (Solarman)](#sterownik-falownika-deye-solarman)
+13. [Słownik kodów powodów](#słownik-kodów-powodów)
 
 ## Jak to działa
 
@@ -705,6 +706,26 @@ Akcja dostaje `notification_title`, `notification_message` i `event_kind`.
 | `use_blueprint_overrides` | wyłączone: preferencje powiadomień z integracji; włączone: wejścia poniżej |
 | `enabled_events`, `minimum_hours`, `limit_lead_minutes`, `quiet_start`, `quiet_end`, `cooldown_minutes`, `daily_cap` | nadpisania: zdarzenia, minimalny pozostały czas okna korzystnego, wyprzedzenie LIMIT, godziny ciszy, przerwa, wiadomości na lokalną dobę |
 | `notification_actions` | akcja do wykonania, np. powiadomienie aplikacji mobilnej |
+
+## Karta kosztów
+
+Opcjonalna karta `custom:energy-compass-cost-card` ([`cards/cost/`](../cards/cost/)) pokazuje koszt
+zakupu energii z sieci, wartość energii oddanej (depozyt prosumencki w polskim net-billingu) i bilans
+**zakup − depozyt**: dziś z pomiarów i planu do północy, a miesiąc i rok ze statystyk. Instalacja
+i pełny opis: [przewodnik karty kosztów](cost-card.md) (EN).
+
+| Klucz | Znaczenie |
+| --- | --- |
+| `cost_entity`, `import_entity`, `export_entity` | koszt zakupu (statystyki), energia pobrana i oddana (kWh) — wymagane |
+| `plan_entity`, `valid_entity`, `export_prices_entity` | Plan, Poprawna prognoza i prognoza ceny sprzedaży (`prices`) — wymagane |
+| `import_price_entity` | cena zakupu do uzupełnienia luki w koszcie po restarcie |
+| `deposit_entity`, `deposit_backfill` | sensor wartości eksportu i statystyka historii z backfillu, dla miesiąca i roku |
+| `runtime_entity`, `mode_entity` | stan i tryb sterownika Deye, żeby pokazać, czy plan jest wykonywany |
+| `currency`, `language`, `tariff_label`, `footnote` | prezentacja |
+
+Depozyt miesięczny i roczny pochodzi z [blueprintu licznika wartości eksportu](../blueprints/automation/energy_compass/export_value_counter.yaml):
+dodaje każdy przyrost licznika eksportu (`export_energy`), wyceniony według prognozy ceny
+(`export_prices`), do pomocnika liczbowego (`counter`); skoki powyżej `max_step_kwh` są pomijane.
 
 ## Sterownik falownika Deye (Solarman)
 

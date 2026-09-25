@@ -9,10 +9,24 @@ globalThis.HTMLElement = class {
 globalThis.customElements = {get:()=>null,define:(_,type)=>{Card=type;}};
 await import('./energy-compass-cost-card.js');
 
+const HOUSEHOLD_CONFIG = {
+  language:'pl', currency:'PLN', tariff_label:'PGE G12', deposit_backfill:'pv_costs:depozyt_backfill',
+  cost_entity:'sensor.inverter_deye_total_energy_import_cost',
+  import_entity:'sensor.inverter_deye_total_energy_import',
+  export_entity:'sensor.inverter_deye_total_energy_export',
+  import_price_entity:'sensor.cena_pse_kupna_energii',
+  plan_entity:'sensor.energy_compass_home_pilot_plan',
+  valid_entity:'binary_sensor.energy_compass_home_pilot_poprawna_prognoza',
+  export_prices_entity:'sensor.energy_compass_rce_export_forecast',
+  deposit_entity:'sensor.pv_depozyt',
+  runtime_entity:'sensor.energy_compass_deye_runtime',
+  mode_entity:'input_select.energy_compass_deye_mode',
+};
+
 function render({purchase=3,deposit=10,futurePurchase=2,futureDeposit=1,complete=true}={}) {
   const now=Date.now(), bounds=dayBounds(now,'Europe/Warsaw');
   const card=new Card();
-  card.config={}; card.zone='Europe/Warsaw';
+  card.config={...HOUSEHOLD_CONFIG}; card.zone='Europe/Warsaw';
   card._hass={states:{}};
   card.report={now,bounds,actualCost:[{start:bounds.start,end:now,amount:purchase}],
     actualExport:deposit===null?null:[{start:bounds.start,end:now,amount:deposit}],
@@ -61,7 +75,7 @@ test('incomplete plan never claims full-day balance or neutral change',()=>{
 function renderPeriod(period,data,offset=0) {
   const now=Date.now(), bounds=dayBounds(now,'Europe/Warsaw');
   const card=new Card();
-  card.config={}; card.zone='Europe/Warsaw'; card._hass={states:{}}; card.period=period; card.offset=offset;
+  card.config={...HOUSEHOLD_CONFIG}; card.zone='Europe/Warsaw'; card._hass={states:{}}; card.period=period; card.offset=offset;
   card.report={now,bounds,issues:['live-only issue']};
   card.periodData={period,offset,bounds:{start:bounds.start-86_400_000,end:bounds.end},now,data};
   card.bars=()=>'';
