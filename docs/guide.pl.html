@@ -139,6 +139,7 @@
         <li><a href="#okna-i-głębokość-elastycznego-zużycia">Okna i głębokość elastycznego zużycia</a></li>
         <li><a href="#strategie-dyspozycji">Strategie dyspozycji</a></li>
         <li><a href="#automatyczne-przełączanie-strategii">Automatyczne przełączanie strategii</a></li>
+        <li><a href="#sterownik-falownika-deye-solarman">Sterownik falownika Deye (Solarman)</a></li>
         <li><a href="#słownik-kodów-powodów">Słownik kodów powodów</a></li>
       </ul>
     </nav>
@@ -153,7 +154,8 @@ warunki, w których każdy stan występuje, oraz sześć strategii dyspozycji. D
 instalację i dashboardy — <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md">przewodnik instalacji</a> (EN).</p>
 <p>Energy Compass jest <strong>doradczy</strong>. Liczy plan i publikuje go jako encje Home Assistant. Nigdy nie
 zapisuje rejestrów falownika i sam nie wysyła powiadomień; o wykonaniu planu decydują sterowniki
-i blueprinty powiadomień.</p>
+i blueprinty powiadomień. Repozytorium zawiera jeden taki sterownik, dla falowników Deye przez
+Solarman: zob. <a href="#sterownik-falownika-deye-solarman">Sterownik falownika Deye</a>.</p>
 <h2 id="spis-treści">Spis treści</h2>
 <ol>
 <li><a href="#jak-to-działa">Jak to działa</a></li>
@@ -165,6 +167,7 @@ i blueprinty powiadomień.</p>
 <li><a href="#okna-i-głębokość-elastycznego-zużycia">Okna i głębokość elastycznego zużycia</a></li>
 <li><a href="#strategie-dyspozycji">Strategie dyspozycji</a></li>
 <li><a href="#automatyczne-przełączanie-strategii">Automatyczne przełączanie strategii</a></li>
+<li><a href="#sterownik-falownika-deye-solarman">Sterownik falownika Deye (Solarman)</a></li>
 <li><a href="#słownik-kodów-powodów">Słownik kodów powodów</a></li>
 </ol>
 <h2 id="jak-to-działa">Jak to działa</h2>
@@ -1057,6 +1060,284 @@ dokańcza przerwany zapis.</p>
 planowego; reguła alertu nigdy nie jest blokowana. <code>max_export</code> i <code>grid_friendly</code> wybiera się
 wyłącznie ręcznie. Konfiguracja: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md#import-the-strategy-switch-blueprint">przewodnik instalacji</a>
 (EN).</p>
+<h2 id="sterownik-falownika-deye-solarman">Sterownik falownika Deye (Solarman)</h2>
+<p>Sam Energy Compass nigdy nie zapisuje do falownika. Robi to opcjonalny blueprint
+<a href="https://github.com/marino39/ha-energy-compass/blob/main/blueprints/automation/energy_compass/deye_solarman_controller.yaml"><code>deye_solarman_controller.yaml</code></a>:
+wykonuje plan na hybrydowym falowniku Deye przez
+<a href="https://github.com/davidrapan/ha-solarman">integrację Solarman</a>, zapisuje trzy prądy baterii i sześć
+programów czasowych (TOU), a każdy zapis sprawdza odczytem rejestrów. Wymaga pakietu
+<a href="https://github.com/marino39/ha-energy-compass/blob/main/packages/energy_compass_deye.yaml"><code>energy_compass_deye.yaml</code></a>. Instalację opisuje
+<a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md#deye-inverter-controller">przewodnik instalacji</a> (EN). Oba pliki generuje
+<code>tools/deye_controller/build.py</code>; zmienia się generator, nie YAML.</p>
+<h3 id="encje-pakietu">Encje pakietu</h3>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Encja</th>
+<th>Rola</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>input_select.energy_compass_deye_mode</code></td>
+<td><strong>Off</strong> / <strong>Simulation</strong> / <strong>Auto</strong>; jedyny przełącznik obsługiwany ręcznie</td>
+</tr>
+<tr>
+<td><code>input_boolean.energy_compass_deye_session</code></td>
+<td>włączony po rozpoczęciu sesji sterowania (start Home Assistant lub pierwszy przebieg)</td>
+</tr>
+<tr>
+<td><code>input_datetime.energy_compass_deye_session_start</code></td>
+<td>początek sesji; akceptowane są tylko plany wygenerowane później</td>
+</tr>
+<tr>
+<td><code>input_boolean.energy_compass_deye_restore_pending</code></td>
+<td>włączony od pierwszego zapisu do ponownego potwierdzenia profilu bazowego</td>
+</tr>
+<tr>
+<td><code>sensor.energy_compass_deye_plan</code></td>
+<td>zaakceptowany plan (atrybut <code>snapshot</code>)</td>
+</tr>
+<tr>
+<td><code>sensor.energy_compass_deye_runtime</code></td>
+<td>kod przebiegu (niżej); atrybut <code>runtime</code> zawiera stan, powód, potwierdzone wartości i niepewne rejestry</td>
+</tr>
+<tr>
+<td><code>sensor.energy_compass_deye_tou_settings</code></td>
+<td>prefiks programów TOU (atrybut <code>prefix</code>) i ich bieżące wartości; zmiana uruchamia sterownik</td>
+</tr>
+<tr>
+<td><code>sensor.energy_compass_deye_next_tou</code></td>
+<td>najbliższa lokalna granica programu TOU</td>
+</tr>
+<tr>
+<td><code>sensor.energy_compass_deye_deadline</code></td>
+<td><code>valid_until</code> zaakceptowanego planu</td>
+</tr>
+<tr>
+<td><code>sensor.energy_compass_deye_interval_end</code></td>
+<td>koniec bieżącego przedziału planu</td>
+</tr>
+</tbody>
+</table></section>
+<p>Pakiet zakłada domyślne nazwy encji TOU z Solarman (<code>number.inverter_deye_program_1_power</code> …
+<code>time.inverter_deye_program_6_time</code>). Przy innej nazwie urządzenia wygeneruj pakiet z własnym
+prefiksem w <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/builder.html">generatorze YAML</a> albo poleceniem
+<code>python tools/deye_controller/build.py --prefix my_inverter_program_</code>.</p>
+<h3 id="tryby">Tryby</h3>
+<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-ac9c2721d676-dark.svg"><img src="assets/diagrams/diagram-ac9c2721d676.svg" alt="Diagram 12" loading="lazy"></picture></figure>
+<p><strong>Auto</strong> zapisuje; <strong>Simulation</strong> oblicza wszystkie cele i zapisuje je w <code>runtime</code>, nie dotykając
+falownika; <strong>Off</strong> zwalnia sterowanie. Przejście z Auto do Off raz przywraca profil bazowy, potwierdza
+go i zostawia późniejsze ręczne nastawy. Wyłączenie samej <em>automatyzacji</em> pomija to przywrócenie.
+Wybór Simulation przy wymaganym przywróceniu jest odrzucany: tryb wraca na Off, profil bazowy zostaje
+przywrócony i dopiero wtedy można ponownie wybrać Simulation.</p>
+<h3 id="akceptacja-planu">Akceptacja planu</h3>
+<p>Plan zostaje zaakceptowany tylko wtedy, gdy spełnione są wszystkie warunki: powstał po początku sesji
+i po ostatnim unieważnieniu, jest nowszy od planu w pamięci, Poprawna prognoza ma stan <code>on</code>, Alert
+ma stan <code>off</code>, optymalizator jest <code>ready</code> (albo <code>calculating</code> z zachowanym pełnym planem), plan,
+optymalizator i prognoza podają ten sam <code>generated_at</code>, przedziały są ciągłe i obejmują bieżącą
+chwilę, a <code>valid_until</code> jest w przyszłości. Optymalizator poza <code>ready</code>/<code>calculating</code> albo Alert inny
+niż <code>off</code> unieważnia plan w pamięci; plany sprzed unieważnienia nigdy nie są akceptowane. Po
+restarcie Home Assistant sterownik trzyma więc profil bazowy do publikacji kolejnego obliczenia.</p>
+<p>Sterowanie wymaga też świeżej telemetrii: każda encja z <code>telemetry_entities</code> liczbowa i zgłoszona
+w ciągu 30 s, napięcie baterii 400–610 V i SOC 0–100 %. Każda automatyzacja z <code>old_writers</code> musi być
+wyłączona i nieuruchomiona.</p>
+<h3 id="profile">Profile</h3>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Stan planu</th>
+<th>Prąd ładowania / rozładowania</th>
+<th>Prąd ładowania z sieci</th>
+<th>Kierunek TOU, cel</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CHARGE_PV</code>, <code>SELF_CONSUME</code></td>
+<td>limit / limit</td>
+<td>0 A</td>
+<td>wszystkie Disabled, SOC 10 %</td>
+</tr>
+<tr>
+<td><code>CHARGE_GRID</code></td>
+<td>limit / 0 A</td>
+<td>planowana część sieciowa, ≤ <code>max_grid_current</code></td>
+<td>Grid w aktywnym programie, cel SOC z planu</td>
+</tr>
+<tr>
+<td><code>DISCHARGE_GRID</code></td>
+<td>0 A / z planu, ≤ limit</td>
+<td>0 A</td>
+<td>Sell w aktywnym programie, cel SOC z planu, moc z planu, ≤ <code>max_power_w</code></td>
+</tr>
+<tr>
+<td><code>HOLD</code>, <code>CURTAIL</code></td>
+<td><code>hold_grid_current</code> / 0 A</td>
+<td><code>hold_grid_current</code></td>
+<td>Grid, cel SOC = końcowy SOC planu zaokrąglony w dół</td>
+</tr>
+<tr>
+<td>bazowy (zwolnienie, nieważny plan)</td>
+<td><code>relinquish_current</code> / <code>relinquish_current</code></td>
+<td>0 A</td>
+<td>wszystkie Disabled, SOC 10 %, 49,6 (496 V), moc <code>max_power_w</code></td>
+</tr>
+</tbody>
+</table></section>
+<p>Limit to <code>min(max_current, max_power_w / V)</code> przy ładowaniu i <code>min(max_current, max_power_w × eta / V)</code>
+przy rozładowaniu; przy SOC 100 % prąd ładowania spada do 0 A. Prądy z planu przeliczają kWh
+przedziału przez <code>eta</code> w pełnej długości przedziału. Cel SOC używa <code>capacity_kwh</code>; cel napięcia wynika
+ze stałej krzywej wysokonapięciowej baterii LFP (496–536 V dla 10–90 %, przy 100 % 584 V przy
+ładowaniu albo 544 V przy rozładowaniu). Osiągnięty cel w <code>CHARGE_GRID</code>/<code>DISCHARGE_GRID</code> jest
+zatrzaskiwany dla danego przedziału planu. W wierszu balansowania LFP (<code>balance_hold: true</code>) prąd
+ładowania zostaje przy 100 %, <code>CHARGE_GRID</code> celuje w 100 %, a prąd z sieci wynosi co najmniej
+<code>balance_grid_current</code>. <code>CURTAIL</code> wykonuje profil <code>HOLD</code> z ostrzeżeniem, bo sterownik nie ogranicza PV.</p>
+<p>Sterowane są tylko tryby baterii z listy <code>commissioned_battery_modes</code>; każdy inny tryb (np. Voltage
+przed potwierdzeniem progów) zostaje na profilu bazowym. Przy dopuszczonym Voltage cel poza zakresem
+495–560 V jest odrzucany.</p>
+<h3 id="zapis-i-potwierdzenie">Zapis i potwierdzenie</h3>
+<p>Każda zmiana zapisuje jedną encję przez <code>number.set_value</code> lub <code>select.select_option</code>, a potem
+odczytuje rejestry 108–177 z <code>solarman_device</code> i porównuje surową wartość. Rejestr bez potwierdzenia
+trafia do <code>runtime.uncertain</code> i jest ponawiany; zmiana kierunku lub celu najpierw zeruje prądy, potem
+ustawia progi, na końcu włącza kierunek.</p>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Kod przebiegu</th>
+<th>Znaczenie</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>waiting</code></td>
+<td>pierwszy przebieg nie opublikował jeszcze kodu</td>
+</tr>
+<tr>
+<td><code>ok</code></td>
+<td>profil z planu obliczony (Simulation) albo zapisany i potwierdzony (Auto)</td>
+</tr>
+<tr>
+<td><code>blocked</code></td>
+<td>brak ważnego planu albo niespełniony warunek; <code>runtime.reason</code> mówi który</td>
+</tr>
+<tr>
+<td><code>restored</code></td>
+<td>profil bazowy zapisany i potwierdzony (zwolnienie w Off albo brak ważnego planu w Auto)</td>
+</tr>
+<tr>
+<td><code>verification_required</code></td>
+<td>zapisy zakończone, ale nie każdy rejestr potwierdzony</td>
+</tr>
+<tr>
+<td><code>write_failed</code></td>
+<td>rejestr nie potwierdził się po ponowieniach; przywrócenie pozostaje wymagane</td>
+</tr>
+<tr>
+<td><code>simulation_blocked</code></td>
+<td>Simulation odrzucone przy wymaganym przywróceniu</td>
+</tr>
+</tbody>
+</table></section>
+<p>Teksty <code>runtime.reason</code> są w tej wersji po polsku.</p>
+<h3 id="wejścia">Wejścia</h3>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Wejście</th>
+<th>Domyślnie</th>
+<th>Znaczenie</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>plan_entity</code>, <code>optimizer_entity</code>, <code>valid_entity</code>, <code>alert_entity</code>, <code>compass_entity</code></td>
+<td>—</td>
+<td>Plan, Stan optymalizatora, Poprawna prognoza, Alert i Kompas zużycia jednej instalacji Energy Compass</td>
+</tr>
+<tr>
+<td><code>solarman_device</code></td>
+<td>—</td>
+<td>urządzenie falownika w Solarman do odczytu rejestrów</td>
+</tr>
+<tr>
+<td><code>charge_entity</code>, <code>discharge_entity</code>, <code>grid_entity</code></td>
+<td>—</td>
+<td>maks. prąd ładowania (108), rozładowania (109) i ładowania z sieci (128)</td>
+</tr>
+<tr>
+<td><code>operation_entity</code></td>
+<td>—</td>
+<td>select trybu pracy baterii (Capacity / Voltage)</td>
+</tr>
+<tr>
+<td><code>soc_entity</code>, <code>voltage_entity</code></td>
+<td>—</td>
+<td>SOC baterii (%) i napięcie pakietu (V)</td>
+</tr>
+<tr>
+<td><code>telemetry_entities</code></td>
+<td>—</td>
+<td>sensory, które muszą być świeże (zgłoszone w ciągu 30 s)</td>
+</tr>
+<tr>
+<td><code>capacity_kwh</code></td>
+<td>25 kWh</td>
+<td>pojemność używana przez plan Energy Compass</td>
+</tr>
+<tr>
+<td><code>max_power_w</code></td>
+<td>8000 W</td>
+<td>limit mocy baterii i moc programów TOU</td>
+</tr>
+<tr>
+<td><code>max_current</code></td>
+<td>18 A</td>
+<td>limit prądu ładowania/rozładowania w stanach wymuszonych</td>
+</tr>
+<tr>
+<td><code>max_grid_current</code></td>
+<td>16 A</td>
+<td>limit prądu ładowania z sieci</td>
+</tr>
+<tr>
+<td><code>hold_grid_current</code></td>
+<td>1 A</td>
+<td>prąd ładowania i z sieci w <code>HOLD</code></td>
+</tr>
+<tr>
+<td><code>balance_grid_current</code></td>
+<td>2 A</td>
+<td>minimalny prąd z sieci w wierszu balansowania LFP</td>
+</tr>
+<tr>
+<td><code>relinquish_current</code></td>
+<td>18 A</td>
+<td>prąd ładowania/rozładowania profilu bazowego</td>
+</tr>
+<tr>
+<td><code>eta</code></td>
+<td>0,9747</td>
+<td>sprawność baterii w jedną stronę</td>
+</tr>
+<tr>
+<td><code>commissioned_battery_modes</code></td>
+<td>Capacity</td>
+<td>tryby baterii dopuszczone do sterowania fizycznego</td>
+</tr>
+<tr>
+<td><code>old_writers</code></td>
+<td>brak</td>
+<td>automatyzacje, które muszą być wyłączone przed każdym zapisem</td>
+</tr>
+</tbody>
+</table></section>
+<h3 id="przykładowe-dashboardy">Przykładowe dashboardy</h3>
+<p>Generuje je <code>tools/dashboards/build.py</code> z zastępczymi identyfikatorami encji: sekcja stanu sterownika
+(<code>deye_controller.yaml</code>, karty natywne), wykres historii i planu load / grid / PV / SoC z pasmami stanów
+planu (<code>plan_chart.yaml</code>) oraz oś czasu poziomów Consumer Compass (<code>consumer_compass_chart.yaml</code>), oba
+dla ApexCharts Card. <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/builder.html">Generator YAML</a> wypełnia każdą z nich Twoimi encjami, pojemnością
+i językiem. Opis: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md#dashboard-examples">przewodnik instalacji</a> (EN).</p>
 <h2 id="słownik-kodów-powodów">Słownik kodów powodów</h2>
 <h3 id="powody-pokrycia--jakości-atrybuty-reason-reasons">Powody pokrycia / jakości (atrybuty <code>reason</code>, <code>reasons</code>)</h3>
 <section class="table-scroll"><table>

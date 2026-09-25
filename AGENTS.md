@@ -2,8 +2,9 @@
 
 ## Documentation sweep (required for every change)
 
-Any change to behaviour, entities, settings, defaults, strategies, modes, reason codes, blueprints
-or the release version ships with a **doc sweep** in the same commit or PR. The docs describe the
+Any change to behaviour, entities, settings, defaults, strategies, modes, reason codes, blueprints,
+the Deye controller and its package, dashboard examples or the release version ships with a
+**doc sweep** in the same commit or PR. The docs describe the
 code; when they disagree, the code is right and the docs are fixed.
 
 1. **Map the change** to every affected doc using the table below. Search the docs for each
@@ -13,7 +14,8 @@ code; when they disagree, the code is right and the docs are fixed.
    `README.md` ↔ `README.pl.md` are mirrors: same sections, same tables, same diagrams, same
    numbers. Polish UI labels come from `custom_components/energy_compass/translations/pl.json`.
 3. **Verify each claim against the code** (`engine/`, `runtime.py`, `coordinator.py`,
-   `settings.py`, `translations/`), not against other docs.
+   `settings.py`, `translations/`, `tools/deye_controller/build.py`, `tools/dashboards/build.py`),
+   not against other docs.
 4. **Update diagrams** whose logic changed, then **rebuild the Pages guides**:
    `pip install -e '.[docs]'` (or `pip install markdown==3.8`), then
    `python tools/build_guides.py`. It renders every Mermaid block to light/dark SVGs in
@@ -25,8 +27,8 @@ code; when they disagree, the code is right and the docs are fixed.
    (meta description, sidebar, intro, footer), then rebuild the guides.
 
 Done when every grep hit is current, both languages match, `tools/build_guides.py` runs clean
-and its output is committed, and no link is broken. State in the PR which docs changed, or why
-none needed to.
+and its output is committed, no link is broken, and `pytest tests/test_deye_controller_docs.py`
+passes. State in the PR which docs changed, or why none needed to.
 
 ### Change → docs map
 
@@ -40,5 +42,32 @@ none needed to.
 | Recalculation cadence, refresh, rate limit, SOC trigger, time budgets | `guide.*` § Recalculation cadence, `docs/model.md` § Recalculation cadence, `README*.md` last paragraph |
 | Any setting key or default value | every doc citing it (grep the key and the old value) |
 | `strategy_switch` or notification blueprint | `guide.*` § Automatic strategy switching, `docs/installation.md` |
+| Deye controller: input, default, profile, plan acceptance, write/confirm rule, runtime code | `guide.*` § Deye inverter controller (inputs table, profiles table, runtime codes, diagram), `docs/installation.md` § Deye inverter controller |
+| Deye package: helper, template sensor, TOU prefix | `guide.*` § Deye inverter controller → Package entities, `docs/installation.md` § Deye inverter controller step 1 |
+| Plan attribute or state consumed by the controller (`intervals`, `dispatch_policy`, `balance_hold`, `generated_at`, `valid_until`, `refreshing`, `plan_retained`) | the controller generator and its tests first, then `guide.*` § Deye inverter controller |
+| Dashboard example added/changed | `docs/installation.md` § Dashboard examples, `guide.*` § Deye inverter controller → Dashboard examples; new section or input role → `FIELDS`/`SECTIONS` in `tools/build_builder.py` |
 | Source requirements, units, tariffs | `docs/source-requirements.md`, `docs/source-contracts.md`, `docs/tariff-helper.md` |
 | Home Assistant / SciPy / runtime requirement | `README*.md` § Install, `docs/runtime-validation.md` |
+
+## Generated files (never edit by hand)
+
+| Generated file | Source | Rebuild |
+| --- | --- | --- |
+| `blueprints/automation/energy_compass/deye_solarman_controller.yaml`, `packages/energy_compass_deye.yaml` | `tools/deye_controller/build.py` | `python tools/deye_controller/build.py` |
+| `examples/dashboards/*.yaml` | `tools/dashboards/build.py` (+ `state_bands.js`) | `python tools/dashboards/build.py` |
+| `docs/guide.*.html`, `docs/assets/diagrams/*.svg` | `docs/guide.*.md` | `python tools/build_guides.py` |
+| `docs/builder.html`, `docs/assets/builder/templates.js` | `tools/build_builder.py` (renders both generators with `__EC_*__` tokens; style from `docs/index.html`) | `python tools/build_builder.py` |
+
+Edit the source, rebuild, and commit source and output together. A change to either generator or to
+`docs/index.html` also requires `python tools/build_builder.py`. `docs/assets/builder/builder.js` is
+hand-written and must only validate and substitute tokens — never re-implement generator logic in it.
+CI runs all three builders with
+`--check` and fails on any difference. `tests/test_deye_controller_docs.py` fails when a blueprint
+input, package entity or runtime code is missing from either guide, or a dashboard example is not
+linked from `docs/installation.md` — fix the docs, never weaken the test.
+
+The controller behaviour is covered by `tests/test_deye_controller.py` (templates and action tree
+against a sanitized state sample) and `tests/test_deye_controller_blueprint.py` (the blueprint and
+package loaded by Home Assistant). A controller change adds or updates a test there. Keep
+household-specific values (device IDs, entity names of one installation) out of the repository:
+they belong in blueprint inputs, not in the generator.

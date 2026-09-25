@@ -1,0 +1,430 @@
+[
+  {
+    "entity_id": "sensor.energy_compass_home_pilot_plan",
+    "state": "2026-09-19T09:40:38+00:00",
+    "attributes": {
+      "generated_at": "2026-09-19T09:40:38.229246+00:00",
+      "valid_until": "2026-09-19T09:53:13.517553+00:00",
+      "refreshing": false,
+      "plan_retained": false,
+      "intervals": [
+        {
+          "state": "CHARGE_PV",
+          "pv_kwh": 0.42026567413716664,
+          "load_kwh": 0.046052262277724874,
+          "grid_import_kwh": 0.0,
+          "grid_export_kwh": 0.0,
+          "charge_kwh": 0.3742134118594418,
+          "discharge_kwh": 0.0,
+          "curtail_kwh": 0.0,
+          "end_soc_kwh": 12.864738116646327,
+          "start": "2026-09-19T11:40:38.229246+02:00",
+          "end": "2026-09-19T11:45:00+02:00",
+          "buy_per_kwh": 1.25,
+          "sell_per_kwh": 0.0,
+          "battery_mode": "charge",
+          "dispatch_mode": "CHARGE_PV"
+        },
+        {
+          "state": "CHARGE_PV",
+          "pv_kwh": 1.4449250000000002,
+          "load_kwh": 0.15833333333315144,
+          "grid_import_kwh": 0.0,
+          "grid_export_kwh": 1.261591666666849,
+          "charge_kwh": 0.025,
+          "discharge_kwh": 9.020562075079397e-17,
+          "curtail_kwh": 0.0,
+          "end_soc_kwh": 12.88910510250835,
+          "start": "2026-09-19T11:45:00+02:00",
+          "end": "2026-09-19T12:00:00+02:00",
+          "buy_per_kwh": 1.25,
+          "sell_per_kwh": 0.0,
+          "battery_mode": "charge",
+          "dispatch_mode": "CHARGE_PV"
+        },
+        {
+          "state": "CHARGE_PV",
+          "pv_kwh": 1.4806750000000002,
+          "load_kwh": 0.14999999999997726,
+          "grid_import_kwh": 0.0,
+          "grid_export_kwh": 0.0,
+          "charge_kwh": 1.330675000000023,
+          "discharge_kwh": 0.0,
+          "curtail_kwh": 0.0,
+          "end_soc_kwh": 14.186086658986245,
+          "start": "2026-09-19T12:00:00+02:00",
+          "end": "2026-09-19T12:15:00+02:00",
+          "buy_per_kwh": 1.25,
+          "sell_per_kwh": 0.0,
+          "battery_mode": "charge",
+          "dispatch_mode": "CHARGE_PV"
+        }
+      ],
+      "dispatch_policy": {
+        "enabled": true,
+        "minimum_mode_minutes": 60,
+        "limit_grid_charge_price": true,
+        "maximum_grid_charge_price": 0.61
+      }
+    }
+  },
+  {
+    "entity_id": "sensor.energy_compass_home_pilot_stan_optymalizatora",
+    "state": "ready",
+    "attributes": {
+      "generated_at": "2026-09-19T09:40:38.229246+00:00",
+      "valid_until": "2026-09-19T09:53:13.517553+00:00",
+      "refreshing": false,
+      "plan_retained": false
+    }
+  },
+  {
+    "entity_id": "binary_sensor.energy_compass_home_pilot_poprawna_prognoza",
+    "state": "on",
+    "attributes": {
+      "generated_at": "2026-09-19T09:40:38.229246+00:00",
+      "valid_until": "2026-09-19T09:53:13.517553+00:00",
+      "refreshing": false,
+      "plan_retained": false
+    }
+  },
+  {
+    "entity_id": "binary_sensor.energy_compass_home_pilot_alert",
+    "state": "off",
+    "attributes": {
+      "plan_retained": false
+    }
+  },
+  {
+    "entity_id": "sensor.inverter_deye_update_interval",
+    "state": "5.629161",
+    "attributes": {}
+  },
+  {
+    "entity_id": "sensor.inverter_deye_battery_voltage",
+    "state": "537.1",
+    "attributes": {}
+  },
+  {
+    "entity_id": "sensor.inverter_deye_battery",
+    "state": "51",
+    "attributes": {}
+  },
+  {
+    "entity_id": "number.inverter_deye_battery_max_charging_current",
+    "state": "18",
+    "attributes": {
+      "min": 0,
+      "max": 350,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_battery_max_discharging_current",
+    "state": "18",
+    "attributes": {
+      "min": 0,
+      "max": 350,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_battery_grid_charging_current",
+    "state": "16",
+    "attributes": {
+      "min": 0,
+      "max": 350,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_1_power",
+    "state": "10000",
+    "attributes": {
+      "min": 0,
+      "max": 128000,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_2_power",
+    "state": "8000",
+    "attributes": {
+      "min": 0,
+      "max": 128000,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_3_power",
+    "state": "8000",
+    "attributes": {
+      "min": 0,
+      "max": 128000,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_4_power",
+    "state": "8000",
+    "attributes": {
+      "min": 0,
+      "max": 128000,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_5_power",
+    "state": "9000",
+    "attributes": {
+      "min": 0,
+      "max": 128000,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_6_power",
+    "state": "8000",
+    "attributes": {
+      "min": 0,
+      "max": 128000,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_1_voltage",
+    "state": "51",
+    "attributes": {
+      "min": 0,
+      "max": 61,
+      "step": 0.1
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_2_voltage",
+    "state": "50.5",
+    "attributes": {
+      "min": 0,
+      "max": 61,
+      "step": 0.1
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_3_voltage",
+    "state": "50",
+    "attributes": {
+      "min": 0,
+      "max": 61,
+      "step": 0.1
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_4_voltage",
+    "state": "50",
+    "attributes": {
+      "min": 0,
+      "max": 61,
+      "step": 0.1
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_5_voltage",
+    "state": "50.5",
+    "attributes": {
+      "min": 0,
+      "max": 61,
+      "step": 0.1
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_6_voltage",
+    "state": "50",
+    "attributes": {
+      "min": 0,
+      "max": 61,
+      "step": 0.1
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_1_soc",
+    "state": "20",
+    "attributes": {
+      "min": 0,
+      "max": 100,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_2_soc",
+    "state": "15",
+    "attributes": {
+      "min": 0,
+      "max": 100,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_3_soc",
+    "state": "20",
+    "attributes": {
+      "min": 0,
+      "max": 100,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_4_soc",
+    "state": "20",
+    "attributes": {
+      "min": 0,
+      "max": 100,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_5_soc",
+    "state": "20",
+    "attributes": {
+      "min": 0,
+      "max": 100,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "number.inverter_deye_program_6_soc",
+    "state": "20",
+    "attributes": {
+      "min": 0,
+      "max": 100,
+      "step": 1.0
+    }
+  },
+  {
+    "entity_id": "select.inverter_deye_battery_operation_mode",
+    "state": "Capacity",
+    "attributes": {
+      "options": [
+        "Voltage",
+        "Capacity",
+        "No Battery"
+      ]
+    }
+  },
+  {
+    "entity_id": "select.inverter_deye_program_1_charging",
+    "state": "Disabled",
+    "attributes": {
+      "options": [
+        "Disabled",
+        "Grid",
+        "Generator",
+        "Grid & Generator",
+        "Sell"
+      ]
+    }
+  },
+  {
+    "entity_id": "select.inverter_deye_program_2_charging",
+    "state": "Disabled",
+    "attributes": {
+      "options": [
+        "Disabled",
+        "Grid",
+        "Generator",
+        "Grid & Generator",
+        "Sell"
+      ]
+    }
+  },
+  {
+    "entity_id": "select.inverter_deye_program_3_charging",
+    "state": "Disabled",
+    "attributes": {
+      "options": [
+        "Disabled",
+        "Grid",
+        "Generator",
+        "Grid & Generator",
+        "Sell"
+      ]
+    }
+  },
+  {
+    "entity_id": "select.inverter_deye_program_4_charging",
+    "state": "Disabled",
+    "attributes": {
+      "options": [
+        "Disabled",
+        "Grid",
+        "Generator",
+        "Grid & Generator",
+        "Sell"
+      ]
+    }
+  },
+  {
+    "entity_id": "select.inverter_deye_program_5_charging",
+    "state": "Disabled",
+    "attributes": {
+      "options": [
+        "Disabled",
+        "Grid",
+        "Generator",
+        "Grid & Generator",
+        "Sell"
+      ]
+    }
+  },
+  {
+    "entity_id": "select.inverter_deye_program_6_charging",
+    "state": "Disabled",
+    "attributes": {
+      "options": [
+        "Disabled",
+        "Grid",
+        "Generator",
+        "Grid & Generator",
+        "Sell"
+      ]
+    }
+  },
+  {
+    "entity_id": "time.inverter_deye_program_1_time",
+    "state": "00:00:00",
+    "attributes": {}
+  },
+  {
+    "entity_id": "time.inverter_deye_program_2_time",
+    "state": "06:00:00",
+    "attributes": {}
+  },
+  {
+    "entity_id": "time.inverter_deye_program_3_time",
+    "state": "09:00:00",
+    "attributes": {}
+  },
+  {
+    "entity_id": "time.inverter_deye_program_4_time",
+    "state": "13:00:00",
+    "attributes": {}
+  },
+  {
+    "entity_id": "time.inverter_deye_program_5_time",
+    "state": "15:00:00",
+    "attributes": {}
+  },
+  {
+    "entity_id": "time.inverter_deye_program_6_time",
+    "state": "22:00:00",
+    "attributes": {}
+  },
+  {
+    "entity_id": "number.inverter_deye_program_5_charging_raw",
+    "state": "unavailable",
+    "attributes": {
+      "min": 0,
+      "max": 255,
+      "step": 1.0
+    }
+  }
+]
