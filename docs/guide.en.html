@@ -139,6 +139,7 @@
         <li><a href="#windows-and-flexible-energy-depth">Windows and flexible energy depth</a></li>
         <li><a href="#dispatch-strategies">Dispatch strategies</a></li>
         <li><a href="#automatic-strategy-switching">Automatic strategy switching</a></li>
+        <li><a href="#window-notifications">Window notifications</a></li>
         <li><a href="#deye-inverter-controller-solarman">Deye inverter controller (Solarman)</a></li>
         <li><a href="#reason-code-reference">Reason code reference</a></li>
       </ul>
@@ -167,6 +168,7 @@ inverters through Solarman: see <a href="#deye-inverter-controller-solarman">Dey
 <li><a href="#windows-and-flexible-energy-depth">Windows and flexible energy depth</a></li>
 <li><a href="#dispatch-strategies">Dispatch strategies</a></li>
 <li><a href="#automatic-strategy-switching">Automatic strategy switching</a></li>
+<li><a href="#window-notifications">Window notifications</a></li>
 <li><a href="#deye-inverter-controller-solarman">Deye inverter controller (Solarman)</a></li>
 <li><a href="#reason-code-reference">Reason code reference</a></li>
 </ol>
@@ -1053,6 +1055,78 @@ Assistant start.</p>
 <p>A <strong>manual</strong> change of the select blocks the economic rules until the next successful scheduled
 run; the alert rule is never blocked. <code>max_export</code> and <code>grid_friendly</code> are manual-only. Setup
 details: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md#import-the-strategy-switch-blueprint">installation guide</a>.</p>
+<h2 id="window-notifications">Window notifications</h2>
+<p>The optional blueprint <a href="https://github.com/marino39/ha-energy-compass/blob/main/blueprints/automation/energy_compass/notifications.yaml"><code>notifications.yaml</code></a>
+tells the household when extra use is cheap (favorable window) or when an expensive <code>LIMIT</code> window
+is starting. Energy Compass itself never sends anything; <strong>Notify enabled</strong> in the integration
+options is the master switch. Setup: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md#opt-in-notifications">installation guide</a>.</p>
+<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-4bd0c2bb82d5-dark.svg"><img src="assets/diagrams/diagram-4bd0c2bb82d5.svg" alt="Diagram 12" loading="lazy"></picture></figure>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Use the cheap energy</strong> / <em>Wykorzystaj tanią energię</em></td>
+<td>a favorable window is running and the whole rest of it is <code>BOOST</code></td>
+</tr>
+<tr>
+<td><strong>A good time for household appliances</strong> / <em>Dobry moment na domowe urządzenia</em></td>
+<td>a favorable window is running, not all <code>BOOST</code></td>
+</tr>
+<tr>
+<td><strong>Plan heavy use for later</strong> / <em>Zaplanuj większe zużycie na później</em></td>
+<td>a <code>LIMIT</code> window starts within the lead time, or is already running</td>
+</tr>
+</tbody>
+</table></section>
+<p>The message names the window's local times and suggests moving laundry, the dishwasher or car
+charging. The action receives <code>notification_title</code>, <code>notification_message</code> and <code>event_kind</code>.</p>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Input</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>compass</code>, <code>plan</code>, <code>forecast_valid</code>, <code>alert</code>, <code>optimizer_status</code></td>
+<td>Consumption compass, Plan, Forecast valid, Alert and Optimizer status of one installation</td>
+</tr>
+<tr>
+<td><code>next_boost</code>, <code>next_cheap</code>, <code>next_limit</code></td>
+<td>the three window start sensors (their changes re-run the automation)</td>
+</tr>
+<tr>
+<td><code>last_favorable</code>, <code>last_limit</code></td>
+<td>Text helpers (max 255) holding the last window as <code>{"s": start, "e": end}</code></td>
+</tr>
+<tr>
+<td><code>daily_count</code>, <code>daily_date</code>, <code>last_sent</code></td>
+<td>Number helper and two Date/time helpers for the daily cap and cooldown</td>
+</tr>
+<tr>
+<td><code>language</code></td>
+<td><code>en</code> or <code>pl</code> for the title and message</td>
+</tr>
+<tr>
+<td><code>use_blueprint_overrides</code></td>
+<td>off: use the integration's notification preferences; on: use the inputs below</td>
+</tr>
+<tr>
+<td><code>enabled_events</code>, <code>minimum_hours</code>, <code>limit_lead_minutes</code>, <code>quiet_start</code>, <code>quiet_end</code>, <code>cooldown_minutes</code>, <code>daily_cap</code></td>
+<td>overrides: events, minimum favorable time remaining, LIMIT lead, quiet hours, cooldown, messages per local day</td>
+</tr>
+<tr>
+<td><code>notification_actions</code></td>
+<td>the action to run, for example a mobile app notify action</td>
+</tr>
+</tbody>
+</table></section>
 <h2 id="deye-inverter-controller-solarman">Deye inverter controller (Solarman)</h2>
 <p>Energy Compass itself never writes to an inverter. The optional blueprint
 <a href="https://github.com/marino39/ha-energy-compass/blob/main/blueprints/automation/energy_compass/deye_solarman_controller.yaml"><code>deye_solarman_controller.yaml</code></a>
@@ -1117,7 +1191,7 @@ the <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/instal
 <code>time.inverter_deye_program_6_time</code>). For another device name, generate the package with your prefix in
 the <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/builder.html">YAML builder</a> or with <code>python tools/deye_controller/build.py --prefix my_inverter_program_</code>.</p>
 <h3 id="modes">Modes</h3>
-<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-a6c9a3cacd04-dark.svg"><img src="assets/diagrams/diagram-a6c9a3cacd04.svg" alt="Diagram 12" loading="lazy"></picture></figure>
+<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-a6c9a3cacd04-dark.svg"><img src="assets/diagrams/diagram-a6c9a3cacd04.svg" alt="Diagram 13" loading="lazy"></picture></figure>
 <p><strong>Auto</strong> writes; <strong>Simulation</strong> computes every target and records it in <code>runtime</code> without touching the
 inverter; <strong>Off</strong> releases control. Leaving Auto for Off restores the base profile once, confirms it,
 then leaves later manual settings alone. Disabling the <em>automation</em> skips that restore. A switch to

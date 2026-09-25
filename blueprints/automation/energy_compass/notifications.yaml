@@ -1,9 +1,12 @@
 blueprint:
   name: Energy Compass window notifications
   description: >-
-    Opt-in alerts for favorable use and approaching LIMIT windows. Select entities
-    from one Energy Compass installation, five dedicated persistent helpers, and
-    your notification action. The integration itself never sends an action.
+    Opt-in household alerts for favorable use and approaching LIMIT windows, in
+    English or Polish. Select entities from one Energy Compass installation, five
+    dedicated persistent helpers and your notification action. Nothing is sent
+    unless Notify enabled is on in the integration, the forecast is valid, the
+    Alert is off and the optimizer is ready. The integration itself never sends
+    an action.
   domain: automation
   homeassistant:
     min_version: 2026.9.1
@@ -26,6 +29,18 @@ blueprint:
         entity:
           filter:
             domain: binary_sensor
+    alert:
+      name: Alert
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+    optimizer_status:
+      name: Optimizer status
+      selector:
+        entity:
+          filter:
+            domain: sensor
     next_boost:
       name: Next BOOST start
       selector:
@@ -45,22 +60,22 @@ blueprint:
           filter:
             domain: sensor
     last_favorable:
-      name: Last favorable window start
-      description: Dedicated Text helper with maximum length at least 20.
+      name: Last favorable window
+      description: Dedicated Text helper with maximum length 255.
       selector:
         entity:
           filter:
             domain: input_text
     last_limit:
-      name: Last LIMIT window start
-      description: Dedicated Text helper with maximum length at least 20.
+      name: Last LIMIT window
+      description: Dedicated Text helper with maximum length 255.
       selector:
         entity:
           filter:
             domain: input_text
     daily_count:
       name: Daily notification count
-      description: Dedicated Number helper with step 1 and maximum at least the daily cap.
+      description: Dedicated Number helper with step 1 and maximum at least 3.
       selector:
         entity:
           filter:
@@ -73,12 +88,23 @@ blueprint:
           filter:
             domain: input_datetime
     last_sent:
-      name: Last notification time
+      name: Last notification attempt
       description: Dedicated Date and/or time helper with both date and time.
       selector:
         entity:
           filter:
             domain: input_datetime
+    language:
+      name: Language
+      description: Language of the notification title and message.
+      default: en
+      selector:
+        select:
+          options:
+            - label: English
+              value: en
+            - label: Polski
+              value: pl
     use_blueprint_overrides:
       name: Override integration notification settings
       description: >-
@@ -103,7 +129,7 @@ blueprint:
             - label: Approaching LIMIT
               value: limit
     minimum_hours:
-      name: Minimum favorable window duration
+      name: Minimum favorable time remaining
       description: Used only when blueprint overrides are enabled.
       default: 2
       selector:
@@ -159,7 +185,12 @@ blueprint:
           mode: box
     notification_actions:
       name: Notification actions
-      description: Select a local Event action while testing.
+      description: >-
+        Runs once per notification. The variables notification_title,
+        notification_message and event_kind (favorable or limit) are available,
+        for example a notify action with title "{{ notification_title }}" and
+        message "{{ notification_message }}". Select a local Event action while
+        testing.
       default: []
       selector:
         action: {}
@@ -171,6 +202,9 @@ variables:
   compass_entity: !input compass
   plan_entity: !input plan
   forecast_valid_entity: !input forecast_valid
+  language: !input language
+  alert_entity: !input alert
+  optimizer_status_entity: !input optimizer_status
   last_favorable_entity: !input last_favorable
   last_limit_entity: !input last_limit
   daily_count_entity: !input daily_count
@@ -184,26 +218,48 @@ variables:
   blueprint_quiet_end: !input quiet_end
   blueprint_cooldown_minutes: !input cooldown_minutes
   blueprint_daily_cap: !input daily_cap
+  # Placeholders so rendering configured_actions below does not log undefined
+  # variable warnings; real values are set before the actions run.
+  event_kind: ""
+  notification_title: ""
+  notification_message: ""
   configured_actions: !input notification_actions
 
+# to: null -> real state changes only; attribute-only updates are covered by the
+# one-minute time pattern.
 triggers:
   - trigger: state
     entity_id: !input plan
+    to: null
   - trigger: state
     entity_id: !input forecast_valid
+    to: null
+  - trigger: state
+    entity_id: !input alert
+    to: null
+  - trigger: state
+    entity_id: !input optimizer_status
+    to: null
   - trigger: state
     entity_id: !input next_boost
+    to: null
   - trigger: state
     entity_id: !input next_cheap
+    to: null
   - trigger: state
     entity_id: !input next_limit
+    to: null
   - trigger: time_pattern
     minutes: "/1"
 
 actions:
   - condition: template
     value_template: >-
-      {{ is_state(forecast_valid_entity, 'on') and has_value(plan_entity) }}
+      {{ is_state(forecast_valid_entity, 'on')
+         and is_state(alert_entity, 'off')
+         and is_state(optimizer_status_entity, 'ready')
+         and has_value(plan_entity)
+         and as_timestamp(state_attr(plan_entity, 'valid_until'), 0) > as_timestamp(now()) }}
   - condition: template
     value_template: >-
       {% set preferences = state_attr(plan_entity, 'notification_preferences') %}
@@ -220,38 +276,60 @@ actions:
     value_template: "{{ configured_actions | count > 0 }}"
   - variables:
       notification_preferences: "{{ state_attr(plan_entity, 'notification_preferences') }}"
+      local_day: "{{ now().date().isoformat() }}"
+      plan_generation: "{{ states(plan_entity) }}"
   - variables:
       enabled_events: "{{ blueprint_enabled_events if use_blueprint_overrides else notification_preferences.notify_events }}"
-      minimum_hours: "{{ blueprint_minimum_hours if use_blueprint_overrides else notification_preferences.notify_minimum_hours }}"
-      limit_lead_minutes: "{{ blueprint_limit_lead_minutes if use_blueprint_overrides else notification_preferences.notify_limit_lead_minutes }}"
+      minimum_hours: >-
+        {{ blueprint_minimum_hours if use_blueprint_overrides else notification_preferences.notify_minimum_hours }}
+      limit_lead_minutes: >-
+        {{ blueprint_limit_lead_minutes if use_blueprint_overrides else notification_preferences.notify_limit_lead_minutes }}
       quiet_start: "{{ blueprint_quiet_start if use_blueprint_overrides else notification_preferences.quiet_start }}"
       quiet_end: "{{ blueprint_quiet_end if use_blueprint_overrides else notification_preferences.quiet_end }}"
-      cooldown_minutes: "{{ blueprint_cooldown_minutes if use_blueprint_overrides else notification_preferences.notify_cooldown_minutes }}"
-      daily_cap: "{{ blueprint_daily_cap if use_blueprint_overrides else notification_preferences.notify_daily_max }}"
-  - variables:
-      current_level: "{{ states(compass_entity) }}"
-      local_day: "{{ now().date().isoformat() }}"
+      cooldown_minutes: >-
+        {{ blueprint_cooldown_minutes if use_blueprint_overrides else notification_preferences.notify_cooldown_minutes }}
+      daily_cap: >-
+        {{ blueprint_daily_cap if use_blueprint_overrides else notification_preferences.notify_daily_max }}
       favorable_rows: "{{ state_attr(plan_entity, 'favorable_windows') or [] }}"
       limit_rows: "{{ (state_attr(plan_entity, 'windows') or {}).get('limit', []) }}"
+      outlook_rows: "{{ state_attr(plan_entity, 'outlook') or [] }}"
+      limit_previous: "{{ states(last_limit_entity) | from_json({}) }}"
   - variables:
-      favorable_start: "{{ (favorable_rows | first | default({}, true)).get('start', '') }}"
-      favorable_end: "{{ (favorable_rows | first | default({}, true)).get('end', '') }}"
-      limit_candidate: >-
+      favorable_candidate: >-
         {%- set candidate = namespace(row={}) -%}
-        {%- set previous = states(last_limit_entity) | float(-9999999) -%}
-        {%- for row in limit_rows -%}
+        {%- for row in favorable_rows -%}
           {%- set start = as_timestamp(row.start, 0) -%}
+          {%- set end = as_timestamp(row.end, 0) -%}
           {%- if not candidate.row
-             and as_timestamp(row.end, 0) > as_timestamp(now())
-             and start <= as_timestamp(now()) + (limit_lead_minutes | float) * 60
-             and (start - previous) | abs >= 1800 -%}
+             and start > 0
+             and start <= as_timestamp(now())
+             and end - as_timestamp(now()) >= minimum_hours | float * 3600 -%}
             {%- set candidate.row = row -%}
           {%- endif -%}
         {%- endfor -%}
         {{ candidate.row }}
-  - variables:
-      limit_start: "{{ limit_candidate.get('start', '') }}"
-      limit_end: "{{ limit_candidate.get('end', '') }}"
+      limit_candidate: >-
+        {%- set fresh = namespace(row={}) -%}
+        {%- set overlap = namespace(row={}) -%}
+        {%- for row in limit_rows -%}
+          {%- set start = as_timestamp(row.start, 0) -%}
+          {%- set end = as_timestamp(row.end, 0) -%}
+          {%- if start > 0
+             and end > as_timestamp(now())
+             and start <= as_timestamp(now()) + limit_lead_minutes | float * 60 -%}
+            {%- set seen = limit_previous is mapping
+                and limit_previous.get('s') is number
+                and limit_previous.get('e') is number
+                and start < limit_previous.get('e')
+                and end > limit_previous.get('s') -%}
+            {%- if seen and not overlap.row -%}
+              {%- set overlap.row = row -%}
+            {%- elif not seen and not fresh.row -%}
+              {%- set fresh.row = row -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ fresh.row if fresh.row else overlap.row }}
   - condition: template
     value_template: >-
       {% set count = states(daily_count_entity) %}
@@ -269,30 +347,65 @@ actions:
           - condition: template
             value_template: >-
               {{ 'limit' in enabled_events
-                 and limit_start
-                 and as_timestamp(limit_end, 0) > as_timestamp(now())
-                 and as_timestamp(limit_start, 0) <= as_timestamp(now()) + limit_lead_minutes | float * 60 }}
+                 and limit_candidate is mapping
+                 and as_timestamp(limit_candidate.get('start'), 0) > 0
+                 and as_timestamp(limit_candidate.get('end'), 0) > as_timestamp(now())
+                 and as_timestamp(limit_candidate.get('start'), 0)
+                     <= as_timestamp(now()) + limit_lead_minutes | float * 60 }}
         sequence:
           - variables:
               event_kind: limit
-              window_start: "{{ as_timestamp(limit_start) | int }}"
+              selected_window: "{{ limit_candidate }}"
               key_entity: "{{ last_limit_entity }}"
       - conditions:
           - condition: template
             value_template: >-
               {{ 'favorable' in enabled_events
-                 and favorable_start
-                 and as_timestamp(favorable_start, 0) <= as_timestamp(now())
-                 and as_timestamp(favorable_end, 0) > as_timestamp(now())
-                 and as_timestamp(favorable_end, 0) - as_timestamp(favorable_start, 0)
+                 and favorable_candidate is mapping
+                 and as_timestamp(favorable_candidate.get('start'), 0) > 0
+                 and as_timestamp(favorable_candidate.get('start'), 0) <= as_timestamp(now())
+                 and as_timestamp(favorable_candidate.get('end'), 0) - as_timestamp(now())
                      >= minimum_hours | float * 3600 }}
         sequence:
           - variables:
               event_kind: favorable
-              window_start: "{{ as_timestamp(favorable_start) | int }}"
+              selected_window: "{{ favorable_candidate }}"
               key_entity: "{{ last_favorable_entity }}"
     default:
       - stop: No eligible window
+  - variables:
+      window_start_iso: "{{ selected_window.get('start') }}"
+      window_end_iso: "{{ selected_window.get('end') }}"
+      window_start: "{{ as_timestamp(selected_window.get('start')) | int }}"
+      window_end: "{{ as_timestamp(selected_window.get('end')) | int }}"
+      previous_window: "{{ states(key_entity) | from_json({}) }}"
+      same_continuous_window: >-
+        {{ previous_window is mapping
+           and previous_window.get('s') is number
+           and previous_window.get('e') is number
+           and window_start < previous_window.get('e')
+           and window_end > previous_window.get('s') }}
+  - choose:
+      - conditions: "{{ same_continuous_window }}"
+        sequence:
+          - condition: template
+            value_template: >-
+              {% set preferences = state_attr(plan_entity, 'notification_preferences') %}
+              {{ states(plan_entity) == plan_generation
+                 and preferences is mapping
+                 and preferences.get('notify_enabled') == true
+                 and is_state(forecast_valid_entity, 'on')
+                 and is_state(alert_entity, 'off')
+                 and is_state(optimizer_status_entity, 'ready')
+                 and as_timestamp(state_attr(plan_entity, 'valid_until'), 0) > as_timestamp(now()) }}
+          - action: input_text.set_value
+            target:
+              entity_id: "{{ key_entity }}"
+            data:
+              value: >-
+                {{ {'s': [previous_window.get('s'), window_start] | min | int,
+                    'e': [previous_window.get('e'), window_end] | max | int} | to_json }}
+          - stop: Continuous window already handled
   - condition: template
     value_template: >-
       {% set time = now().strftime('%H:%M:%S') %}
@@ -305,16 +418,75 @@ actions:
   - condition: template
     value_template: >-
       {{ today_count | int < daily_cap | int
-         and (states(key_entity) in ['unknown', '']
-              or (window_start | float - states(key_entity) | float(-9999999)) | abs >= 1800)
          and (states(last_sent_entity) in ['unknown', '']
-              or as_timestamp(now()) - (state_attr(last_sent_entity, 'timestamp') | float(0))
+              or as_timestamp(now()) - state_attr(last_sent_entity, 'timestamp') | float(0)
                  >= cooldown_minutes | float * 60) }}
+  - variables:
+      remaining_all_boost: >-
+        {%- set edge = namespace(at=as_timestamp(now()), valid=true, seen=false) -%}
+        {%- for row in outlook_rows if row is mapping -%}
+          {%- set start = as_timestamp(row.get('start'), 0) -%}
+          {%- set end = as_timestamp(row.get('end'), 0) -%}
+          {%- if end > as_timestamp(now()) and start < window_end -%}
+            {%- set left = [start, as_timestamp(now())] | max -%}
+            {%- set right = [end, window_end] | min -%}
+            {%- if right > left -%}
+              {%- if left > edge.at + 1 or row.get('level') != 'BOOST' -%}
+                {%- set edge.valid = false -%}
+              {%- endif -%}
+              {%- if right > edge.at -%}{%- set edge.at = right -%}{%- endif -%}
+              {%- set edge.seen = true -%}
+            {%- endif -%}
+          {%- endif -%}
+        {%- endfor -%}
+        {{ edge.seen and edge.valid and edge.at >= window_end - 1 }}
+      window_label: >-
+        {%- set start = as_local(as_datetime(window_start_iso)) -%}
+        {%- set end = as_local(as_datetime(window_end_iso)) -%}
+        {{- start.strftime('%H:%M') ~ '–' ~ end.strftime('%H:%M')
+            if start.date() == end.date()
+            else start.strftime('%d.%m %H:%M') ~ '–' ~ end.strftime('%d.%m %H:%M') -}}
+  - variables:
+      notification_title: >-
+        {% set pl = language == 'pl' %}
+        {% if event_kind == 'limit' %}{{ 'Zaplanuj większe zużycie na później' if pl else 'Plan heavy use for later' }}
+        {% elif remaining_all_boost %}{{ 'Wykorzystaj tanią energię' if pl else 'Use the cheap energy' }}
+        {% else %}{{ 'Dobry moment na domowe urządzenia' if pl else 'A good time for household appliances' }}{% endif %}
+      notification_message: >-
+        {% if language == 'pl' %}
+        {% if event_kind == 'limit' and window_start <= as_timestamp(now()) %}
+          Według prognozy dodatkowe zużycie jest już droższe — okres {{ window_label }}. Jeśli możesz, przełóż pranie, zmywarkę lub ładowanie auta na później.
+        {% elif event_kind == 'limit' %}
+          Według prognozy droższy okres to {{ window_label }}. Jeśli możesz, zaplanuj pranie, zmywarkę lub ładowanie auta przed nim albo później.
+        {% elif remaining_all_boost %}
+          Według prognozy bardzo korzystny okres {{ window_label }} trwa teraz. To dobry moment na pranie, zmywarkę lub ładowanie auta.
+        {% else %}
+          Według prognozy korzystny okres {{ window_label }} trwa teraz. To dobry moment na pranie, zmywarkę lub ładowanie auta.
+        {% endif %}
+        {% else %}
+        {% if event_kind == 'limit' and window_start <= as_timestamp(now()) %}
+          According to the forecast, extra use is already more expensive — period {{ window_label }}. If you can, move laundry, the dishwasher or car charging to later.
+        {% elif event_kind == 'limit' %}
+          According to the forecast, the more expensive period is {{ window_label }}. If you can, run laundry, the dishwasher or car charging before or after it.
+        {% elif remaining_all_boost %}
+          According to the forecast, a very favorable period {{ window_label }} is on now. A good time for laundry, the dishwasher or car charging.
+        {% else %}
+          According to the forecast, a favorable period {{ window_label }} is on now. A good time for laundry, the dishwasher or car charging.
+        {% endif %}
+        {% endif %}
+  - condition: template
+    value_template: >-
+      {{ states(plan_entity) == plan_generation
+         and is_state(forecast_valid_entity, 'on')
+         and is_state(alert_entity, 'off')
+         and is_state(optimizer_status_entity, 'ready')
+         and as_timestamp(state_attr(plan_entity, 'valid_until'), 0) > as_timestamp(now()) }}
   - action: input_text.set_value
     target:
       entity_id: "{{ key_entity }}"
     data:
-      value: "{{ window_start | int }}"
+      value: >-
+        {{ {'s': window_start | int, 'e': window_end | int} | to_json }}
   - action: input_number.set_value
     target:
       entity_id: "{{ daily_count_entity }}"
@@ -330,6 +502,20 @@ actions:
       entity_id: "{{ last_sent_entity }}"
     data:
       timestamp: "{{ as_timestamp(now()) }}"
+  - condition: template
+    value_template: >-
+      {% set preferences = state_attr(plan_entity, 'notification_preferences') %}
+      {% set time = now().strftime('%H:%M:%S') %}
+      {% set start = quiet_start | string %}
+      {% set end = quiet_end | string %}
+      {{ states(plan_entity) == plan_generation
+         and preferences is mapping
+         and preferences.get('notify_enabled') == true
+         and is_state(forecast_valid_entity, 'on')
+         and is_state(alert_entity, 'off')
+         and is_state(optimizer_status_entity, 'ready')
+         and as_timestamp(state_attr(plan_entity, 'valid_until'), 0) > as_timestamp(now())
+         and (start == end or (not (start <= time < end) if start < end else not (time >= start or time < end))) }}
   - choose:
       - conditions: "{{ true }}"
         sequence: !input notification_actions

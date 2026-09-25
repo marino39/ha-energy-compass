@@ -41,7 +41,8 @@ passes. State in the PR which docs changed, or why none needed to.
 | Consumption levels, probes, percentiles, windows, flexible depth | `guide.*` § Consumption levels / Windows, `docs/model.md` § Incremental consumption, `docs/index.html` |
 | Recalculation cadence, refresh, rate limit, SOC trigger, time budgets | `guide.*` § Recalculation cadence, `docs/model.md` § Recalculation cadence, `README*.md` last paragraph |
 | Any setting key or default value | every doc citing it (grep the key and the old value) |
-| `strategy_switch` or notification blueprint | `guide.*` § Automatic strategy switching, `docs/installation.md` |
+| `strategy_switch` blueprint | `guide.*` § Automatic strategy switching, `docs/installation.md` |
+| Notification blueprint: input, gate, message, helper format | `guide.*` § Window notifications (diagram, messages table, inputs table), `docs/installation.md` § Opt-in notifications, `README*.md` notification paragraph |
 | Deye controller: input, default, profile, plan acceptance, write/confirm rule, runtime code | `guide.*` § Deye inverter controller (inputs table, profiles table, runtime codes, diagram), `docs/installation.md` § Deye inverter controller |
 | Deye package: helper, template sensor, TOU prefix | `guide.*` § Deye inverter controller → Package entities, `docs/installation.md` § Deye inverter controller step 1 |
 | Plan attribute or state consumed by the controller (`intervals`, `dispatch_policy`, `balance_hold`, `generated_at`, `valid_until`, `refreshing`, `plan_retained`) | the controller generator and its tests first, then `guide.*` § Deye inverter controller |

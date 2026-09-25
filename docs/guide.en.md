@@ -23,8 +23,9 @@ inverters through Solarman: see [Deye inverter controller](#deye-inverter-contro
 7. [Windows and flexible energy depth](#windows-and-flexible-energy-depth)
 8. [Dispatch strategies](#dispatch-strategies)
 9. [Automatic strategy switching](#automatic-strategy-switching)
-10. [Deye inverter controller (Solarman)](#deye-inverter-controller-solarman)
-11. [Reason code reference](#reason-code-reference)
+10. [Window notifications](#window-notifications)
+11. [Deye inverter controller (Solarman)](#deye-inverter-controller-solarman)
+12. [Reason code reference](#reason-code-reference)
 
 ## How it works
 
@@ -652,6 +653,50 @@ flowchart TD
 A **manual** change of the select blocks the economic rules until the next successful scheduled
 run; the alert rule is never blocked. `max_export` and `grid_friendly` are manual-only. Setup
 details: [installation guide](installation.md#import-the-strategy-switch-blueprint).
+
+## Window notifications
+
+The optional blueprint [`notifications.yaml`](../blueprints/automation/energy_compass/notifications.yaml)
+tells the household when extra use is cheap (favorable window) or when an expensive `LIMIT` window
+is starting. Energy Compass itself never sends anything; **Notify enabled** in the integration
+options is the master switch. Setup: [installation guide](installation.md#opt-in-notifications).
+
+```mermaid
+flowchart TD
+    T([minute / plan, forecast, Alert, optimizer change]) --> G{Notify enabled, forecast valid,<br/>Alert off, optimizer ready,<br/>plan still valid?}
+    G -- no --> X[nothing]
+    G -- yes --> L{LIMIT window running or<br/>starting within the lead time?}
+    L -- yes --> K[event limit]
+    L -- no --> F{favorable window running<br/>with at least the minimum<br/>time remaining?}
+    F -- no --> X
+    F -- yes --> K2[event favorable]
+    K --> S{overlaps the stored window?}
+    K2 --> S
+    S -- yes --> E[extend the stored window<br/>no message]
+    S -- no --> C{quiet hours, cooldown,<br/>daily cap allow it?}
+    C -- no --> X
+    C -- yes --> A[store window, count, time<br/>re-check gates, run the action]
+```
+
+| Message | When |
+| --- | --- |
+| **Use the cheap energy** / *Wykorzystaj tanią energię* | a favorable window is running and the whole rest of it is `BOOST` |
+| **A good time for household appliances** / *Dobry moment na domowe urządzenia* | a favorable window is running, not all `BOOST` |
+| **Plan heavy use for later** / *Zaplanuj większe zużycie na później* | a `LIMIT` window starts within the lead time, or is already running |
+
+The message names the window's local times and suggests moving laundry, the dishwasher or car
+charging. The action receives `notification_title`, `notification_message` and `event_kind`.
+
+| Input | Meaning |
+| --- | --- |
+| `compass`, `plan`, `forecast_valid`, `alert`, `optimizer_status` | Consumption compass, Plan, Forecast valid, Alert and Optimizer status of one installation |
+| `next_boost`, `next_cheap`, `next_limit` | the three window start sensors (their changes re-run the automation) |
+| `last_favorable`, `last_limit` | Text helpers (max 255) holding the last window as `{"s": start, "e": end}` |
+| `daily_count`, `daily_date`, `last_sent` | Number helper and two Date/time helpers for the daily cap and cooldown |
+| `language` | `en` or `pl` for the title and message |
+| `use_blueprint_overrides` | off: use the integration's notification preferences; on: use the inputs below |
+| `enabled_events`, `minimum_hours`, `limit_lead_minutes`, `quiet_start`, `quiet_end`, `cooldown_minutes`, `daily_cap` | overrides: events, minimum favorable time remaining, LIMIT lead, quiet hours, cooldown, messages per local day |
+| `notification_actions` | the action to run, for example a mobile app notify action |
 
 ## Deye inverter controller (Solarman)
 
