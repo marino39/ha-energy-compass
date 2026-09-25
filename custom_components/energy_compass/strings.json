@@ -133,6 +133,11 @@
           "eta_discharge": "Eta discharge",
           "wear_per_kwh": "Wear per kwh",
           "idle_drain_kw": "Idle drain kw",
+          "lfp_balance": "Periodic LFP balance charge",
+          "balance_interval_days": "Balance interval (days)",
+          "balance_hold_minutes": "Balance hold at the top (minutes)",
+          "balance_soc_threshold": "Balance SOC threshold",
+          "balance_value": "Balance value once due",
           "daily_cycles": "Daily cycles",
           "soc_max_age_seconds": "Soc max age seconds",
           "soc_disagreement_percent": "Soc disagreement percent",
@@ -307,6 +312,11 @@
         "data": {
           "wear_per_kwh": "Wear per kwh",
           "idle_drain_kw": "Idle drain kw",
+          "lfp_balance": "Periodic LFP balance charge",
+          "balance_interval_days": "Balance interval (days)",
+          "balance_hold_minutes": "Balance hold at the top (minutes)",
+          "balance_soc_threshold": "Balance SOC threshold",
+          "balance_value": "Balance value once due",
           "buy_rate": "Buy rate",
           "sell_rate": "Sell rate",
           "buy_addition": "Buy addition",
@@ -536,6 +546,11 @@
           "eta_discharge": "Eta discharge",
           "wear_per_kwh": "Wear per kwh",
           "idle_drain_kw": "Idle drain kw",
+          "lfp_balance": "Periodic LFP balance charge",
+          "balance_interval_days": "Balance interval (days)",
+          "balance_hold_minutes": "Balance hold at the top (minutes)",
+          "balance_soc_threshold": "Balance SOC threshold",
+          "balance_value": "Balance value once due",
           "daily_cycles": "Daily cycles",
           "soc_max_age_seconds": "Soc max age seconds",
           "soc_disagreement_percent": "Soc disagreement percent",
@@ -710,6 +725,11 @@
         "data": {
           "wear_per_kwh": "Wear per kwh",
           "idle_drain_kw": "Idle drain kw",
+          "lfp_balance": "Periodic LFP balance charge",
+          "balance_interval_days": "Balance interval (days)",
+          "balance_hold_minutes": "Balance hold at the top (minutes)",
+          "balance_soc_threshold": "Balance SOC threshold",
+          "balance_value": "Balance value once due",
           "buy_rate": "Buy rate",
           "sell_rate": "Sell rate",
           "buy_addition": "Buy addition",
@@ -1101,6 +1121,16 @@
               "verified": "Verified"
             }
           }
+        }
+      },
+      "battery_balance": {
+        "name": "Battery balance",
+        "state": {
+          "ok": "OK",
+          "eligible": "Eligible",
+          "scheduled": "Scheduled",
+          "holding": "Holding",
+          "overdue": "Overdue"
         }
       }
     },

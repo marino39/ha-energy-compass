@@ -7,6 +7,7 @@ from homeassistant.components.sensor import (
 from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 
+from .balance_tracker import SENSOR_STATES
 from .entity import EnergyCompassEntity, next_change
 from .settings import DOMAIN
 from .sources.bindings import parse_timestamp
@@ -24,6 +25,7 @@ SENSOR_KEYS = (
     "expected_net_cost",
     "expected_wear_cost",
     "optimizer_status",
+    "battery_balance",
 )
 
 
@@ -33,7 +35,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
     settings = entry.runtime_data.configuration["settings"]
     for key in SENSOR_KEYS:
         enabled = (
-            settings.get("flexible_load_enabled", True)
+            settings.get("lfp_balance", False)
+            if key == "battery_balance"
+            else settings.get("flexible_load_enabled", True)
             if key == "flexible_energy_depth"
             else settings["expose_costs"]
             if key in ("consumption_cost", "expected_net_cost", "expected_wear_cost")
@@ -83,6 +87,12 @@ class EnergyCompassSensor(EnergyCompassEntity, SensorEntity):
             self._attr_entity_registry_enabled_default = coordinator.configuration[
                 "settings"
             ]["expose_windows"]
+        if key == "battery_balance":
+            self._attr_device_class = SensorDeviceClass.ENUM
+            self._attr_options = list(SENSOR_STATES)
+            self._attr_entity_registry_enabled_default = coordinator.configuration[
+                "settings"
+            ].get("lfp_balance", False)
 
     @property
     def suggested_display_precision(self):
@@ -100,6 +110,9 @@ class EnergyCompassSensor(EnergyCompassEntity, SensorEntity):
 
     @property
     def native_value(self):
+        if self.key == "battery_balance":
+            report = self.coordinator.balance_report()
+            return report["state"] if report else None
         data = self.coordinator.data
         if self.key == "optimizer_status":
             return data["status"]

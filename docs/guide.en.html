@@ -149,7 +149,7 @@
 <p><strong>English</strong> · <a href="guide.pl.html">Polski</a></p>
 <p>This guide explains what Energy Compass does, every state its entities can report and the
 conditions that produce each state, and the six dispatch strategies. It describes release
-<strong>0.1.24</strong>. The mathematical contract behind each rule lives in <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/model.md">model and limitations</a>;
+<strong>0.1.25</strong>. The mathematical contract behind each rule lives in <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/model.md">model and limitations</a>;
 installation and dashboards are in the <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md">installation guide</a>.</p>
 <p>Energy Compass is <strong>advisory</strong>. It computes a plan and publishes it as Home Assistant entities. It
 never writes inverter registers and sends no messages by itself; controllers and notification
@@ -283,6 +283,12 @@ blueprints decide whether to act on the plan.</p>
 <td>calculation status (diagnostic)</td>
 </tr>
 <tr>
+<td><code>sensor.&lt;name&gt;_battery_balance</code></td>
+<td>Battery balance</td>
+<td>Balansowanie baterii</td>
+<td><code>ok</code> / <code>eligible</code> / <code>scheduled</code> / <code>holding</code> / <code>overdue</code> (diagnostic)</td>
+</tr>
+<tr>
 <td><code>binary_sensor.&lt;name&gt;_forecast_valid</code></td>
 <td>Forecast valid</td>
 <td>Poprawna prognoza</td>
@@ -303,9 +309,12 @@ blueprints decide whether to act on the plan.</p>
 </tbody>
 </table></section>
 <p>Cost sensors can be disabled with <strong>Presentation → Expose costs</strong>, window timestamps with
-<strong>Expose windows</strong>, and flexible depth with <strong>Consumption outlook → Enable flexible energy depth</strong>.</p>
+<strong>Expose windows</strong>, and flexible depth with <strong>Consumption outlook → Enable flexible energy depth</strong>.
+Battery balance is disabled by default and enabled with the <strong>LFP balance</strong> setting; its
+attributes carry <code>last_completed</code>, <code>next_due</code>, <code>days_overdue</code>, <code>planned_start</code>, <code>planned_end</code>,
+<code>planned_mode</code>, <code>hold_progress_minutes</code>, <code>hold_required_minutes</code> and <code>threshold_percent</code>.</p>
 <h3 id="availability-rule">Availability rule</h3>
-<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-2ee95de8f7e8-dark.svg"><img src="assets/diagrams/diagram-2ee95de8f7e8.svg" alt="Diagram 3" loading="lazy"></picture></figure>
+<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-8f0236fbff5e-dark.svg"><img src="assets/diagrams/diagram-8f0236fbff5e.svg" alt="Diagram 3" loading="lazy"></picture></figure>
 <h2 id="optimizer-status--calculation-lifecycle">Optimizer status — calculation lifecycle</h2>
 <figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-9c3f93a1af87-dark.svg"><img src="assets/diagrams/diagram-9c3f93a1af87.svg" alt="Diagram 4" loading="lazy"></picture></figure>
 <section class="table-scroll"><table>
@@ -491,6 +500,8 @@ hours: <code>activity = minimum_mode_power_kw × h</code> (default 0.1 kW) and
 </table></section>
 <p>When mode duration is disabled (<code>minimum_mode_minutes = 0</code>), the display state is derived from flows
 by precedence: CURTAIL → CHARGE_GRID → CHARGE_PV → DISCHARGE_GRID → SELF_CONSUME → HOLD.</p>
+<p>A planned <a href="#lfp-balance-charge">LFP balance hold</a> does not add a mode: its rows reuse <code>CHARGE_PV</code> or
+<code>CHARGE_GRID</code> and carry <code>balance_hold: true</code> in the plan's <code>intervals</code> attribute.</p>
 <h3 id="transitions-and-minimum-duration">Transitions and minimum duration</h3>
 <figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-71fbeeb8b3b1-dark.svg"><img src="assets/diagrams/diagram-71fbeeb8b3b1.svg" alt="Diagram 7" loading="lazy"></picture></figure>
 <p>The diagram is simplified with HOLD as a hub: after its minimum duration any mode may be followed
@@ -820,6 +831,78 @@ expected night rebuy price (median night buy price) + <code>autonomy_margin_per_
 48 h ahead on PV/load forecasts even before tomorrow's prices are published. It is <strong>soft</strong>:
 violations become <code>autonomy_shortfall_kwh</code> on the plan instead of an infeasible solve. It needs a PV
 source (<code>autonomy_floor_requires_pv</code> otherwise).</p>
+<h3 id="lfp-balance-charge">LFP balance charge</h3>
+<p>LFP packs need a periodic full charge and a short hold at the top so the BMS can
+balance cells and re-anchor its SOC. With <strong>Periodic LFP balance charge</strong>
+(<code>lfp_balance</code>) on, Energy Compass tracks the last completed balance and plans
+the next one. The tracker itself keeps observing SOC and advancing its state even
+while <code>lfp_balance</code> is off; turning the setting on only starts publishing balance
+windows and the diagnostic sensor.</p>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>balance_interval_days</code></td>
+<td>7</td>
+<td>Days between completed balances</td>
+</tr>
+<tr>
+<td><code>balance_hold_minutes</code></td>
+<td>60</td>
+<td>Minutes SOC must stay at or above the threshold</td>
+</tr>
+<tr>
+<td><code>balance_soc_threshold</code></td>
+<td>99 %</td>
+<td>SOC that counts as full</td>
+</tr>
+<tr>
+<td><code>balance_value</code></td>
+<td>5.0</td>
+<td>Value of balancing on the due day</td>
+</tr>
+</tbody>
+</table></section>
+<p>A balance <strong>completes</strong> after SOC stays at or above the threshold for the whole
+hold. A reading below the threshold restarts the hold. Only observed time
+counts: an unavailable or stale SOC gives no credit, and two full readings more
+than <code>soc_max_age_seconds</code> apart restart the hold from the later one (a hold
+whose last full reading is older than that is neither holding nor complete).
+Completion is evaluated lazily — while full readings keep arriving, the hold
+completes on the next check without needing a state change. Phases: <code>ok</code> →
+<code>eligible</code> (the earlier of 2 days or half the interval before due) → <code>due</code>;
+<code>holding</code> overlays whichever phase is active while a hold is running. A hold that
+starts while the balance is still <code>ok</code> (for example SOC back at 100 % the day
+after a balance) is tracked and completes, but is not scheduled: the optimizer
+gets no hold window and no miss cost for it.</p>
+<p>The optimizer may pick one hour-aligned hold window: candidate windows start only
+on the whole hour, and while <code>due</code>, only within the next 24 h (an <code>eligible</code>
+balance may look anywhere across the horizon). Inside the chosen window SOC stays
+at or above the threshold and the battery does not discharge. Skipping costs 10 %
+of <code>balance_value</code> while eligible — small, so the planner normally balances only
+on cheap or free energy, but it still picks a grid window that costs less than
+that — <code>balance_value × (1 + days overdue)</code> once due, and 10 × <code>balance_value</code>
+during a hold that is eligible or due. A window is published as <strong>CHARGE_PV</strong>
+only when PV covers load in every one of its slots; otherwise (mixed PV/grid or
+pure grid, such as a night window) it is <strong>CHARGE_GRID</strong>, which additionally
+requires grid charging to be allowed and the grid-charge price ceiling (if any)
+to pass in every slot — with <code>balance_hold: true</code> on every row. From the slot before the earliest candidate
+window to the horizon end, the battery's energy may rise up to full capacity
+instead of the configured SOC ceiling, so a hold is never blocked by
+<code>soc_ceiling</code> below 100 %; that lift only matters when the ceiling is below
+100 %. Consumption probes keep the chosen window fixed so a probe's extra load
+prices the load, not the balance choice.</p>
+<p>The <strong>Battery balance</strong> diagnostic sensor (<code>sensor.&lt;name&gt;_battery_balance</code>)
+reports <code>ok</code>, <code>eligible</code>, <code>scheduled</code>, <code>holding</code> or <code>overdue</code>, with
+<code>last_completed</code>, <code>next_due</code>, <code>days_overdue</code>, <code>planned_start</code>, <code>planned_end</code>,
+<code>planned_mode</code>, <code>hold_progress_minutes</code>, <code>hold_required_minutes</code>,
+<code>threshold_percent</code>.</p>
 <h3 id="cost_min--cost-minimisation"><code>cost_min</code> — cost minimisation</h3>
 <ul>
 <li><strong>Goal:</strong> lowest forecast cost: purchases − sales + battery wear − terminal credit.</li>
@@ -987,7 +1070,7 @@ details: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/i
 </tr>
 <tr>
 <td><code>reference_horizon_uncovered</code></td>
-<td>Reserved in translations; not emitted by 0.1.24.</td>
+<td>Reserved in translations; not emitted by 0.1.25.</td>
 </tr>
 <tr>
 <td><code>reference_probe_failed</code></td>
@@ -1066,6 +1149,26 @@ details: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/i
 <tr>
 <td><code>grid_charge_price_limit</code></td>
 <td>Carried CHARGE_GRID would continue above the grid-charge price ceiling.</td>
+</tr>
+</tbody>
+</table></section>
+<h3 id="balance-warnings">Balance warnings</h3>
+<p>These are raw codes, not translated.</p>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>balance_overdue</code></td>
+<td>The balance phase is <code>due</code> but no hold window could be fit into the plan; a balance was missed this horizon.</td>
+</tr>
+<tr>
+<td><code>balance_no_window_in_horizon</code></td>
+<td>The balance phase is <code>eligible</code> or <code>due</code> but no candidate hold window exists in the horizon at all (no aligned start satisfies PV/grid-charge feasibility).</td>
 </tr>
 </tbody>
 </table></section>

@@ -5,6 +5,7 @@ import json
 import logging
 from collections import deque
 from copy import deepcopy
+from dataclasses import replace
 from datetime import timedelta
 from functools import partial
 
@@ -16,6 +17,18 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
+from .balance_tracker import (
+    balance_settings,
+    empty_state,
+    observe,
+    planned_window,
+    seed_from_history,
+    sensor_state,
+    valid_state,
+)
+from .balance_tracker import (
+    status as balance_status,
+)
 from .config_models import SourceConfig
 from .daily_export import (
     DAILY_EXPORT_MEASUREMENTS,
@@ -28,6 +41,7 @@ from .flow_schema import entity_ids, rebind_configuration, snapshot
 from .runtime import (
     _coverage,
     _soc,
+    async_balance_history,
     async_history,
     available_forecasts,
     compute,
@@ -92,6 +106,11 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._grid_charge_store = Store(
             hass, 1, f"{DOMAIN}.{entry.entry_id}.grid_charge"
         )
+        self._balance = None
+        # False while the state is only a failed seed: nothing worth persisting,
+        # so the next start retries the recorder.
+        self._balance_persist = True
+        self._balance_store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.balance")
         self.previous_plan = None
 
     async def async_start(self):
@@ -106,6 +125,15 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._grid_charge_commitment = restore_grid_charge_commitment(
             await self._grid_charge_store.async_load(), dt_util.utcnow()
         )
+        self._balance = await self._balance_store.async_load()
+        if self._balance is not None and not valid_state(self._balance):
+            _LOGGER.warning(
+                "Invalid stored balance state %r; reseeding from history",
+                self._balance,
+            )
+            self._balance = None
+        if self._balance is None:
+            self._balance = await self._seed_balance()
         self._registry_unsub = self.hass.bus.async_listen(
             er.EVENT_ENTITY_REGISTRY_UPDATED, self._registry_changed
         )
@@ -127,6 +155,56 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         self._fingerprint = None
         self._pending = True
         await self.async_recalculate()
+
+    async def _seed_balance(self):
+        """First start: replay recorder SOC; no qualifying hold means due now."""
+        now = dt_util.utcnow()
+        try:
+            samples = await async_balance_history(self.hass, self.configuration, now)
+        except Exception:
+            _LOGGER.warning(
+                "Balance history unavailable; balance is due now", exc_info=True
+            )
+            self._balance_persist = False
+            return empty_state()
+        # Recorder history stores changes only: a pinned SOC leaves no samples,
+        # so the seed replays it gap-tolerant.
+        settings = replace(
+            balance_settings(self.configuration["settings"]), max_gap_seconds=None
+        )
+        state = seed_from_history(samples, settings)
+        self._balance_store.async_delay_save(lambda: self._balance, 1)
+        return state
+
+    def _observe_balance(self, values, percent, at):
+        if self._balance is None:
+            return
+        updated = observe(self._balance, percent, at, balance_settings(values))
+        if updated != self._balance:
+            self._balance = updated
+            self._balance_persist = True
+            self._balance_store.async_delay_save(lambda: self._balance, 1)
+
+    def balance_report(self, now=None):
+        """Tracker phase joined with the published plan's hold window."""
+        if self._balance is None:
+            return None
+        now = now or dt_util.utcnow()
+        report = balance_status(
+            self._balance, now, balance_settings(self.configuration["settings"])
+        )
+        window = (
+            planned_window(self.data.get("intervals", []))
+            if self.data.get("valid")
+            else None
+        )
+        return {
+            **report,
+            "state": sensor_state(report["phase"], window is not None),
+            "planned_start": window["start"] if window else None,
+            "planned_end": window["end"] if window else None,
+            "planned_mode": window["mode"] if window else None,
+        }
 
     def _subscribe(self):
         if self._source_unsub:
@@ -291,6 +369,10 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
             _coverage(rows, now)
         if source.battery_enabled:
             self._validate_soc(config, source, values, states, now)
+            energy, (stamp, _) = _soc(
+                config, source, values, states, now, self._previous_soc
+            )
+            self._observe_balance(values, energy / values["capacity_kwh"] * 100, stamp)
         deadline = freshness_deadline(config, states, values, now)
         if deadline is not None and deadline <= now:
             raise InputError("expired_inputs")
@@ -783,6 +865,7 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
                             grid_charge_commitment=deepcopy(
                                 self._grid_charge_commitment
                             ),
+                            balance_state=deepcopy(self._balance),
                             **history,
                         )
                     )
@@ -940,3 +1023,5 @@ class EnergyCompassCoordinator(DataUpdateCoordinator):
         await self._dispatch_store.async_save(self._battery_commitment)
         await self._export_store.async_save(self._export_commitment)
         await self._grid_charge_store.async_save(self._grid_charge_commitment)
+        if self._balance is not None and self._balance_persist:
+            await self._balance_store.async_save(self._balance)

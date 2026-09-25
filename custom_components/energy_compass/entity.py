@@ -11,6 +11,18 @@ from homeassistant.util import dt as dt_util
 from .settings import DOMAIN
 from .sources.bindings import parse_timestamp
 
+BALANCE_ATTRIBUTES = (
+    "last_completed",
+    "next_due",
+    "days_overdue",
+    "planned_start",
+    "planned_end",
+    "planned_mode",
+    "hold_progress_minutes",
+    "hold_required_minutes",
+    "threshold_percent",
+)
+
 PLAN_ATTRIBUTES = frozenset(
     {
         "intervals",
@@ -43,7 +55,7 @@ class EnergyCompassEntity(CoordinatorEntity):
             manufacturer="Energy Compass",
             model="Advisory",
         )
-        if key in ("optimizer_status", "alert"):
+        if key in ("optimizer_status", "alert", "battery_balance"):
             self._attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def _publication_data(self):
@@ -69,6 +81,8 @@ class EnergyCompassEntity(CoordinatorEntity):
 
     @property
     def available(self):
+        if self.key == "battery_balance":
+            return self.coordinator.balance_report() is not None
         if self.key in ("forecast_valid", "optimizer_status", "alert"):
             return True
         data = self.coordinator.data
@@ -104,6 +118,9 @@ class EnergyCompassEntity(CoordinatorEntity):
 
     @property
     def extra_state_attributes(self):
+        if self.key == "battery_balance":
+            report = self.coordinator.balance_report() or {}
+            return {key: report.get(key) for key in BALANCE_ATTRIBUTES}
         data = self.coordinator.data
         quality = data.get("quality", {})
         attrs = {

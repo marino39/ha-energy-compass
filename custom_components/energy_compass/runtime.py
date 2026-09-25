@@ -11,6 +11,8 @@ from homeassistant.components.recorder import get_instance
 from homeassistant.components.recorder.history import get_significant_states
 from homeassistant.components.recorder.statistics import statistics_during_period
 
+from .balance_tracker import balance_settings, empty_state, soc_percent
+from .balance_tracker import status as balance_status
 from .config_models import NumericSetting, SourceConfig, resolve_numeric
 from .daily_export import (
     DAILY_EXPORT_MEASUREMENTS,
@@ -18,6 +20,8 @@ from .daily_export import (
     daily_export_observations,
 )
 from .engine.autonomy import autonomy_targets, autonomy_weight, backup_floor_kwh
+from .engine.balance import candidate_windows, lift_slots, miss_cost, pin_balance
+from .engine.charge_price import price_allows_grid_charge
 from .engine.consumption import (
     analyze_consumption,
     analyze_flexible_loads,
@@ -391,6 +395,7 @@ def build_problem(
     battery_commitment=None,
     export_commitment=None,
     grid_charge_commitment=None,
+    balance_state=None,
 ):
     """Preserve native boundaries and stop at actual contiguous source coverage."""
     values = effective_settings(config, states, now)
@@ -704,6 +709,39 @@ def build_problem(
         soc_target_weight=soc_target_weight,
         **weights,
     )
+    balance_phase = None
+    balance_warnings: list[str] = []
+    if battery and values["lfp_balance"]:
+        tracker = balance_settings(values)
+        report = balance_status(balance_state or empty_state(), now, tracker)
+        balance_phase = report["phase"]
+        # A hold right after a completion is still tracked (and completes), but
+        # is not worth a window or a miss cost.
+        window_phase = "ok" if report["due_phase"] == "ok" else balance_phase
+        windows = candidate_windows(
+            slots,
+            phase=window_phase,
+            now=now,
+            hold_minutes=tracker.hold_minutes,
+            remaining_minutes=report["hold_remaining_minutes"],
+            grid_charge_ok=tuple(
+                battery.allow_grid_charge and price_allows_grid_charge(problem, slot)
+                for slot in slots
+            ),
+        )
+        if balance_phase in ("eligible", "due") and not windows:
+            balance_warnings.append("balance_no_window_in_horizon")
+        problem = replace(
+            problem,
+            balance_windows=windows,
+            balance_threshold_kwh=battery.capacity_kwh
+            * tracker.threshold_percent
+            / 100,
+            balance_miss_cost=miss_cost(
+                window_phase, values["balance_value"], report["days_overdue"]
+            ),
+            balance_lift_slots=lift_slots(windows, battery, len(slots)),
+        )
     validate_problem(problem)
     ages = {
         key: max(0, (now - parse_timestamp(state["last_updated"])).total_seconds())
@@ -717,6 +755,7 @@ def build_problem(
         "missing_sources": missing,
         "load": _load_quality(source.load.mode, load_result),
         "soc_observation": soc_observation,
+        "balance_phase": balance_phase,
         "warnings": ["unvalidated_tariff"]
         if values["calibration"] != "verified"
         else [],
@@ -730,6 +769,7 @@ def build_problem(
     if end < requested_end:
         quality["warnings"].append("short_source_coverage")
     quality["warnings"].extend(autonomy_warnings)
+    quality["warnings"].extend(balance_warnings)
     return problem, values, quality
 
 
@@ -791,6 +831,47 @@ async def async_history(hass, config, states, now):
     return {"power_samples": tuple(samples)}, ()
 
 
+async def async_balance_history(hass, config, now):
+    """SOC samples for seeding the balance tracker from the recorder."""
+    source = SourceConfig.from_dict(config["sources"])
+    if not source.battery_enabled or source.soc is None:
+        return ()
+    values = config["settings"]
+    days = values.get("balance_interval_days", 7) + 2
+    query = partial(
+        get_significant_states,
+        hass,
+        now - timedelta(days=days),
+        now,
+        [source.soc.entity_id],
+        significant_changes_only=False,
+        minimal_response=False,
+        no_attributes=source.soc.attribute is None,
+    )
+    result = await get_instance(hass).async_add_executor_job(query)
+    options = config["soc_options"]
+    samples = []
+    for state in result.get(source.soc.entity_id, []):
+        raw = (
+            state.attributes.get(source.soc.attribute)
+            if source.soc.attribute
+            else state.state
+        )
+        try:
+            value = float(raw) * options.get("sign", 1)
+        except TypeError, ValueError:
+            value = None
+        samples.append(
+            (
+                state.last_updated,
+                None
+                if value is None
+                else soc_percent(value, options["unit"], values["capacity_kwh"]),
+            )
+        )
+    return tuple(samples)
+
+
 def compute(config: dict, states: dict, now: datetime, **history) -> dict:
     """Use one snapshot and a single deadline for dispatch and consumption probes."""
     started = perf_counter()
@@ -802,17 +883,18 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
     remaining = values["total_time_limit_s"] - (perf_counter() - started)
     if remaining <= 0:
         raise SolveError("timeout")
+    probe_problem = pin_balance(problem, plan)
     compass = CompassSettings(
         **{key: values[key] for key in CompassSettings.__dataclass_fields__}
     )
     # Optional probes can overrun their solver deadline slightly. Leave time to
     # finish analysis without discarding an already certified dispatch plan.
     analysis = analyze_consumption(
-        problem, plan, settings=compass, budget_s=max(0, remaining - 1.0)
+        probe_problem, plan, settings=compass, budget_s=max(0, remaining - 1.0)
     )
     flexible_remaining = values["total_time_limit_s"] - (perf_counter() - started)
     flexible = analyze_flexible_loads(
-        problem,
+        probe_problem,
         plan,
         settings=compass,
         budget_s=max(0, flexible_remaining - 1.0),
@@ -831,6 +913,15 @@ def compute(config: dict, states: dict, now: datetime, **history) -> dict:
         }
         for slot, flow in zip(problem.slots, plan.flows)
     ]
+    if plan.balance_start is not None:
+        window = next(
+            w for w in problem.balance_windows if w.slots[0] == plan.balance_start
+        )
+        for index in window.slots:
+            detailed[index]["state"] = window.mode
+            detailed[index]["balance_hold"] = True
+    if quality.get("balance_phase") == "due" and plan.balance_start is None:
+        quality["warnings"].append("balance_overdue")
     windows = {}
     for key, levels in [
         ("boost", ("BOOST",)),

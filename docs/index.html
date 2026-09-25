@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Energy Compass v0.1.24: every Home Assistant entity, state, calculation, planning assumption and forecast-quality signal explained.">
+  <meta name="description" content="Energy Compass v0.1.25: every Home Assistant entity, state, calculation, planning assumption and forecast-quality signal explained.">
   <title>Energy Compass — Entity and calculation guide</title>
   <style>
     :root {
@@ -118,13 +118,13 @@
       </picture>
       <span>Energy<br>Compass</span>
     </a>
-    <p class="version">User guide · v0.1.24</p>
+    <p class="version">User guide · v0.1.25</p>
     <nav aria-label="Sections">
       <ul>
         <li><a href="#overview">Reading the compass</a></li>
         <li><a href="#inputs">Inputs and assumptions</a></li>
         <li><a href="#calculation">How calculation works</a></li>
-        <li><a href="#entities">All 15 entities</a></li>
+        <li><a href="#entities">All 16 entities</a></li>
         <li><a href="#consumption_compass">Consumption states</a></li>
         <li><a href="#energy_compass">Energy states</a></li>
         <li><a href="#quality">Validity and missing data</a></li>
@@ -141,7 +141,7 @@
     <header>
       <h1>Understand every recommendation.</h1>
       <p class="lead">What Energy Compass entities mean, how their values are calculated, and which assumptions sit behind the plan.</p>
-      <p>This guide describes the Home Assistant integration in <strong>v0.1.24</strong>. Examples use PLN; your installation uses its configured currency. Names are shown in English and Polish.</p>
+      <p>This guide describes the Home Assistant integration in <strong>v0.1.25</strong>. Examples use PLN; your installation uses its configured currency. Names are shown in English and Polish.</p>
     </header>
 
     <section id="overview" aria-labelledby="overview-title">
@@ -234,8 +234,8 @@
     </section>
 
     <section id="entities" aria-labelledby="entities-title">
-      <h2 id="entities-title">All 15 entities</h2>
-      <p>Each installation creates 12 sensor definitions, two binary sensors and one strategy select. Actual entity IDs depend on the entry name, language and registry history; use the entity picker or Developer tools → States to find yours. The keys below are stable internal identifiers, not literal entity IDs.</p>
+      <h2 id="entities-title">All 16 entities</h2>
+      <p>Each installation creates 13 sensor definitions, two binary sensors and one strategy select. Actual entity IDs depend on the entry name, language and registry history; use the entity picker or Developer tools → States to find yours. The keys below are stable internal identifiers, not literal entity IDs.</p>
       <p><strong>Expose costs</strong> controls the three cost sensors. <strong>Expose windows</strong> controls the four <code>next_…</code> sensors. A disabled entity is different from an enabled entity whose value is unavailable.</p>
       <section class="table-scroll" aria-label="Entity index" tabindex="0">
         <table>
@@ -254,6 +254,7 @@
             <tr><th scope="row"><a href="#expected_net_cost">Expected net cost</a></th><td>Currency</td><td>What are forecast import costs minus export value?</td></tr>
             <tr><th scope="row"><a href="#expected_wear_cost">Expected wear cost</a></th><td>Currency</td><td>What battery wear does the plan assign?</td></tr>
             <tr><th scope="row"><a href="#optimizer_status">Optimizer status</a></th><td>Runtime status</td><td>Did the baseline calculation succeed?</td></tr>
+            <tr><th scope="row"><a href="#battery_balance">Battery balance</a></th><td>ok / eligible / scheduled / holding / overdue</td><td>Is a periodic LFP balance hold due, planned or in progress?</td></tr>
             <tr><th scope="row"><a href="#forecast_valid">Forecast valid</a></th><td>on / off</td><td>Does a published plan still cover now?</td></tr>
             <tr><th scope="row"><a href="#alert">Alert</a></th><td>on / off</td><td>Why did the latest input check or calculation fail?</td></tr>
             <tr><th scope="row"><a href="#strategy">Strategy</a></th><td>One of six strategies</td><td>Which objective bundle does the optimizer solve?</td></tr>
@@ -420,11 +421,36 @@
               <tr><th scope="row"><code>timeout</code></th><td>The base solve or overall calculation exceeded its budget. Check timing, model size and hardware. A single failed probe can instead leave a ready baseline with incomplete guidance.</td></tr>
               <tr><th scope="row"><code>infeasible</code></th><td>No baseline plan satisfies all constraints. Check demand/generation, SOC, reserve, power/export limits, terminal requirements and allowed capabilities.</td></tr>
               <tr><th scope="row"><code>error</code></th><td>Another solver failure or unexpected exception occurred. Inspect reason and integration diagnostics/logs.</td></tr>
-              <tr><th scope="row"><code>insufficient_data</code></th><td>Reserved in translations, but not emitted by the 0.1.24 coordinator. Missing-data validation currently reports <code>invalid_input</code>.</td></tr>
+              <tr><th scope="row"><code>insufficient_data</code></th><td>Reserved in translations, but not emitted by the 0.1.25 coordinator. Missing-data validation currently reports <code>invalid_input</code>.</td></tr>
             </tbody>
           </table>
         </section>
         <p>This entity remains available during calculation failures. Attribute <code>expired_previous_generated_at</code> identifies the last invalidated plan snapshot when one exists.</p>
+      </article>
+
+      <article id="battery_balance">
+        <h3>Battery balance</h3>
+        <p class="entity-meta"><code>battery_balance</code> · <span lang="pl">Balansowanie baterii</span> · Diagnostic sensor</p>
+        <p>Tracks the periodic LFP balance hold: a full-charge dwell that lets a lithium iron
+        phosphate pack's cells resettle voltage-wise. Disabled by default; enable it with the
+        <strong>LFP balance</strong> setting.</p>
+        <section class="table-scroll" aria-label="Battery balance states" tabindex="0">
+          <table>
+            <thead><tr><th scope="col">State</th><th scope="col">Meaning</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><code>ok</code></th><td>The last hold completed recently; no balance is due yet.</td></tr>
+              <tr><th scope="row"><code>eligible</code></th><td>A balance is due and could start once SOC reaches the threshold, but none is planned yet.</td></tr>
+              <tr><th scope="row"><code>scheduled</code></th><td>The optimizer has planned a balance window before the interval fills.</td></tr>
+              <tr><th scope="row"><code>holding</code></th><td>SOC is at or above the threshold now; the hold timer is running.</td></tr>
+              <tr><th scope="row"><code>overdue</code></th><td>The balance interval elapsed without a completed hold and none fits the remaining horizon.</td></tr>
+            </tbody>
+          </table>
+        </section>
+        <p>Attributes: <code>last_completed</code>, <code>next_due</code>, <code>days_overdue</code>,
+        <code>planned_start</code>, <code>planned_end</code>, <code>planned_mode</code>,
+        <code>hold_progress_minutes</code>, <code>hold_required_minutes</code> and
+        <code>threshold_percent</code>.</p>
+        <p><strong>Unavailable:</strong> only before the balance tracker has loaded from storage.</p>
       </article>
 
       <article id="alert">
@@ -583,7 +609,7 @@
       </ul>
     </section>
     <footer>
-      <p>Energy Compass v0.1.24 · This guide works online and offline from a repository checkout. Theme follows your system preference. Supporting documentation and source-code links open GitHub.</p>
+      <p>Energy Compass v0.1.25 · This guide works online and offline from a repository checkout. Theme follows your system preference. Supporting documentation and source-code links open GitHub.</p>
       <p><a href="#overview">Back to the guide</a> · <a href="https://github.com/marino39/ha-energy-compass/blob/main/LICENSE">Apache License 2.0</a></p>
     </footer>
   </main>

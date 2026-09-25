@@ -33,4 +33,8 @@ async def async_get_config_entry_diagnostics(hass, entry):
             else "diagnostic_only"
             for key in coordinator.configuration.get("measurements", {})
         },
+        "battery_balance": {
+            "tracker": coordinator._balance,
+            "report": coordinator.balance_report(),
+        },
     }

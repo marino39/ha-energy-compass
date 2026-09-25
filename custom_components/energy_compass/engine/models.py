@@ -71,6 +71,14 @@ class Battery:
 
 
 @dataclass(frozen=True)
+class BalanceWindow:
+    """Contiguous slots that must stay at or above the balance threshold."""
+
+    slots: tuple[int, ...]
+    mode: Literal["CHARGE_PV", "CHARGE_GRID"]
+
+
+@dataclass(frozen=True)
 class Problem:
     slots: tuple[Slot, ...]
     site: SiteLimits
@@ -107,6 +115,11 @@ class Problem:
     soft_export_cap_kw: float | None = None
     cap_violation_weight: float = 0.0
     strategy_changed: bool = False
+    balance_windows: tuple[BalanceWindow, ...] = ()
+    balance_threshold_kwh: float = 0.0
+    balance_miss_cost: float = 0.0
+    balance_fixed: bool = False
+    balance_lift_slots: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -135,6 +148,8 @@ class Plan:
     autonomy_shortfall_kwh: float = 0.0
     cap_violation_kwh: float = 0.0
     peak_import_kw: float = 0.0
+    balance_start: int | None = None
+    balance_missed: bool = False
 
 
 @dataclass(frozen=True)

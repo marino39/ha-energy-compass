@@ -9,6 +9,7 @@ import argparse
 import json
 import resource
 import sys
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from math import pi, sin
 from pathlib import Path
@@ -21,6 +22,10 @@ from custom_components.energy_compass.engine.autonomy import (
     autonomy_targets,
     autonomy_weight,
     backup_floor_kwh,
+)
+from custom_components.energy_compass.engine.balance import (
+    candidate_windows,
+    lift_slots,
 )
 from custom_components.energy_compass.engine.consumption import analyze_consumption
 from custom_components.energy_compass.engine.models import (
@@ -63,6 +68,7 @@ _STRATEGY_NUMBER_KEYS = (
     "autonomy_margin_per_kwh",
     "minimum_export_episode_benefit",
     "maximum_grid_charge_price",
+    "import_penalty_per_kwh",
 )
 _STRATEGY_FLAG_KEYS = (
     "limit_export_to_pv",
@@ -202,10 +208,27 @@ def run_one(
     time_limit_s: float,
     battery_export: bool,
     probes: int,
+    balance: bool,
 ) -> dict:
     problem = make_problem(
         slots, strategy=strategy, allow_battery_export=battery_export
     )
+    if balance and problem.battery:
+        windows = candidate_windows(
+            problem.slots,
+            phase="eligible",
+            now=problem.slots[0].start,
+            hold_minutes=60,
+            remaining_minutes=0,
+            grid_charge_ok=(True,) * len(problem.slots),
+        )
+        problem = replace(
+            problem,
+            balance_windows=windows,
+            balance_threshold_kwh=0.99 * problem.battery.capacity_kwh,
+            balance_miss_cost=0.5,
+            balance_lift_slots=lift_slots(windows, problem.battery, len(problem.slots)),
+        )
     original_model_solve = optimize._Model.solve
     captured: dict[str, int] = {}
 
@@ -255,6 +278,7 @@ def run_one(
         {
             "strategy": strategy,
             "battery_export": battery_export,
+            "balance": balance,
             "slots": slots,
             "time_limit_s": time_limit_s,
             "elapsed_s": elapsed_s,
@@ -286,6 +310,7 @@ def main() -> None:
     parser.add_argument("--strategy", choices=(*STRATEGIES, "all"), default="cost_min")
     parser.add_argument("--battery-export", action="store_true")
     parser.add_argument("--probes", type=int, default=0)
+    parser.add_argument("--balance", action="store_true")
     args = parser.parse_args()
 
     strategies = STRATEGIES if args.strategy == "all" else (args.strategy,)
@@ -296,6 +321,7 @@ def main() -> None:
             time_limit_s=args.time_limit,
             battery_export=args.battery_export,
             probes=args.probes,
+            balance=args.balance,
         )
         for strategy in strategies
     ]

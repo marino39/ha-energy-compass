@@ -115,6 +115,7 @@ MONETARY_VALUES = {
     "autonomy_margin_per_kwh": 0.12,
     "minimum_grid_charge_episode_benefit": 3.0,
     "import_penalty_per_kwh": 0.12,
+    "balance_value": 8.0,
 }
 
 

@@ -108,6 +108,64 @@ Two bounds move with the loss. The per-interval operating-reserve floor relaxes 
 
 The independent result validator applies the same per-interval loss and the same relaxed floor, so a solution that ignores the leak is rejected.
 
+## LFP balance
+
+`lfp_balance` adds one optional binary hold window to the dispatch problem so a lithium iron
+phosphate pack can periodically sit at full SOC long enough for its BMS to re-anchor cell voltages.
+The tracker (`balance_tracker.py`) runs unconditionally from observed SOC, independent of whether
+`lfp_balance` is on; the setting only controls whether `runtime.py` turns the tracker's phase into
+candidate windows for the solver.
+
+`engine/balance.candidate_windows` proposes hour-aligned windows `c` of consecutive slots long
+enough to cover `balance_hold_minutes`. While the phase is `due`, only starts within the next 24 h
+are offered; an `eligible` balance may take a start anywhere in the horizon. A window is
+`CHARGE_PV` if PV covers load in every one of its slots, else `CHARGE_GRID` if grid charging is
+allowed and passes the price ceiling in every slot; otherwise the start is dropped.
+
+For each candidate window `c` the solver adds one binary `y_c` (`_constrain_balance` in
+`engine/optimize.py`) and, unless the dispatch plan already pinned the choice for a consumption
+probe, one continuous `miss ∈ [0, 1]`:
+
+```text
+Σ_c y_c ≤ 1                     -- at most one hold window is chosen
+Σ_c y_c + miss ≥ 1              -- choosing none forces miss to 1
+E_{start(c)} ≥ θ · y_c          -- energy the slot before the window starts is already at threshold
+E_t ≥ θ · y_c        for t ∈ c  -- energy stays at/above threshold θ = balance_soc_threshold × capacity for every slot in the window
+bd_t ≤ bd̄_t · (1 − y_c)  for t ∈ c  -- no discharge inside a chosen window (bd̄_t is the slot's normal discharge cap)
+```
+
+For the window whose first slot is slot 0, `E_{start(c)}` is the battery's known initial energy
+instead of a decision variable, so `y_c` is simply forced to 0 when the initial energy is already
+below threshold. The solver's internal objective carries `+ m · miss`, where `m =
+balance_miss_cost` is `10% × balance_value` while eligible, `balance_value × (1 + days overdue)`
+once due, and `10 × balance_value` during an active hold (`engine/balance.miss_cost`); a hold
+that starts while the balance is still `ok` is tracked but offers no window and no miss cost —
+this term
+steers the solver away from skipping a due or in-progress balance but is **not** part of the
+returned `Plan.objective`, which stays exactly `grid_cost + wear_cost - terminal_credit`; balancing
+is priced as a soft planning preference, not a physical cost.
+
+From the slot before the earliest candidate window's first slot to the horizon end
+(`engine/balance.lift_slots`), the per-slot energy upper bound switches from the configured
+`soc_ceiling` fraction of capacity to full `battery.capacity_kwh`. After a hold reaches the
+threshold, energy can only fall back under the ceiling at load pace, so capping the following
+slots at the ceiling would make the chosen window infeasible; the lift only changes anything when
+`soc_ceiling < 100 %`. If the battery's initial energy is already above the ceiling, every slot is
+lifted instead.
+
+The independent validator (`_validate_balance`) re-checks the LP relaxation is integral for every
+`y_c`, that at most one window is picked (exactly one if the choice was pinned), that miss covers
+any unpicked case, and independently re-derives the window's start energy and per-slot energy/
+discharge bounds from the solved flows — the same checks `_constrain_balance` encodes, run again
+against the returned solution.
+
+A consumption probe must not be allowed to re-decide the balance choice — that would price the
+probe's extra load against the balance instead of the load alone. `engine/balance.pin_balance`
+freezes the dispatch plan's choice before probes run: if the baseline plan picked a window, the
+probe problem keeps only that one window with `balance_fixed=True` and `balance_miss_cost=0`; if
+the baseline missed the balance entirely, probes see no balance windows at all. Either way the lift
+slots are kept so the probe's energy bounds match the pinned choice.
+
 ## Dispatch strategies
 
 The `strategy` Planning setting selects one of six bundles. `cost_min` is the exact objective and

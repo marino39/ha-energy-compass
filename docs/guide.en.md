@@ -4,7 +4,7 @@
 
 This guide explains what Energy Compass does, every state its entities can report and the
 conditions that produce each state, and the six dispatch strategies. It describes release
-**0.1.24**. The mathematical contract behind each rule lives in [model and limitations](model.md);
+**0.1.25**. The mathematical contract behind each rule lives in [model and limitations](model.md);
 installation and dashboards are in the [installation guide](installation.md).
 
 Energy Compass is **advisory**. It computes a plan and publishes it as Home Assistant entities. It
@@ -111,19 +111,27 @@ flowchart TD
 | `sensor.<name>_expected_net_cost` | Expected net cost | Przewidywany koszt netto | currency over the horizon |
 | `sensor.<name>_expected_wear_cost` | Expected wear cost | Przewidywany koszt zużycia baterii | currency over the horizon |
 | `sensor.<name>_optimizer_status` | Optimizer status | Stan optymalizatora | calculation status (diagnostic) |
+| `sensor.<name>_battery_balance` | Battery balance | Balansowanie baterii | `ok` / `eligible` / `scheduled` / `holding` / `overdue` (diagnostic) |
 | `binary_sensor.<name>_forecast_valid` | Forecast valid | Poprawna prognoza | `on` / `off` |
 | `binary_sensor.<name>_alert` | Alert | Alert | `on` / `off` (diagnostic, problem) |
 | `select.<name>_strategy` | Strategy | Strategia | one of six strategies |
 
 Cost sensors can be disabled with **Presentation → Expose costs**, window timestamps with
 **Expose windows**, and flexible depth with **Consumption outlook → Enable flexible energy depth**.
+Battery balance is disabled by default and enabled with the **LFP balance** setting; its
+attributes carry `last_completed`, `next_due`, `days_overdue`, `planned_start`, `planned_end`,
+`planned_mode`, `hold_progress_minutes`, `hold_required_minutes` and `threshold_percent`.
 
 ### Availability rule
 
 ```mermaid
 flowchart TD
     A{Entity is Optimizer status,<br/>Alert or Forecast valid?} -- yes --> ON[Always available]
-    A -- no --> B{Published plan is valid and<br/>before valid_until,<br/>or a refresh is running?}
+    A -- no --> BB{Entity is Battery balance?}
+    BB -- yes --> BBR{Balance tracker loaded?}
+    BBR -- yes --> AV
+    BBR -- no --> UN
+    BB -- no --> B{Published plan is valid and<br/>before valid_until,<br/>or a refresh is running?}
     B -- no --> UN[unavailable]
     B -- yes --> C{Which entity?}
     C -- Consumption compass / cost --> G{Current probe known?<br/>guidance_valid}
@@ -251,6 +259,9 @@ hours: `activity = minimum_mode_power_kw × h` (default 0.1 kW) and
 
 When mode duration is disabled (`minimum_mode_minutes = 0`), the display state is derived from flows
 by precedence: CURTAIL → CHARGE_GRID → CHARGE_PV → DISCHARGE_GRID → SELF_CONSUME → HOLD.
+
+A planned [LFP balance hold](#lfp-balance-charge) does not add a mode: its rows reuse `CHARGE_PV` or
+`CHARGE_GRID` and carry `balance_hold: true` in the plan's `intervals` attribute.
 
 ### Transitions and minimum duration
 
@@ -452,6 +463,59 @@ expected night rebuy price (median night buy price) + `autonomy_margin_per_kwh`.
 violations become `autonomy_shortfall_kwh` on the plan instead of an infeasible solve. It needs a PV
 source (`autonomy_floor_requires_pv` otherwise).
 
+### LFP balance charge
+
+LFP packs need a periodic full charge and a short hold at the top so the BMS can
+balance cells and re-anchor its SOC. With **Periodic LFP balance charge**
+(`lfp_balance`) on, Energy Compass tracks the last completed balance and plans
+the next one. The tracker itself keeps observing SOC and advancing its state even
+while `lfp_balance` is off; turning the setting on only starts publishing balance
+windows and the diagnostic sensor.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `balance_interval_days` | 7 | Days between completed balances |
+| `balance_hold_minutes` | 60 | Minutes SOC must stay at or above the threshold |
+| `balance_soc_threshold` | 99 % | SOC that counts as full |
+| `balance_value` | 5.0 | Value of balancing on the due day |
+
+A balance **completes** after SOC stays at or above the threshold for the whole
+hold. A reading below the threshold restarts the hold. Only observed time
+counts: an unavailable or stale SOC gives no credit, and two full readings more
+than `soc_max_age_seconds` apart restart the hold from the later one (a hold
+whose last full reading is older than that is neither holding nor complete).
+Completion is evaluated lazily — while full readings keep arriving, the hold
+completes on the next check without needing a state change. Phases: `ok` →
+`eligible` (the earlier of 2 days or half the interval before due) → `due`;
+`holding` overlays whichever phase is active while a hold is running. A hold that
+starts while the balance is still `ok` (for example SOC back at 100 % the day
+after a balance) is tracked and completes, but is not scheduled: the optimizer
+gets no hold window and no miss cost for it.
+
+The optimizer may pick one hour-aligned hold window: candidate windows start only
+on the whole hour, and while `due`, only within the next 24 h (an `eligible`
+balance may look anywhere across the horizon). Inside the chosen window SOC stays
+at or above the threshold and the battery does not discharge. Skipping costs 10 %
+of `balance_value` while eligible — small, so the planner normally balances only
+on cheap or free energy, but it still picks a grid window that costs less than
+that — `balance_value × (1 + days overdue)` once due, and 10 × `balance_value`
+during a hold that is eligible or due. A window is published as **CHARGE_PV**
+only when PV covers load in every one of its slots; otherwise (mixed PV/grid or
+pure grid, such as a night window) it is **CHARGE_GRID**, which additionally
+requires grid charging to be allowed and the grid-charge price ceiling (if any)
+to pass in every slot — with `balance_hold: true` on every row. From the slot before the earliest candidate
+window to the horizon end, the battery's energy may rise up to full capacity
+instead of the configured SOC ceiling, so a hold is never blocked by
+`soc_ceiling` below 100 %; that lift only matters when the ceiling is below
+100 %. Consumption probes keep the chosen window fixed so a probe's extra load
+prices the load, not the balance choice.
+
+The **Battery balance** diagnostic sensor (`sensor.<name>_battery_balance`)
+reports `ok`, `eligible`, `scheduled`, `holding` or `overdue`, with
+`last_completed`, `next_due`, `days_overdue`, `planned_start`, `planned_end`,
+`planned_mode`, `hold_progress_minutes`, `hold_required_minutes`,
+`threshold_percent`.
+
 ### `cost_min` — cost minimisation
 
 - **Goal:** lowest forecast cost: purchases − sales + battery wear − terminal credit.
@@ -595,7 +659,7 @@ details: [installation guide](installation.md#import-the-strategy-switch-bluepri
 | --- | --- |
 | `complete` | Full reference coverage, all probes succeeded. |
 | `available_reference_horizon` | Source coverage shorter than the requested reference horizon; percentiles use what exists. |
-| `reference_horizon_uncovered` | Reserved in translations; not emitted by 0.1.24. |
+| `reference_horizon_uncovered` | Reserved in translations; not emitted by 0.1.25. |
 | `reference_probe_failed` | At least one reference probe failed or timed out. |
 | `short_source_coverage` | Price/forecast coverage ends before the requested planning horizon. |
 | `current_guidance_unavailable` | Current interval probe unknown; later windows may still be valid. |
@@ -620,3 +684,12 @@ details: [installation guide](installation.md#import-the-strategy-switch-bluepri
 | `observed_soc_maximum` | Charging commitment active but SOC already at the maximum. |
 | `observed_soc_minimum` | Discharge commitment active but SOC at or below the reserve. |
 | `grid_charge_price_limit` | Carried CHARGE_GRID would continue above the grid-charge price ceiling. |
+
+### Balance warnings
+
+These are raw codes, not translated.
+
+| Code | Meaning |
+| --- | --- |
+| `balance_overdue` | The balance phase is `due` but no hold window could be fit into the plan; a balance was missed this horizon. |
+| `balance_no_window_in_horizon` | The balance phase is `eligible` or `due` but no candidate hold window exists in the horizon at all (no aligned start satisfies PV/grid-charge feasibility). |
