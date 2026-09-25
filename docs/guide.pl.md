@@ -9,7 +9,8 @@ instalację i dashboardy — [przewodnik instalacji](installation.md) (EN).
 
 Energy Compass jest **doradczy**. Liczy plan i publikuje go jako encje Home Assistant. Nigdy nie
 zapisuje rejestrów falownika i sam nie wysyła powiadomień; o wykonaniu planu decydują sterowniki
-i blueprinty powiadomień.
+i blueprinty powiadomień. Repozytorium zawiera jeden taki sterownik, dla falowników Deye przez
+Solarman: zob. [Sterownik falownika Deye](#sterownik-falownika-deye-solarman).
 
 ## Spis treści
 
@@ -22,7 +23,8 @@ i blueprinty powiadomień.
 7. [Okna i głębokość elastycznego zużycia](#okna-i-głębokość-elastycznego-zużycia)
 8. [Strategie dyspozycji](#strategie-dyspozycji)
 9. [Automatyczne przełączanie strategii](#automatyczne-przełączanie-strategii)
-10. [Słownik kodów powodów](#słownik-kodów-powodów)
+10. [Sterownik falownika Deye (Solarman)](#sterownik-falownika-deye-solarman)
+11. [Słownik kodów powodów](#słownik-kodów-powodów)
 
 ## Jak to działa
 
@@ -657,6 +659,144 @@ flowchart TD
 planowego; reguła alertu nigdy nie jest blokowana. `max_export` i `grid_friendly` wybiera się
 wyłącznie ręcznie. Konfiguracja: [przewodnik instalacji](installation.md#import-the-strategy-switch-blueprint)
 (EN).
+
+## Sterownik falownika Deye (Solarman)
+
+Sam Energy Compass nigdy nie zapisuje do falownika. Robi to opcjonalny blueprint
+[`deye_solarman_controller.yaml`](../blueprints/automation/energy_compass/deye_solarman_controller.yaml):
+wykonuje plan na hybrydowym falowniku Deye przez
+[integrację Solarman](https://github.com/davidrapan/ha-solarman), zapisuje trzy prądy baterii i sześć
+programów czasowych (TOU), a każdy zapis sprawdza odczytem rejestrów. Wymaga pakietu
+[`energy_compass_deye.yaml`](../packages/energy_compass_deye.yaml). Instalację opisuje
+[przewodnik instalacji](installation.md#deye-inverter-controller) (EN). Oba pliki generuje
+`tools/deye_controller/build.py`; zmienia się generator, nie YAML.
+
+### Encje pakietu
+
+| Encja | Rola |
+| --- | --- |
+| `input_select.energy_compass_deye_mode` | **Off** / **Simulation** / **Auto**; jedyny przełącznik obsługiwany ręcznie |
+| `input_boolean.energy_compass_deye_session` | włączony po rozpoczęciu sesji sterowania (start Home Assistant lub pierwszy przebieg) |
+| `input_datetime.energy_compass_deye_session_start` | początek sesji; akceptowane są tylko plany wygenerowane później |
+| `input_boolean.energy_compass_deye_restore_pending` | włączony od pierwszego zapisu do ponownego potwierdzenia profilu bazowego |
+| `sensor.energy_compass_deye_plan` | zaakceptowany plan (atrybut `snapshot`) |
+| `sensor.energy_compass_deye_runtime` | kod przebiegu (niżej); atrybut `runtime` zawiera stan, powód, potwierdzone wartości i niepewne rejestry |
+| `sensor.energy_compass_deye_tou_settings` | prefiks programów TOU (atrybut `prefix`) i ich bieżące wartości; zmiana uruchamia sterownik |
+| `sensor.energy_compass_deye_next_tou` | najbliższa lokalna granica programu TOU |
+| `sensor.energy_compass_deye_deadline` | `valid_until` zaakceptowanego planu |
+| `sensor.energy_compass_deye_interval_end` | koniec bieżącego przedziału planu |
+
+Pakiet zakłada domyślne nazwy encji TOU z Solarman (`number.inverter_deye_program_1_power` …
+`time.inverter_deye_program_6_time`). Przy innej nazwie urządzenia wygeneruj pakiet z własnym
+prefiksem: `python tools/deye_controller/build.py --prefix my_inverter_program_`.
+
+### Tryby
+
+```mermaid
+flowchart TD
+    T([co minutę / zmiana planu, nastaw, telemetrii]) --> R{przywrócenie wymagane<br/>i tryb Simulation?}
+    R -- tak --> OFF1[przełącz tryb na Off<br/>kod simulation_blocked]
+    R -- nie --> M{tryb}
+    M -- Simulation --> SIM[oblicz cele<br/>bez zapisów]
+    M -- Off --> P{przywrócenie wymagane?}
+    P -- nie --> REL[zwolnione: ręczne nastawy zostają]
+    P -- tak --> W{dawne automatyzacje<br/>wyłączone i bezczynne?}
+    M -- Auto --> W
+    W -- nie --> BLK[przejęcie zablokowane<br/>bez zapisów]
+    W -- tak --> V{Auto i plan<br/>zaakceptowany i ważny?}
+    V -- nie --> BASE[zapisz i potwierdź profil bazowy<br/>kod restored]
+    V -- tak --> APPLY[zapisz profil z planu,<br/>odczytaj każdy rejestr<br/>kod ok]
+```
+
+**Auto** zapisuje; **Simulation** oblicza wszystkie cele i zapisuje je w `runtime`, nie dotykając
+falownika; **Off** zwalnia sterowanie. Przejście z Auto do Off raz przywraca profil bazowy, potwierdza
+go i zostawia późniejsze ręczne nastawy. Wyłączenie samej *automatyzacji* pomija to przywrócenie.
+Wybór Simulation przy wymaganym przywróceniu jest odrzucany: tryb wraca na Off, profil bazowy zostaje
+przywrócony i dopiero wtedy można ponownie wybrać Simulation.
+
+### Akceptacja planu
+
+Plan zostaje zaakceptowany tylko wtedy, gdy spełnione są wszystkie warunki: powstał po początku sesji
+i po ostatnim unieważnieniu, jest nowszy od planu w pamięci, Poprawna prognoza ma stan `on`, Alert
+ma stan `off`, optymalizator jest `ready` (albo `calculating` z zachowanym pełnym planem), plan,
+optymalizator i prognoza podają ten sam `generated_at`, przedziały są ciągłe i obejmują bieżącą
+chwilę, a `valid_until` jest w przyszłości. Optymalizator poza `ready`/`calculating` albo Alert inny
+niż `off` unieważnia plan w pamięci; plany sprzed unieważnienia nigdy nie są akceptowane. Po
+restarcie Home Assistant sterownik trzyma więc profil bazowy do publikacji kolejnego obliczenia.
+
+Sterowanie wymaga też świeżej telemetrii: każda encja z `telemetry_entities` liczbowa i zgłoszona
+w ciągu 30 s, napięcie baterii 400–610 V i SOC 0–100 %. Każda automatyzacja z `old_writers` musi być
+wyłączona i nieuruchomiona.
+
+### Profile
+
+| Stan planu | Prąd ładowania / rozładowania | Prąd ładowania z sieci | Kierunek TOU, cel |
+| --- | --- | --- | --- |
+| `CHARGE_PV`, `SELF_CONSUME` | limit / limit | 0 A | wszystkie Disabled, SOC 10 % |
+| `CHARGE_GRID` | limit / 0 A | planowana część sieciowa, ≤ `max_grid_current` | Grid w aktywnym programie, cel SOC z planu |
+| `DISCHARGE_GRID` | 0 A / z planu, ≤ limit | 0 A | Sell w aktywnym programie, cel SOC z planu, moc z planu, ≤ `max_power_w` |
+| `HOLD`, `CURTAIL` | `hold_grid_current` / 0 A | `hold_grid_current` | Grid, cel SOC = końcowy SOC planu zaokrąglony w dół |
+| bazowy (zwolnienie, nieważny plan) | `relinquish_current` / `relinquish_current` | 0 A | wszystkie Disabled, SOC 10 %, 49,6 (496 V), moc `max_power_w` |
+
+Limit to `min(max_current, max_power_w / V)` przy ładowaniu i `min(max_current, max_power_w × eta / V)`
+przy rozładowaniu; przy SOC 100 % prąd ładowania spada do 0 A. Prądy z planu przeliczają kWh
+przedziału przez `eta` w pełnej długości przedziału. Cel SOC używa `capacity_kwh`; cel napięcia wynika
+ze stałej krzywej wysokonapięciowej baterii LFP (496–536 V dla 10–90 %, przy 100 % 584 V przy
+ładowaniu albo 544 V przy rozładowaniu). Osiągnięty cel w `CHARGE_GRID`/`DISCHARGE_GRID` jest
+zatrzaskiwany dla danego przedziału planu. W wierszu balansowania LFP (`balance_hold: true`) prąd
+ładowania zostaje przy 100 %, `CHARGE_GRID` celuje w 100 %, a prąd z sieci wynosi co najmniej
+`balance_grid_current`. `CURTAIL` wykonuje profil `HOLD` z ostrzeżeniem, bo sterownik nie ogranicza PV.
+
+Sterowane są tylko tryby baterii z listy `commissioned_battery_modes`; każdy inny tryb (np. Voltage
+przed potwierdzeniem progów) zostaje na profilu bazowym. Przy dopuszczonym Voltage cel poza zakresem
+495–560 V jest odrzucany.
+
+### Zapis i potwierdzenie
+
+Każda zmiana zapisuje jedną encję przez `number.set_value` lub `select.select_option`, a potem
+odczytuje rejestry 108–177 z `solarman_device` i porównuje surową wartość. Rejestr bez potwierdzenia
+trafia do `runtime.uncertain` i jest ponawiany; zmiana kierunku lub celu najpierw zeruje prądy, potem
+ustawia progi, na końcu włącza kierunek.
+
+| Kod przebiegu | Znaczenie |
+| --- | --- |
+| `waiting` | pierwszy przebieg nie opublikował jeszcze kodu |
+| `ok` | profil z planu obliczony (Simulation) albo zapisany i potwierdzony (Auto) |
+| `blocked` | brak ważnego planu albo niespełniony warunek; `runtime.reason` mówi który |
+| `restored` | profil bazowy zapisany i potwierdzony (zwolnienie w Off albo brak ważnego planu w Auto) |
+| `verification_required` | zapisy zakończone, ale nie każdy rejestr potwierdzony |
+| `write_failed` | rejestr nie potwierdził się po ponowieniach; przywrócenie pozostaje wymagane |
+| `simulation_blocked` | Simulation odrzucone przy wymaganym przywróceniu |
+
+Teksty `runtime.reason` są w tej wersji po polsku.
+
+### Wejścia
+
+| Wejście | Domyślnie | Znaczenie |
+| --- | --- | --- |
+| `plan_entity`, `optimizer_entity`, `valid_entity`, `alert_entity`, `compass_entity` | — | Plan, Stan optymalizatora, Poprawna prognoza, Alert i Kompas zużycia jednej instalacji Energy Compass |
+| `solarman_device` | — | urządzenie falownika w Solarman do odczytu rejestrów |
+| `charge_entity`, `discharge_entity`, `grid_entity` | — | maks. prąd ładowania (108), rozładowania (109) i ładowania z sieci (128) |
+| `operation_entity` | — | select trybu pracy baterii (Capacity / Voltage) |
+| `soc_entity`, `voltage_entity` | — | SOC baterii (%) i napięcie pakietu (V) |
+| `telemetry_entities` | — | sensory, które muszą być świeże (zgłoszone w ciągu 30 s) |
+| `capacity_kwh` | 25 kWh | pojemność używana przez plan Energy Compass |
+| `max_power_w` | 8000 W | limit mocy baterii i moc programów TOU |
+| `max_current` | 18 A | limit prądu ładowania/rozładowania w stanach wymuszonych |
+| `max_grid_current` | 16 A | limit prądu ładowania z sieci |
+| `hold_grid_current` | 1 A | prąd ładowania i z sieci w `HOLD` |
+| `balance_grid_current` | 2 A | minimalny prąd z sieci w wierszu balansowania LFP |
+| `relinquish_current` | 18 A | prąd ładowania/rozładowania profilu bazowego |
+| `eta` | 0,9747 | sprawność baterii w jedną stronę |
+| `commissioned_battery_modes` | Capacity | tryby baterii dopuszczone do sterowania fizycznego |
+| `old_writers` | brak | automatyzacje, które muszą być wyłączone przed każdym zapisem |
+
+### Przykładowe dashboardy
+
+Generuje je `tools/dashboards/build.py` z zastępczymi identyfikatorami encji: sekcja stanu sterownika
+(`deye_controller.yaml`, karty natywne), wykres historii i planu load / grid / PV / SoC z pasmami stanów
+planu (`plan_chart.yaml`) oraz oś czasu poziomów Consumer Compass (`consumer_compass_chart.yaml`), oba
+dla ApexCharts Card. Opis: [przewodnik instalacji](installation.md#dashboard-examples) (EN).
 
 ## Słownik kodów powodów
 
