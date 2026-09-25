@@ -8,13 +8,13 @@
       intro: 'Pick a section, enter your entity IDs and copy the YAML. Dashboard sections go into a Sections view (Edit dashboard → ⋮ → Raw configuration editor); the package goes into config/packages/.',
       lang: 'Language', section: 'Section', copy: 'Copy', copied: 'Copied.',
       invalid: 'Fix the highlighted fields.',
-      note: 'The ApexCharts sections need ApexCharts Card 2.2.3 or later. The package prefix must match your Solarman TOU program entities, e.g. number.<prefix>1_power.',
+      note: 'The ApexCharts sections need ApexCharts Card 2.2.3 or later. The package prefix must match your Solarman TOU program entities, e.g. number.<prefix>1_power. Tariff prices are final prices per kWh; the tariff and RCE packages go into config/packages/ and are then selected in Energy Compass as interval forecasts (see the tariff helper guide).',
     },
     pl: {
       intro: 'Wybierz sekcję, wpisz identyfikatory swoich encji i skopiuj YAML. Sekcje dashboardu wklej do widoku Sections (Edytuj dashboard → ⋮ → Edytor surowej konfiguracji); pakiet trafia do config/packages/.',
       lang: 'Język', section: 'Sekcja', copy: 'Kopiuj', copied: 'Skopiowano.',
       invalid: 'Popraw zaznaczone pola.',
-      note: 'Sekcje ApexCharts wymagają ApexCharts Card 2.2.3 lub nowszej. Prefiks pakietu musi pasować do encji programów TOU z Solarman, np. number.<prefiks>1_power.',
+      note: 'Sekcje ApexCharts wymagają ApexCharts Card 2.2.3 lub nowszej. Prefiks pakietu musi pasować do encji programów TOU z Solarman, np. number.<prefiks>1_power. Ceny taryfy to ceny końcowe za kWh; pakiety taryfy i RCE trafiają do config/packages/, a potem wybiera się je w Energy Compass jako prognozy przedziałowe (zob. przewodnik pomocnika taryfy).',
     },
   };
 
@@ -63,9 +63,19 @@
       const label = document.createElement('label');
       const name = document.createElement('span');
       name.textContent = field.label[lang];
-      const input = document.createElement('input');
+      let input;
+      if (field.options) {
+        input = document.createElement('select');
+        for (const choice of field.options) {
+          const option = document.createElement('option');
+          option.value = option.textContent = choice;
+          input.append(option);
+        }
+      } else {
+        input = document.createElement('input');
+        input.placeholder = field.example;
+      }
       input.value = value;
-      input.placeholder = field.example;
       input.setAttribute('aria-invalid', String(!ok));
       input.addEventListener('change', () => { values[role] = input.value.trim(); render(); });
       label.append(name, input);

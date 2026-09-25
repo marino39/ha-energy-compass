@@ -1,0 +1,89 @@
+# Polish net-billing sell price from RCE (PSE market price), as an Energy Compass
+# interval forecast. See docs/tariff-helper.md § RCE sell price.
+#
+# The REST sensor fetches today's and tomorrow's quarter-hour RCE prices
+# (PLN/MWh) from the public PSE API every 30 minutes. The Template sensor turns
+# them into PLN/kWh with a floor and a multiplier (net-billing deposit: negative
+# prices count as zero, then x 1.23) and publishes them as `prices` records.
+# Timestamps use the compact UTC form 20260925T1015Z to stay under Home
+# Assistant's recorder attribute size limit.
+sensor:
+  - platform: rest
+    name: Energy Compass RCE Raw
+    unique_id: energy_compass_rce_raw
+    resource: https://api.raporty.pse.pl/api/rce-pln
+    params:
+      "$select": dtime_utc,rce_pln,business_date
+      "$filter": >-
+        business_date ge '{{ now().date() }}' and business_date le '{{ (now() + timedelta(days=1)).date() }}'
+      "$first": "200"
+    headers:
+      Accept: application/json
+    scan_interval: 1800
+    timeout: 30
+    availability: >-
+      {{ value_json is mapping
+         and value_json.get('value') is sequence
+         and value_json.get('value') is not string
+         and 0 < value_json.get('value') | count <= 200
+         and not value_json.get('@nextLink')
+         and not value_json.get('@odata.nextLink')
+         and not value_json.get('nextLink') }}
+    value_template: "{{ utcnow().isoformat() }}"
+    json_attributes:
+      - value
+
+template:
+  - triggers:
+      - trigger: homeassistant
+        event: start
+      - trigger: time_pattern
+        minutes: "/15"
+      - trigger: state
+        entity_id: sensor.energy_compass_rce_raw
+    variables:
+      # Final sell price = max(RCE, floor) x multiplier / 1000 (PLN/MWh -> PLN/kWh).
+      # Net-billing deposit: floor 0, multiplier 1.23. Adjust to your contract.
+      multiplier: 1.23
+      floor: 0
+      source: sensor.energy_compass_rce_raw
+      fetched: "{{ as_timestamp(states(source), none) }}"
+      sell_rows: >-
+        {% set raw = state_attr(source, 'value') %}
+        {% set ns = namespace(rows=[], valid=is_number(multiplier) and is_number(floor)
+                              and raw is sequence and raw is not string and raw | count > 0) %}
+        {% for row in (raw if ns.valid else []) %}
+          {% if row is not mapping or row.get('dtime_utc') is not string
+                or row.get('rce_pln') is boolean or not is_number(row.get('rce_pln')) %}
+            {% set ns.valid = false %}
+          {% else %}
+            {% set end = as_datetime(row.dtime_utc ~ '+00:00', none) %}
+            {% if end is none %}
+              {% set ns.valid = false %}
+            {% else %}
+              {% set price = ([row.rce_pln | float, floor | float] | max) * multiplier | float / 1000 %}
+              {% set ns.rows = ns.rows + [dict(start=(end - timedelta(minutes=15)).strftime('%Y%m%dT%H%MZ'), end=end.strftime('%Y%m%dT%H%MZ'), price=price)] %}
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        {{ (ns.rows | sort(attribute='start')) if ns.valid else [] }}
+      current_price: >-
+        {% set now_key = utcnow().strftime('%Y%m%dT%H%MZ') %}
+        {% set ns = namespace(price=none) %}
+        {% for row in sell_rows if row.start <= now_key < row.end %}
+          {% set ns.price = row.price %}
+        {% endfor %}
+        {{ ns.price }}
+    sensor:
+      - name: Energy Compass RCE export forecast
+        unique_id: energy_compass_rce_export_forecast
+        default_entity_id: sensor.energy_compass_rce_export_forecast
+        unit_of_measurement: PLN/kWh
+        availability: >-
+          {{ fetched is not none and 0 <= as_timestamp(now()) - fetched <= 4500
+             and is_number(current_price) }}
+        state: "{{ current_price }}"
+        attributes:
+          prices: "{{ sell_rows }}"
+          published_at: "{{ states(source) }}"
+          settlement: "RCE, floor {{ floor }}, multiplier {{ multiplier }}"
