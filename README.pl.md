@@ -35,7 +35,7 @@ Błędy wejść lub obliczeń włączają **Alert** z atrybutami `code`, `reason
 
 Aktualizacje koordynatora pomijają zapis stanu encji, których wartość, dostępność i atrybuty się nie zmieniły. Zmiany poprawności prognozy, atrybutów planu, stanu odświeżania lub czasu okien są publikowane nawet przy niezmienionej wartości głównej.
 
-Powiadomienia o oknach wymagają **Włącz powiadomienia** w opcjach integracji i niepustej akcji w [opcjonalnym blueprincie](docs/installation.md#opt-in-notifications) (EN). Blueprint korzysta z bieżących preferencji integracji, chyba że włączono jego przełącznik nadpisania. Obsługuje okna korzystne i `LIMIT`. Integracja sama nie wykonuje akcji.
+Powiadomienia o oknach wymagają **Włącz powiadomienia** w opcjach integracji i niepustej akcji w [opcjonalnym blueprincie](docs/installation.md#opt-in-notifications) (EN). Blueprint korzysta z bieżących preferencji integracji, chyba że włączono jego przełącznik nadpisania. Obsługuje okna korzystne i `LIMIT`, nic nie wysyła przy włączonym Alercie lub gdy optymalizator nie jest gotowy, a tytuł i treść pisze po angielsku lub po polsku. Integracja sama nie wykonuje akcji.
 
 Szacunek kosztu dodatkowej kWh zakłada plan zaproponowany przez optymalizator. Dopóki żaden sterownik go nie wykonuje, rzeczywiste oszczędności mogą różnić się przy istniejącej automatyce. Rekomendacja zależna od prognozy nie jest pomiarem oszczędności. Bilans energii, pokrycie, założenia baterii i zachowanie solvera opisuje [model i ograniczenia](docs/model.md) (EN).
 

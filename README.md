@@ -44,7 +44,7 @@ Input or calculation failures turn **Alert** on with `code`, `reason`, `since`, 
 
 Coordinator updates skip state writes for entities whose value, availability, and attributes are unchanged. Changes to forecast validity, plan attributes, refresh status, or window timing still publish even when the primary sensor value stays the same.
 
-Window alerts require **Notify enabled** in integration options and a nonempty action selected in the [optional blueprint](docs/installation.md#opt-in-notifications). The blueprint uses live integration preferences unless its override toggle is on. It handles favorable and `LIMIT` windows only. The integration does not execute actions.
+Window alerts require **Notify enabled** in integration options and a nonempty action selected in the [optional blueprint](docs/installation.md#opt-in-notifications). The blueprint uses live integration preferences unless its override toggle is on. It handles favorable and `LIMIT` windows only, sends nothing while the Alert is on or the optimizer is not ready, and writes its title and message in English or Polish. The integration does not execute actions.
 
 The extra-kWh estimate assumes the optimizer's proposed plan. Until a controller follows that plan, actual consumption savings can differ under existing automation. A forecast-dependent recommendation is not a measurement of savings. See [model and limitations](docs/model.md) for energy balance, coverage, battery assumptions, and solver behavior.
 

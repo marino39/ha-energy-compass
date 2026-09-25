@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BLUEPRINT = ROOT / "blueprints/automation/energy_compass/deye_solarman_controller.yaml"
 PACKAGE = ROOT / "packages/energy_compass_deye.yaml"
 GENERATOR = ROOT / "tools/deye_controller/build.py"
+NOTIFICATIONS = ROOT / "blueprints/automation/energy_compass/notifications.yaml"
 GUIDES = [ROOT / "docs/guide.en.md", ROOT / "docs/guide.pl.md"]
 INSTALLATION = ROOT / "docs/installation.md"
 
@@ -87,3 +88,17 @@ def test_guides_document_controller_surface(guide, identifier):
 @pytest.mark.parametrize("example", examples())
 def test_installation_links_every_dashboard_example(example):
     assert f"../{example}" in INSTALLATION.read_text()
+
+
+def notification_inputs():
+    doc = yaml.load(NOTIFICATIONS.read_text(), Loader=_Loader)
+    return sorted(doc["blueprint"]["input"])
+
+
+@pytest.mark.parametrize("guide", GUIDES, ids=lambda path: path.name)
+@pytest.mark.parametrize("identifier", notification_inputs())
+def test_guides_document_notification_inputs(guide, identifier):
+    assert f"`{identifier}`" in guide.read_text(), (
+        f"{guide.name} does not mention notification input `{identifier}`; "
+        "follow AGENTS.md Documentation sweep"
+    )

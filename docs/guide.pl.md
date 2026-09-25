@@ -23,8 +23,9 @@ Solarman: zob. [Sterownik falownika Deye](#sterownik-falownika-deye-solarman).
 7. [Okna i głębokość elastycznego zużycia](#okna-i-głębokość-elastycznego-zużycia)
 8. [Strategie dyspozycji](#strategie-dyspozycji)
 9. [Automatyczne przełączanie strategii](#automatyczne-przełączanie-strategii)
-10. [Sterownik falownika Deye (Solarman)](#sterownik-falownika-deye-solarman)
-11. [Słownik kodów powodów](#słownik-kodów-powodów)
+10. [Powiadomienia o oknach](#powiadomienia-o-oknach)
+11. [Sterownik falownika Deye (Solarman)](#sterownik-falownika-deye-solarman)
+12. [Słownik kodów powodów](#słownik-kodów-powodów)
 
 ## Jak to działa
 
@@ -659,6 +660,51 @@ flowchart TD
 planowego; reguła alertu nigdy nie jest blokowana. `max_export` i `grid_friendly` wybiera się
 wyłącznie ręcznie. Konfiguracja: [przewodnik instalacji](installation.md#import-the-strategy-switch-blueprint)
 (EN).
+
+## Powiadomienia o oknach
+
+Opcjonalny blueprint [`notifications.yaml`](../blueprints/automation/energy_compass/notifications.yaml)
+informuje domowników, kiedy dodatkowe zużycie jest tanie (okno korzystne) albo kiedy zaczyna się
+drogie okno `LIMIT`. Sam Energy Compass niczego nie wysyła; głównym przełącznikiem jest
+**Włącz powiadomienia** w opcjach integracji. Konfiguracja:
+[przewodnik instalacji](installation.md#opt-in-notifications) (EN).
+
+```mermaid
+flowchart TD
+    T([co minutę / zmiana planu, prognozy, Alertu, optymalizatora]) --> G{powiadomienia włączone, prognoza poprawna,<br/>Alert wyłączony, optymalizator gotowy,<br/>plan wciąż ważny?}
+    G -- nie --> X[nic]
+    G -- tak --> L{okno LIMIT trwa albo<br/>zaczyna się w czasie wyprzedzenia?}
+    L -- tak --> K[zdarzenie limit]
+    L -- nie --> F{okno korzystne trwa<br/>i zostało co najmniej<br/>minimum czasu?}
+    F -- nie --> X
+    F -- tak --> K2[zdarzenie favorable]
+    K --> S{nakłada się na zapamiętane okno?}
+    K2 --> S
+    S -- tak --> E[rozszerz zapamiętane okno<br/>bez wiadomości]
+    S -- nie --> C{godziny ciszy, przerwa,<br/>limit dzienny pozwalają?}
+    C -- nie --> X
+    C -- tak --> A[zapisz okno, licznik, czas<br/>sprawdź warunki ponownie, wykonaj akcję]
+```
+
+| Wiadomość | Kiedy |
+| --- | --- |
+| **Wykorzystaj tanią energię** / *Use the cheap energy* | trwa okno korzystne i cała jego reszta to `BOOST` |
+| **Dobry moment na domowe urządzenia** / *A good time for household appliances* | trwa okno korzystne, nie w całości `BOOST` |
+| **Zaplanuj większe zużycie na później** / *Plan heavy use for later* | okno `LIMIT` zaczyna się w czasie wyprzedzenia albo już trwa |
+
+Treść podaje lokalne godziny okna i proponuje przełożenie prania, zmywarki lub ładowania auta.
+Akcja dostaje `notification_title`, `notification_message` i `event_kind`.
+
+| Wejście | Znaczenie |
+| --- | --- |
+| `compass`, `plan`, `forecast_valid`, `alert`, `optimizer_status` | Kompas zużycia, Plan, Poprawna prognoza, Alert i Stan optymalizatora jednej instalacji |
+| `next_boost`, `next_cheap`, `next_limit` | trzy sensory początków okien (ich zmiana uruchamia automatyzację) |
+| `last_favorable`, `last_limit` | pomocniki tekstowe (maks. 255) z ostatnim oknem jako `{"s": początek, "e": koniec}` |
+| `daily_count`, `daily_date`, `last_sent` | pomocnik liczbowy i dwa pomocniki daty/czasu dla limitu dziennego i przerwy |
+| `language` | `en` albo `pl` dla tytułu i treści |
+| `use_blueprint_overrides` | wyłączone: preferencje powiadomień z integracji; włączone: wejścia poniżej |
+| `enabled_events`, `minimum_hours`, `limit_lead_minutes`, `quiet_start`, `quiet_end`, `cooldown_minutes`, `daily_cap` | nadpisania: zdarzenia, minimalny pozostały czas okna korzystnego, wyprzedzenie LIMIT, godziny ciszy, przerwa, wiadomości na lokalną dobę |
+| `notification_actions` | akcja do wykonania, np. powiadomienie aplikacji mobilnej |
 
 ## Sterownik falownika Deye (Solarman)
 

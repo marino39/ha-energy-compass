@@ -139,6 +139,7 @@
         <li><a href="#okna-i-głębokość-elastycznego-zużycia">Okna i głębokość elastycznego zużycia</a></li>
         <li><a href="#strategie-dyspozycji">Strategie dyspozycji</a></li>
         <li><a href="#automatyczne-przełączanie-strategii">Automatyczne przełączanie strategii</a></li>
+        <li><a href="#powiadomienia-o-oknach">Powiadomienia o oknach</a></li>
         <li><a href="#sterownik-falownika-deye-solarman">Sterownik falownika Deye (Solarman)</a></li>
         <li><a href="#słownik-kodów-powodów">Słownik kodów powodów</a></li>
       </ul>
@@ -167,6 +168,7 @@ Solarman: zob. <a href="#sterownik-falownika-deye-solarman">Sterownik falownika 
 <li><a href="#okna-i-głębokość-elastycznego-zużycia">Okna i głębokość elastycznego zużycia</a></li>
 <li><a href="#strategie-dyspozycji">Strategie dyspozycji</a></li>
 <li><a href="#automatyczne-przełączanie-strategii">Automatyczne przełączanie strategii</a></li>
+<li><a href="#powiadomienia-o-oknach">Powiadomienia o oknach</a></li>
 <li><a href="#sterownik-falownika-deye-solarman">Sterownik falownika Deye (Solarman)</a></li>
 <li><a href="#słownik-kodów-powodów">Słownik kodów powodów</a></li>
 </ol>
@@ -1060,6 +1062,79 @@ dokańcza przerwany zapis.</p>
 planowego; reguła alertu nigdy nie jest blokowana. <code>max_export</code> i <code>grid_friendly</code> wybiera się
 wyłącznie ręcznie. Konfiguracja: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md#import-the-strategy-switch-blueprint">przewodnik instalacji</a>
 (EN).</p>
+<h2 id="powiadomienia-o-oknach">Powiadomienia o oknach</h2>
+<p>Opcjonalny blueprint <a href="https://github.com/marino39/ha-energy-compass/blob/main/blueprints/automation/energy_compass/notifications.yaml"><code>notifications.yaml</code></a>
+informuje domowników, kiedy dodatkowe zużycie jest tanie (okno korzystne) albo kiedy zaczyna się
+drogie okno <code>LIMIT</code>. Sam Energy Compass niczego nie wysyła; głównym przełącznikiem jest
+<strong>Włącz powiadomienia</strong> w opcjach integracji. Konfiguracja:
+<a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md#opt-in-notifications">przewodnik instalacji</a> (EN).</p>
+<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-d7f8dd1c26f0-dark.svg"><img src="assets/diagrams/diagram-d7f8dd1c26f0.svg" alt="Diagram 12" loading="lazy"></picture></figure>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Wiadomość</th>
+<th>Kiedy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Wykorzystaj tanią energię</strong> / <em>Use the cheap energy</em></td>
+<td>trwa okno korzystne i cała jego reszta to <code>BOOST</code></td>
+</tr>
+<tr>
+<td><strong>Dobry moment na domowe urządzenia</strong> / <em>A good time for household appliances</em></td>
+<td>trwa okno korzystne, nie w całości <code>BOOST</code></td>
+</tr>
+<tr>
+<td><strong>Zaplanuj większe zużycie na później</strong> / <em>Plan heavy use for later</em></td>
+<td>okno <code>LIMIT</code> zaczyna się w czasie wyprzedzenia albo już trwa</td>
+</tr>
+</tbody>
+</table></section>
+<p>Treść podaje lokalne godziny okna i proponuje przełożenie prania, zmywarki lub ładowania auta.
+Akcja dostaje <code>notification_title</code>, <code>notification_message</code> i <code>event_kind</code>.</p>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Wejście</th>
+<th>Znaczenie</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>compass</code>, <code>plan</code>, <code>forecast_valid</code>, <code>alert</code>, <code>optimizer_status</code></td>
+<td>Kompas zużycia, Plan, Poprawna prognoza, Alert i Stan optymalizatora jednej instalacji</td>
+</tr>
+<tr>
+<td><code>next_boost</code>, <code>next_cheap</code>, <code>next_limit</code></td>
+<td>trzy sensory początków okien (ich zmiana uruchamia automatyzację)</td>
+</tr>
+<tr>
+<td><code>last_favorable</code>, <code>last_limit</code></td>
+<td>pomocniki tekstowe (maks. 255) z ostatnim oknem jako <code>{"s": początek, "e": koniec}</code></td>
+</tr>
+<tr>
+<td><code>daily_count</code>, <code>daily_date</code>, <code>last_sent</code></td>
+<td>pomocnik liczbowy i dwa pomocniki daty/czasu dla limitu dziennego i przerwy</td>
+</tr>
+<tr>
+<td><code>language</code></td>
+<td><code>en</code> albo <code>pl</code> dla tytułu i treści</td>
+</tr>
+<tr>
+<td><code>use_blueprint_overrides</code></td>
+<td>wyłączone: preferencje powiadomień z integracji; włączone: wejścia poniżej</td>
+</tr>
+<tr>
+<td><code>enabled_events</code>, <code>minimum_hours</code>, <code>limit_lead_minutes</code>, <code>quiet_start</code>, <code>quiet_end</code>, <code>cooldown_minutes</code>, <code>daily_cap</code></td>
+<td>nadpisania: zdarzenia, minimalny pozostały czas okna korzystnego, wyprzedzenie LIMIT, godziny ciszy, przerwa, wiadomości na lokalną dobę</td>
+</tr>
+<tr>
+<td><code>notification_actions</code></td>
+<td>akcja do wykonania, np. powiadomienie aplikacji mobilnej</td>
+</tr>
+</tbody>
+</table></section>
 <h2 id="sterownik-falownika-deye-solarman">Sterownik falownika Deye (Solarman)</h2>
 <p>Sam Energy Compass nigdy nie zapisuje do falownika. Robi to opcjonalny blueprint
 <a href="https://github.com/marino39/ha-energy-compass/blob/main/blueprints/automation/energy_compass/deye_solarman_controller.yaml"><code>deye_solarman_controller.yaml</code></a>:
@@ -1125,7 +1200,7 @@ programów czasowych (TOU), a każdy zapis sprawdza odczytem rejestrów. Wymaga 
 prefiksem w <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/builder.html">generatorze YAML</a> albo poleceniem
 <code>python tools/deye_controller/build.py --prefix my_inverter_program_</code>.</p>
 <h3 id="tryby">Tryby</h3>
-<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-ac9c2721d676-dark.svg"><img src="assets/diagrams/diagram-ac9c2721d676.svg" alt="Diagram 12" loading="lazy"></picture></figure>
+<figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-ac9c2721d676-dark.svg"><img src="assets/diagrams/diagram-ac9c2721d676.svg" alt="Diagram 13" loading="lazy"></picture></figure>
 <p><strong>Auto</strong> zapisuje; <strong>Simulation</strong> oblicza wszystkie cele i zapisuje je w <code>runtime</code>, nie dotykając
 falownika; <strong>Off</strong> zwalnia sterowanie. Przejście z Auto do Off raz przywraca profil bazowy, potwierdza
 go i zostawia późniejsze ręczne nastawy. Wyłączenie samej <em>automatyzacji</em> pomija to przywrócenie.
