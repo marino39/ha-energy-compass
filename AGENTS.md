@@ -47,7 +47,7 @@ passes. State in the PR which docs changed, or why none needed to.
 | Deye package: helper, template sensor, TOU prefix | `guide.*` § Deye inverter controller → Package entities, `docs/installation.md` § Deye inverter controller step 1 |
 | Plan attribute or state consumed by the controller (`intervals`, `dispatch_policy`, `balance_hold`, `generated_at`, `valid_until`, `refreshing`, `plan_retained`) | the controller generator and its tests first, then `guide.*` § Deye inverter controller |
 | Dashboard example added/changed | `docs/installation.md` § Dashboard examples, `guide.*` § Deye inverter controller → Dashboard examples; new section or input role → `FIELDS`/`SECTIONS` in `tools/build_builder.py` |
-| Source requirements, units, tariffs | `docs/source-requirements.md`, `docs/source-contracts.md`, `docs/tariff-helper.md` |
+| Source requirements, units, tariffs; `examples/tariff-helper.yaml`, `examples/rce-sell-price.yaml` | `docs/source-requirements.md`, `docs/source-contracts.md`, `docs/tariff-helper.md`; a changed setting line in either example → `EXAMPLES` in `tools/build_builder.py`, then rebuild the builder |
 | Home Assistant / SciPy / runtime requirement | `README*.md` § Install, `docs/runtime-validation.md` |
 
 ## Generated files (never edit by hand)

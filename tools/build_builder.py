@@ -39,6 +39,30 @@ PATTERNS = {
     "entity": r"^[a-z_]+\.[a-z0-9_]+$",
     "number": r"^[0-9]+(\.[0-9]+)?$",
     "prefix": r"^[a-z0-9_]+$",
+    "signed": r"^-?[0-9]+(\.[0-9]+)?$",
+    "tariff_group": r"^(G11|G12|G12w)$",
+    "afternoon_window": r"^(fixed|seasonal)$",
+}
+# Choice kinds are shown as a select; values must match their pattern.
+OPTIONS = {
+    "tariff_group": ["G11", "G12", "G12w"],
+    "afternoon_window": ["fixed", "seasonal"],
+}
+# Hand-written examples whose settings the builder fills: role -> exact line.
+EXAMPLES = {
+    "tariff": (
+        "examples/tariff-helper.yaml",
+        {
+            "tariff_group": "      tariff_group: {}",
+            "base_rate": "      base_rate: {}",
+            "off_peak_rate": "      off_peak_rate: {}",
+            "afternoon_window": "      afternoon_window: {}",
+        },
+    ),
+    "rce": (
+        "examples/rce-sell-price.yaml",
+        {"multiplier": "      multiplier: {}", "floor": "      floor: {}"},
+    ),
 }
 FIELDS = {
     "plan": ("entity", "sensor.energy_compass_plan", "Plan", "Plan"),
@@ -128,6 +152,37 @@ FIELDS = {
         "Battery grid charging current",
         "Prąd ładowania baterii z sieci",
     ),
+    "tariff_group": ("tariff_group", "G12", "Tariff group", "Grupa taryfowa"),
+    "base_rate": (
+        "number",
+        "1.25",
+        "Peak (or G11) final price per kWh",
+        "Cena szczytowa (lub G11) za kWh, brutto",
+    ),
+    "off_peak_rate": (
+        "number",
+        "0.61",
+        "Off-peak final price per kWh",
+        "Cena pozaszczytowa za kWh, brutto",
+    ),
+    "afternoon_window": (
+        "afternoon_window",
+        "fixed",
+        "Afternoon off-peak window: fixed 13-15 or seasonal (15-17 Apr-Sep)",
+        "Popołudniowe okno taniej strefy: stałe 13-15 lub sezonowe (15-17 IV-IX)",
+    ),
+    "multiplier": (
+        "number",
+        "1.23",
+        "Sell price multiplier (net-billing deposit 1.23)",
+        "Mnożnik ceny sprzedaży (depozyt net-billing 1,23)",
+    ),
+    "floor": (
+        "signed",
+        "0",
+        "Sell price floor in PLN/MWh (net-billing 0)",
+        "Minimalna cena sprzedaży w PLN/MWh (net-billing 0)",
+    ),
     "capacity": (
         "number",
         "25",
@@ -150,6 +205,8 @@ SECTIONS = {
     "panel": ("Deye controller panel", "Panel sterownika Deye"),
     "diagnostics": ("Deye controller diagnostics", "Diagnostyka sterownika Deye"),
     "package": ("Deye controller package", "Pakiet sterownika Deye"),
+    "tariff": ("Buy price: G11/G12/G12w tariff", "Cena zakupu: taryfa G11/G12/G12w"),
+    "rce": ("Sell price: RCE (net-billing)", "Cena sprzedaży: RCE (net-billing)"),
 }
 
 
@@ -165,6 +222,18 @@ def dump(value, dumper=yaml.SafeDumper):
 
 def section_text(name, lang, values):
     """The YAML for one section; `values` maps roles to IDs, numbers or tokens."""
+    if name in EXAMPLES:
+        path, lines = EXAMPLES[name]
+        text = (ROOT / path).read_text(encoding="utf-8")
+        for role, line in lines.items():
+            default = re.search(
+                "^" + re.escape(line.format("")) + "(.*)$", text, re.MULTILINE
+            )
+            assert default, f"{path}: missing {line!r}"
+            text = text.replace(
+                line.format(default.group(1)), line.format(values[role]), 1
+            )
+        return text
     if name == "package":
         return dump(controller.package(values["prefix"]), controller.Dumper)
     entities = {role: values[role] for role in dashboards.ENTITIES}
@@ -195,6 +264,7 @@ def data():
                 "example": example,
                 "label": {"en": en, "pl": pl},
             }
+            | ({"options": OPTIONS[kind]} if kind in OPTIONS else {})
             for role, (kind, example, en, pl) in FIELDS.items()
         },
         "sections": {

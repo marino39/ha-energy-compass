@@ -107,6 +107,34 @@ def test_actual_template_rates_and_consumer_contract(
     assert all(row.end - row.start == timedelta(hours=1) for row in parsed)
 
 
+@pytest.mark.parametrize(
+    ("instant", "window", "expected"),
+    [
+        # 13:22 local on 18 September: fixed 13-15 is off-peak, seasonal summer is not.
+        ("2026-09-18T11:22:34+00:00", "fixed", 0.55),
+        ("2026-09-18T11:22:34+00:00", "seasonal", 0.9),
+        # 15:22 local in September: seasonal summer window 15-17.
+        ("2026-09-18T13:22:34+00:00", "seasonal", 0.55),
+        # 13:22 local in November: seasonal winter window 13-15.
+        ("2026-11-18T12:22:34+00:00", "seasonal", 0.55),
+        ("2026-11-18T14:22:34+00:00", "seasonal", 0.9),
+    ],
+)
+def test_afternoon_window(hass, freezer, example, instant, window, expected):
+    state, rows = _render(
+        hass, freezer, example, instant, tariff_group="G12", afternoon_window=window
+    )
+    assert state == pytest.approx(expected)
+    assert len(rows) == 49
+
+
+def test_unknown_afternoon_window_cannot_publish_a_price(hass, freezer, example):
+    state, rows = _render(
+        hass, freezer, example, "2026-09-18T11:22:34+00:00", afternoon_window="summer"
+    )
+    assert state is None and rows == []
+
+
 def test_explicit_date_is_off_peak_without_holiday_lookups(hass, freezer, example):
     instant = "2026-12-24T10:32:00+00:00"
     state, rows = _render(

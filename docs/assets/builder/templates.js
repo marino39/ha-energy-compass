@@ -3,7 +3,10 @@ window.EC_BUILDER = {
  "patterns": {
   "entity": "^[a-z_]+\\.[a-z0-9_]+$",
   "number": "^[0-9]+(\\.[0-9]+)?$",
-  "prefix": "^[a-z0-9_]+$"
+  "prefix": "^[a-z0-9_]+$",
+  "signed": "^-?[0-9]+(\\.[0-9]+)?$",
+  "tariff_group": "^(G11|G12|G12w)$",
+  "afternoon_window": "^(fixed|seasonal)$"
  },
  "fields": {
   "plan": {
@@ -159,6 +162,69 @@ window.EC_BUILDER = {
     "pl": "Prąd ładowania baterii z sieci"
    }
   },
+  "tariff_group": {
+   "token": "__EC_TARIFF_GROUP__",
+   "kind": "tariff_group",
+   "example": "G12",
+   "label": {
+    "en": "Tariff group",
+    "pl": "Grupa taryfowa"
+   },
+   "options": [
+    "G11",
+    "G12",
+    "G12w"
+   ]
+  },
+  "base_rate": {
+   "token": "__EC_BASE_RATE__",
+   "kind": "number",
+   "example": "1.25",
+   "label": {
+    "en": "Peak (or G11) final price per kWh",
+    "pl": "Cena szczytowa (lub G11) za kWh, brutto"
+   }
+  },
+  "off_peak_rate": {
+   "token": "__EC_OFF_PEAK_RATE__",
+   "kind": "number",
+   "example": "0.61",
+   "label": {
+    "en": "Off-peak final price per kWh",
+    "pl": "Cena pozaszczytowa za kWh, brutto"
+   }
+  },
+  "afternoon_window": {
+   "token": "__EC_AFTERNOON_WINDOW__",
+   "kind": "afternoon_window",
+   "example": "fixed",
+   "label": {
+    "en": "Afternoon off-peak window: fixed 13-15 or seasonal (15-17 Apr-Sep)",
+    "pl": "Popołudniowe okno taniej strefy: stałe 13-15 lub sezonowe (15-17 IV-IX)"
+   },
+   "options": [
+    "fixed",
+    "seasonal"
+   ]
+  },
+  "multiplier": {
+   "token": "__EC_MULTIPLIER__",
+   "kind": "number",
+   "example": "1.23",
+   "label": {
+    "en": "Sell price multiplier (net-billing deposit 1.23)",
+    "pl": "Mnożnik ceny sprzedaży (depozyt net-billing 1,23)"
+   }
+  },
+  "floor": {
+   "token": "__EC_FLOOR__",
+   "kind": "signed",
+   "example": "0",
+   "label": {
+    "en": "Sell price floor in PLN/MWh (net-billing 0)",
+    "pl": "Minimalna cena sprzedaży w PLN/MWh (net-billing 0)"
+   }
+  },
   "capacity": {
    "token": "__EC_CAPACITY__",
    "kind": "number",
@@ -207,6 +273,18 @@ window.EC_BUILDER = {
    "label": {
     "en": "Deye controller package",
     "pl": "Pakiet sterownika Deye"
+   }
+  },
+  "tariff": {
+   "label": {
+    "en": "Buy price: G11/G12/G12w tariff",
+    "pl": "Cena zakupu: taryfa G11/G12/G12w"
+   }
+  },
+  "rce": {
+   "label": {
+    "en": "Sell price: RCE (net-billing)",
+    "pl": "Cena sprzedaży: RCE (net-billing)"
    }
   }
  },
@@ -324,6 +402,42 @@ window.EC_BUILDER = {
     "yaml": "input_select:\n  energy_compass_deye_mode:\n    name: Energy Compass Deye mode\n    options:\n    - 'Off'\n    - Simulation\n    - Auto\n    icon: mdi:compass\ninput_boolean:\n  energy_compass_deye_session:\n    name: Energy Compass Deye session ready\n    initial: false\n  energy_compass_deye_restore_pending:\n    name: Energy Compass Deye restore pending\ninput_datetime:\n  energy_compass_deye_session_start:\n    name: Energy Compass Deye session start\n    has_date: true\n    has_time: true\ntemplate:\n- triggers:\n  - trigger: event\n    event_type: energy_compass_deye_accept_plan\n  sensor:\n  - name: Energy Compass Deye plan\n    unique_id: energy_compass_deye_plan\n    state: '{{ trigger.event.data.snapshot.generated_at }}'\n    attributes:\n      snapshot: '{{ trigger.event.data.snapshot }}'\n- triggers:\n  - trigger: event\n    event_type: energy_compass_deye_runtime\n  sensor:\n  - name: Energy Compass Deye runtime\n    unique_id: energy_compass_deye_runtime\n    state: '{{ trigger.event.data.runtime.get(\"code\", \"waiting\") }}'\n    attributes:\n      runtime: '{{ trigger.event.data.runtime }}'\n- sensor:\n  - name: Energy Compass Deye TOU settings\n    unique_id: energy_compass_deye_tou_settings\n    state: '{% set ns = namespace(v={}) %}{% for i in range(1,7) %}{% set ns.v = dict(ns.v, **dict([(''number.__EC_PREFIX__'' ~ i ~ ''_power'', states(''number.__EC_PREFIX__'' ~ i ~ ''_power''))])) %}{% set ns.v = dict(ns.v, **dict([(''number.__EC_PREFIX__'' ~ i ~ ''_voltage'', states(''number.__EC_PREFIX__'' ~ i ~ ''_voltage''))])) %}{% set ns.v = dict(ns.v, **dict([(''number.__EC_PREFIX__'' ~ i ~ ''_soc'', states(''number.__EC_PREFIX__'' ~ i ~ ''_soc''))])) %}{% set ns.v = dict(ns.v, **dict([(''select.__EC_PREFIX__'' ~ i ~ ''_charging'', states(''select.__EC_PREFIX__'' ~ i ~ ''_charging''))])) %}{% set ns.v = dict(ns.v, **dict([(''time.__EC_PREFIX__'' ~ i ~ ''_time'', states(''time.__EC_PREFIX__'' ~ i ~ ''_time''))])) %}{% endfor %}{{ ns.v.values()|reject(''in'', [''unknown'',''unavailable''])|list|length }}'\n    attributes:\n      prefix: __EC_PREFIX__\n      values: '{% set ns = namespace(v={}) %}{% for i in range(1,7) %}{% set ns.v = dict(ns.v, **dict([(''number.__EC_PREFIX__'' ~ i ~ ''_power'', states(''number.__EC_PREFIX__'' ~ i ~ ''_power''))])) %}{% set ns.v = dict(ns.v, **dict([(''number.__EC_PREFIX__'' ~ i ~ ''_voltage'', states(''number.__EC_PREFIX__'' ~ i ~ ''_voltage''))])) %}{% set ns.v = dict(ns.v, **dict([(''number.__EC_PREFIX__'' ~ i ~ ''_soc'', states(''number.__EC_PREFIX__'' ~ i ~ ''_soc''))])) %}{% set ns.v = dict(ns.v, **dict([(''select.__EC_PREFIX__'' ~ i ~ ''_charging'', states(''select.__EC_PREFIX__'' ~ i ~ ''_charging''))])) %}{% set ns.v = dict(ns.v, **dict([(''time.__EC_PREFIX__'' ~ i ~ ''_time'', states(''time.__EC_PREFIX__'' ~ i ~ ''_time''))])) %}{% endfor %}{{ ns.v }}'\n  - name: Energy Compass Deye next TOU\n    unique_id: energy_compass_deye_next_tou\n    device_class: timestamp\n    state: '{% set ns=namespace(times=[]) %}{% for i in range(1,7) %}{% set raw=states(''time.__EC_PREFIX__''~i~''_time'') %}{% if raw not in [''unknown'',''unavailable''] %}{% set at=today_at(raw) %}{% set at=at if at > now() else at + timedelta(days=1) %}{% set ns.times=ns.times+[at] %}{% endif %}{% endfor %}{{ (ns.times|min).isoformat() if ns.times else none }}'\n  - name: Energy Compass Deye deadline\n    unique_id: energy_compass_deye_deadline\n    device_class: timestamp\n    state: '{{ (state_attr(''sensor.energy_compass_deye_plan'',''snapshot'') or {}).get(''valid_until'') }}'\n  - name: Energy Compass Deye interval end\n    unique_id: energy_compass_deye_interval_end\n    device_class: timestamp\n    state: '{% set c=state_attr(''sensor.energy_compass_deye_plan'',''snapshot'') or {} %}{% set ns=namespace(end=none) %}{% for r in c.get(''intervals'',[]) %}{% if as_timestamp(r.start) <= as_timestamp(now()) < as_timestamp(r.end) %}{% set ns.end=r.end %}{% endif %}{% endfor %}{{ ns.end }}'\n",
     "fields": [
      "prefix"
+    ]
+   }
+  },
+  "tariff": {
+   "en": {
+    "yaml": "template:\n  - triggers:\n      - trigger: homeassistant\n        event: start\n      - trigger: time_pattern\n        minutes: \"/15\"\n    variables:\n      tariff_group: __EC_TARIFF_GROUP__\n      # Illustrative final PLN/kWh rates; replace these with your own contract prices.\n      base_rate: __EC_BASE_RATE__\n      off_peak_rate: __EC_OFF_PEAK_RATE__\n      # G12/G12w afternoon off-peak window: fixed = 13:00-15:00 all year;\n      # seasonal = 15:00-17:00 April-September, 13:00-15:00 October-March.\n      afternoon_window: __EC_AFTERNOON_WINDOW__\n      # Only dates explicitly listed here receive the G12w off-peak rate.\n      off_peak_dates: []\n      forecast_rows: >-\n        {% if tariff_group is defined and tariff_group in ['G11', 'G12', 'G12w']\n              and base_rate is defined and is_number(base_rate)\n              and off_peak_rate is defined and is_number(off_peak_rate)\n              and afternoon_window is defined and afternoon_window in ['fixed', 'seasonal']\n              and off_peak_dates is defined\n              and off_peak_dates is sequence and off_peak_dates is not string %}\n          {% set rows = namespace(value=[]) %}\n          {% set first_hour = ((as_timestamp(utcnow()) // 3600) * 3600) | int %}\n          {% for hour in range(49) %}\n            {% set start = as_datetime((first_hour + hour * 3600) | timestamp_utc) %}\n            {% set end = as_datetime((first_hour + (hour + 1) * 3600) | timestamp_utc) %}\n            {% set local = as_local(start) %}\n            {% set afternoon = 15 if afternoon_window == 'seasonal' and 4 <= local.month <= 9 else 13 %}\n            {% set off_peak = tariff_group != 'G11' and\n                (local.hour >= 22 or local.hour < 6 or afternoon <= local.hour < afternoon + 2 or\n                (tariff_group == 'G12w' and\n                (local.weekday() >= 5 or local.date().isoformat() in off_peak_dates))) %}\n            {% set rows.value = rows.value + [{\n                'start': start.isoformat(),\n                'end': end.isoformat(),\n                'price': (off_peak_rate if off_peak else base_rate) | float\n            }] %}\n          {% endfor %}\n          {{ rows.value }}\n        {% else %}\n          {{ [] }}\n        {% endif %}\n    sensor:\n      - name: Energy Compass tariff price\n        unique_id: energy_compass_tariff_price_example\n        default_entity_id: sensor.energy_compass_tariff_price\n        unit_of_measurement: PLN/kWh\n        availability: >-\n          {{ tariff_group is defined and tariff_group in ['G11', 'G12', 'G12w']\n             and base_rate is defined and is_number(base_rate)\n             and off_peak_rate is defined and is_number(off_peak_rate)\n             and afternoon_window is defined and afternoon_window in ['fixed', 'seasonal']\n             and off_peak_dates is defined\n             and off_peak_dates is sequence and off_peak_dates is not string }}\n        state: \"{{ forecast_rows[0].price if forecast_rows | count == 49 else none }}\"\n        attributes:\n          forecast: \"{{ forecast_rows }}\"\n          generated_at: \"{{ utcnow().isoformat() }}\"\n",
+    "fields": [
+     "tariff_group",
+     "base_rate",
+     "off_peak_rate",
+     "afternoon_window"
+    ]
+   },
+   "pl": {
+    "yaml": "template:\n  - triggers:\n      - trigger: homeassistant\n        event: start\n      - trigger: time_pattern\n        minutes: \"/15\"\n    variables:\n      tariff_group: __EC_TARIFF_GROUP__\n      # Illustrative final PLN/kWh rates; replace these with your own contract prices.\n      base_rate: __EC_BASE_RATE__\n      off_peak_rate: __EC_OFF_PEAK_RATE__\n      # G12/G12w afternoon off-peak window: fixed = 13:00-15:00 all year;\n      # seasonal = 15:00-17:00 April-September, 13:00-15:00 October-March.\n      afternoon_window: __EC_AFTERNOON_WINDOW__\n      # Only dates explicitly listed here receive the G12w off-peak rate.\n      off_peak_dates: []\n      forecast_rows: >-\n        {% if tariff_group is defined and tariff_group in ['G11', 'G12', 'G12w']\n              and base_rate is defined and is_number(base_rate)\n              and off_peak_rate is defined and is_number(off_peak_rate)\n              and afternoon_window is defined and afternoon_window in ['fixed', 'seasonal']\n              and off_peak_dates is defined\n              and off_peak_dates is sequence and off_peak_dates is not string %}\n          {% set rows = namespace(value=[]) %}\n          {% set first_hour = ((as_timestamp(utcnow()) // 3600) * 3600) | int %}\n          {% for hour in range(49) %}\n            {% set start = as_datetime((first_hour + hour * 3600) | timestamp_utc) %}\n            {% set end = as_datetime((first_hour + (hour + 1) * 3600) | timestamp_utc) %}\n            {% set local = as_local(start) %}\n            {% set afternoon = 15 if afternoon_window == 'seasonal' and 4 <= local.month <= 9 else 13 %}\n            {% set off_peak = tariff_group != 'G11' and\n                (local.hour >= 22 or local.hour < 6 or afternoon <= local.hour < afternoon + 2 or\n                (tariff_group == 'G12w' and\n                (local.weekday() >= 5 or local.date().isoformat() in off_peak_dates))) %}\n            {% set rows.value = rows.value + [{\n                'start': start.isoformat(),\n                'end': end.isoformat(),\n                'price': (off_peak_rate if off_peak else base_rate) | float\n            }] %}\n          {% endfor %}\n          {{ rows.value }}\n        {% else %}\n          {{ [] }}\n        {% endif %}\n    sensor:\n      - name: Energy Compass tariff price\n        unique_id: energy_compass_tariff_price_example\n        default_entity_id: sensor.energy_compass_tariff_price\n        unit_of_measurement: PLN/kWh\n        availability: >-\n          {{ tariff_group is defined and tariff_group in ['G11', 'G12', 'G12w']\n             and base_rate is defined and is_number(base_rate)\n             and off_peak_rate is defined and is_number(off_peak_rate)\n             and afternoon_window is defined and afternoon_window in ['fixed', 'seasonal']\n             and off_peak_dates is defined\n             and off_peak_dates is sequence and off_peak_dates is not string }}\n        state: \"{{ forecast_rows[0].price if forecast_rows | count == 49 else none }}\"\n        attributes:\n          forecast: \"{{ forecast_rows }}\"\n          generated_at: \"{{ utcnow().isoformat() }}\"\n",
+    "fields": [
+     "tariff_group",
+     "base_rate",
+     "off_peak_rate",
+     "afternoon_window"
+    ]
+   }
+  },
+  "rce": {
+   "en": {
+    "yaml": "# Polish net-billing sell price from RCE (PSE market price), as an Energy Compass\n# interval forecast. See docs/tariff-helper.md § RCE sell price.\n#\n# The REST sensor fetches today's and tomorrow's quarter-hour RCE prices\n# (PLN/MWh) from the public PSE API every 30 minutes. The Template sensor turns\n# them into PLN/kWh with a floor and a multiplier (net-billing deposit: negative\n# prices count as zero, then x 1.23) and publishes them as `prices` records.\n# Timestamps use the compact UTC form 20260925T1015Z to stay under Home\n# Assistant's recorder attribute size limit.\nsensor:\n  - platform: rest\n    name: Energy Compass RCE Raw\n    unique_id: energy_compass_rce_raw\n    resource: https://api.raporty.pse.pl/api/rce-pln\n    params:\n      \"$select\": dtime_utc,rce_pln,business_date\n      \"$filter\": >-\n        business_date ge '{{ now().date() }}' and business_date le '{{ (now() + timedelta(days=1)).date() }}'\n      \"$first\": \"200\"\n    headers:\n      Accept: application/json\n    scan_interval: 1800\n    timeout: 30\n    availability: >-\n      {{ value_json is mapping\n         and value_json.get('value') is sequence\n         and value_json.get('value') is not string\n         and 0 < value_json.get('value') | count <= 200\n         and not value_json.get('@nextLink')\n         and not value_json.get('@odata.nextLink')\n         and not value_json.get('nextLink') }}\n    value_template: \"{{ utcnow().isoformat() }}\"\n    json_attributes:\n      - value\n\ntemplate:\n  - triggers:\n      - trigger: homeassistant\n        event: start\n      - trigger: time_pattern\n        minutes: \"/15\"\n      - trigger: state\n        entity_id: sensor.energy_compass_rce_raw\n    variables:\n      # Final sell price = max(RCE, floor) x multiplier / 1000 (PLN/MWh -> PLN/kWh).\n      # Net-billing deposit: floor 0, multiplier 1.23. Adjust to your contract.\n      multiplier: __EC_MULTIPLIER__\n      floor: __EC_FLOOR__\n      source: sensor.energy_compass_rce_raw\n      fetched: \"{{ as_timestamp(states(source), none) }}\"\n      sell_rows: >-\n        {% set raw = state_attr(source, 'value') %}\n        {% set ns = namespace(rows=[], valid=is_number(multiplier) and is_number(floor)\n                              and raw is sequence and raw is not string and raw | count > 0) %}\n        {% for row in (raw if ns.valid else []) %}\n          {% if row is not mapping or row.get('dtime_utc') is not string\n                or row.get('rce_pln') is boolean or not is_number(row.get('rce_pln')) %}\n            {% set ns.valid = false %}\n          {% else %}\n            {% set end = as_datetime(row.dtime_utc ~ '+00:00', none) %}\n            {% if end is none %}\n              {% set ns.valid = false %}\n            {% else %}\n              {% set price = ([row.rce_pln | float, floor | float] | max) * multiplier | float / 1000 %}\n              {% set ns.rows = ns.rows + [dict(start=(end - timedelta(minutes=15)).strftime('%Y%m%dT%H%MZ'), end=end.strftime('%Y%m%dT%H%MZ'), price=price)] %}\n            {% endif %}\n          {% endif %}\n        {% endfor %}\n        {{ (ns.rows | sort(attribute='start')) if ns.valid else [] }}\n      current_price: >-\n        {% set now_key = utcnow().strftime('%Y%m%dT%H%MZ') %}\n        {% set ns = namespace(price=none) %}\n        {% for row in sell_rows if row.start <= now_key < row.end %}\n          {% set ns.price = row.price %}\n        {% endfor %}\n        {{ ns.price }}\n    sensor:\n      - name: Energy Compass RCE export forecast\n        unique_id: energy_compass_rce_export_forecast\n        default_entity_id: sensor.energy_compass_rce_export_forecast\n        unit_of_measurement: PLN/kWh\n        availability: >-\n          {{ fetched is not none and 0 <= as_timestamp(now()) - fetched <= 4500\n             and is_number(current_price) }}\n        state: \"{{ current_price }}\"\n        attributes:\n          prices: \"{{ sell_rows }}\"\n          published_at: \"{{ states(source) }}\"\n          settlement: \"RCE, floor {{ floor }}, multiplier {{ multiplier }}\"\n",
+    "fields": [
+     "multiplier",
+     "floor"
+    ]
+   },
+   "pl": {
+    "yaml": "# Polish net-billing sell price from RCE (PSE market price), as an Energy Compass\n# interval forecast. See docs/tariff-helper.md § RCE sell price.\n#\n# The REST sensor fetches today's and tomorrow's quarter-hour RCE prices\n# (PLN/MWh) from the public PSE API every 30 minutes. The Template sensor turns\n# them into PLN/kWh with a floor and a multiplier (net-billing deposit: negative\n# prices count as zero, then x 1.23) and publishes them as `prices` records.\n# Timestamps use the compact UTC form 20260925T1015Z to stay under Home\n# Assistant's recorder attribute size limit.\nsensor:\n  - platform: rest\n    name: Energy Compass RCE Raw\n    unique_id: energy_compass_rce_raw\n    resource: https://api.raporty.pse.pl/api/rce-pln\n    params:\n      \"$select\": dtime_utc,rce_pln,business_date\n      \"$filter\": >-\n        business_date ge '{{ now().date() }}' and business_date le '{{ (now() + timedelta(days=1)).date() }}'\n      \"$first\": \"200\"\n    headers:\n      Accept: application/json\n    scan_interval: 1800\n    timeout: 30\n    availability: >-\n      {{ value_json is mapping\n         and value_json.get('value') is sequence\n         and value_json.get('value') is not string\n         and 0 < value_json.get('value') | count <= 200\n         and not value_json.get('@nextLink')\n         and not value_json.get('@odata.nextLink')\n         and not value_json.get('nextLink') }}\n    value_template: \"{{ utcnow().isoformat() }}\"\n    json_attributes:\n      - value\n\ntemplate:\n  - triggers:\n      - trigger: homeassistant\n        event: start\n      - trigger: time_pattern\n        minutes: \"/15\"\n      - trigger: state\n        entity_id: sensor.energy_compass_rce_raw\n    variables:\n      # Final sell price = max(RCE, floor) x multiplier / 1000 (PLN/MWh -> PLN/kWh).\n      # Net-billing deposit: floor 0, multiplier 1.23. Adjust to your contract.\n      multiplier: __EC_MULTIPLIER__\n      floor: __EC_FLOOR__\n      source: sensor.energy_compass_rce_raw\n      fetched: \"{{ as_timestamp(states(source), none) }}\"\n      sell_rows: >-\n        {% set raw = state_attr(source, 'value') %}\n        {% set ns = namespace(rows=[], valid=is_number(multiplier) and is_number(floor)\n                              and raw is sequence and raw is not string and raw | count > 0) %}\n        {% for row in (raw if ns.valid else []) %}\n          {% if row is not mapping or row.get('dtime_utc') is not string\n                or row.get('rce_pln') is boolean or not is_number(row.get('rce_pln')) %}\n            {% set ns.valid = false %}\n          {% else %}\n            {% set end = as_datetime(row.dtime_utc ~ '+00:00', none) %}\n            {% if end is none %}\n              {% set ns.valid = false %}\n            {% else %}\n              {% set price = ([row.rce_pln | float, floor | float] | max) * multiplier | float / 1000 %}\n              {% set ns.rows = ns.rows + [dict(start=(end - timedelta(minutes=15)).strftime('%Y%m%dT%H%MZ'), end=end.strftime('%Y%m%dT%H%MZ'), price=price)] %}\n            {% endif %}\n          {% endif %}\n        {% endfor %}\n        {{ (ns.rows | sort(attribute='start')) if ns.valid else [] }}\n      current_price: >-\n        {% set now_key = utcnow().strftime('%Y%m%dT%H%MZ') %}\n        {% set ns = namespace(price=none) %}\n        {% for row in sell_rows if row.start <= now_key < row.end %}\n          {% set ns.price = row.price %}\n        {% endfor %}\n        {{ ns.price }}\n    sensor:\n      - name: Energy Compass RCE export forecast\n        unique_id: energy_compass_rce_export_forecast\n        default_entity_id: sensor.energy_compass_rce_export_forecast\n        unit_of_measurement: PLN/kWh\n        availability: >-\n          {{ fetched is not none and 0 <= as_timestamp(now()) - fetched <= 4500\n             and is_number(current_price) }}\n        state: \"{{ current_price }}\"\n        attributes:\n          prices: \"{{ sell_rows }}\"\n          published_at: \"{{ states(source) }}\"\n          settlement: \"RCE, floor {{ floor }}, multiplier {{ multiplier }}\"\n",
+    "fields": [
+     "multiplier",
+     "floor"
     ]
    }
   }

@@ -32,6 +32,12 @@ VALUES = {
     "charge_limit": "number.battery_max_charging_current",
     "discharge_limit": "number.battery_max_discharging_current",
     "grid_limit": "number.battery_grid_charging_current",
+    "tariff_group": "G12",
+    "base_rate": "1.25",
+    "off_peak_rate": "0.61",
+    "afternoon_window": "seasonal",
+    "multiplier": "1.23",
+    "floor": "-10",
     "capacity": "12.5",
     "prefix": "inverter_2_program_",
 }
@@ -65,6 +71,10 @@ def test_filled_template_equals_generator_output(section, lang):
         ("capacity", "25; x"),
         ("capacity", "-1"),
         ("prefix", "inverter deye"),
+        ("tariff_group", "G13"),
+        ("afternoon_window", "summer"),
+        ("base_rate", "1,25"),
+        ("floor", "0; x"),
     ],
 )
 def test_fill_rejects_unsafe_values(role, value):
@@ -75,3 +85,15 @@ def test_fill_rejects_unsafe_values(role, value):
 def test_docs_link_the_builder():
     for doc in ["docs/installation.md", "docs/guide.en.md", "docs/guide.pl.md"]:
         assert "builder.html" in (ROOT / doc).read_text(), doc
+
+
+def test_tariff_and_rce_templates_keep_the_examples_otherwise_unchanged():
+    for name, (path, lines) in builder.EXAMPLES.items():
+        original = (builder.ROOT / path).read_text(encoding="utf-8")
+        template = builder.templates()[name]["en"]["yaml"]
+        changed = [
+            (a, b)
+            for a, b in zip(original.splitlines(), template.splitlines(), strict=True)
+            if a != b
+        ]
+        assert len(changed) == len(lines)

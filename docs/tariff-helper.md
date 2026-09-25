@@ -13,7 +13,7 @@ homeassistant:
 
 Do not replace existing `homeassistant:` or `template:` sections. You can instead merge the example's `template:` list entry into your existing `template:` list. When using `template: !include ...`, merge it into the included list rather than creating a second top-level key. Check the Home Assistant configuration, reload Template entities after editing the rates or dates, and inspect the entity state and attributes. On a fresh configuration the startup trigger updates it; if the Template integration is reloaded without a startup event, the next quarter-hour trigger updates it (at minutes 00, 15, 30 or 45). [Home Assistant packages](https://www.home-assistant.io/docs/configuration/packages/) and [Template integration configuration](https://www.home-assistant.io/integrations/template/) describe these options.
 
-Edit `tariff_group`, `base_rate`, `off_peak_rate` and `off_peak_dates` near the top of the YAML. The example uses 0.90 and 0.55 PLN/kWh solely as placeholders; enter **final** prices in the same currency as your Energy Compass installation. `G11` uses `base_rate` for every hour. For `G12`, local hours 13:00–15:00 and 22:00–06:00 use `off_peak_rate`. `G12w` additionally applies that rate all Saturday and Sunday and on explicitly listed local calendar dates, for example `off_peak_dates: ['2026-12-24']`. This example has no public-holiday lookup. Incorrect or nonfinite settings leave the sensor unavailable instead of publishing a free price.
+The [YAML builder](https://marino39.github.io/ha-energy-compass/builder.html) (section **Buy price: G11/G12/G12w tariff**) fills in the group, rates and afternoon window for you. Otherwise edit `tariff_group`, `base_rate`, `off_peak_rate`, `afternoon_window` and `off_peak_dates` near the top of the YAML. The example uses 0.90 and 0.55 PLN/kWh solely as placeholders; enter **final** prices in the same currency as your Energy Compass installation. `G11` uses `base_rate` for every hour. For `G12`, local hours 22:00–06:00 and a two-hour afternoon window use `off_peak_rate`. `afternoon_window: fixed` makes the afternoon window 13:00–15:00 all year; `seasonal` makes it 15:00–17:00 from April to September and 13:00–15:00 from October to March, as in some operators' G12 tariffs. Check which one your contract uses. `G12w` additionally applies that rate all Saturday and Sunday and on explicitly listed local calendar dates, for example `off_peak_dates: ['2026-12-24']`. This example has no public-holiday lookup. Incorrect or nonfinite settings leave the sensor unavailable instead of publishing a free price.
 
 The forecast begins at the current UTC hour and uses 49 real one-hour intervals, so it covers at least 48 hours after an update even between hour boundaries. Each interval is classified in Home Assistant's configured local time zone. A daylight-saving day can contain 23 or 25 real hours; timestamps retain their UTC offsets, including both occurrences of a repeated local hour. Set your Home Assistant installation time zone correctly (for example, `Europe/Warsaw`).
 
@@ -35,3 +35,24 @@ Open **Tariffs → Buy source** (and **Sell source** separately if appropriate),
 Confirm the actual entity ID in Home Assistant before selection, since an existing entity or an earlier registry rename can change it. The entity must have a finite numeric available state, a list-valued `forecast` attribute with contiguous aware intervals, and prices in the installation currency. Select the **forecast**, not the state: a current numeric state alone is treated as constant over the horizon. The generated timestamp and attributes refresh every 15 minutes, making a 3600-second age limit suitable under normal operation; a missed refresh eventually makes the source stale. Verify Preview's coverage, prices and resolved unit.
 
 If these rates already include all taxes and charges, set the existing buy/sell tariff transformations to multiplier `1`, VAT disabled, and addition `0`. Configure buy and sell independently; copying a purchase tariff into sale pricing is only appropriate if your contract actually uses the same rate schedule. The [source selection guide](source-requirements.md) explains the supported mapping and age checks.
+
+## RCE sell price (Polish net-billing)
+
+[This YAML example](../examples/rce-sell-price.yaml) builds a **sell** price forecast from RCE, the market price published by PSE. A REST sensor, `sensor.energy_compass_rce_raw`, fetches today's and tomorrow's quarter-hour RCE prices (PLN/MWh) from the public PSE API every 30 minutes. A Template sensor, `sensor.energy_compass_rce_export_forecast`, converts them to PLN/kWh as `max(RCE, floor) × multiplier / 1000` and publishes the current price as its state and every quarter hour as `prices` records `{start, end, price}`. With the net-billing deposit, `floor: 0` counts negative prices as zero and `multiplier: 1.23` adds the deposit uplift; set both near the top of the YAML or in the [YAML builder](https://marino39.github.io/ha-energy-compass/builder.html) (section **Sell price: RCE (net-billing)**). Timestamps use the compact UTC form `20260925T1015Z` so the attribute stays under Home Assistant's recorder size limit.
+
+Install it like the tariff helper, as `packages/rce_sell_price.yaml`. The sensor is unavailable, instead of publishing a wrong price, when the last fetch is older than 75 minutes, when no record covers the current quarter hour, or when any record is malformed.
+
+Connect it under **Tariffs → Sell source → Interval forecast**:
+
+| Field | Value |
+| --- | --- |
+| Entity | `sensor.energy_compass_rce_export_forecast` |
+| Attribute | `prices` |
+| Value path | `price` |
+| Start path | `start` |
+| End path | `end` |
+| Unit | `PLN/kWh` |
+| Publication path, optional | `attributes.published_at` |
+| Maximum age, if checking age | `4500` seconds |
+
+The published prices already include the floor and multiplier, so set the sell transformation to multiplier `1`, VAT disabled and addition `0`. Tomorrow's prices usually appear in the early afternoon; until then the forecast covers today only.
