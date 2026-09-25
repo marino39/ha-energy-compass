@@ -45,7 +45,7 @@ passes. State in the PR which docs changed, or why none needed to.
 | Deye controller: input, default, profile, plan acceptance, write/confirm rule, runtime code | `guide.*` § Deye inverter controller (inputs table, profiles table, runtime codes, diagram), `docs/installation.md` § Deye inverter controller |
 | Deye package: helper, template sensor, TOU prefix | `guide.*` § Deye inverter controller → Package entities, `docs/installation.md` § Deye inverter controller step 1 |
 | Plan attribute or state consumed by the controller (`intervals`, `dispatch_policy`, `balance_hold`, `generated_at`, `valid_until`, `refreshing`, `plan_retained`) | the controller generator and its tests first, then `guide.*` § Deye inverter controller |
-| Dashboard example added/changed | `docs/installation.md` § Dashboard examples, `guide.*` § Deye inverter controller → Dashboard examples |
+| Dashboard example added/changed | `docs/installation.md` § Dashboard examples, `guide.*` § Deye inverter controller → Dashboard examples; new section or input role → `FIELDS`/`SECTIONS` in `tools/build_builder.py` |
 | Source requirements, units, tariffs | `docs/source-requirements.md`, `docs/source-contracts.md`, `docs/tariff-helper.md` |
 | Home Assistant / SciPy / runtime requirement | `README*.md` § Install, `docs/runtime-validation.md` |
 
@@ -56,8 +56,12 @@ passes. State in the PR which docs changed, or why none needed to.
 | `blueprints/automation/energy_compass/deye_solarman_controller.yaml`, `packages/energy_compass_deye.yaml` | `tools/deye_controller/build.py` | `python tools/deye_controller/build.py` |
 | `examples/dashboards/*.yaml` | `tools/dashboards/build.py` (+ `state_bands.js`) | `python tools/dashboards/build.py` |
 | `docs/guide.*.html`, `docs/assets/diagrams/*.svg` | `docs/guide.*.md` | `python tools/build_guides.py` |
+| `docs/builder.html`, `docs/assets/builder/templates.js` | `tools/build_builder.py` (renders both generators with `__EC_*__` tokens; style from `docs/index.html`) | `python tools/build_builder.py` |
 
-Edit the source, rebuild, and commit source and output together. CI runs both generators with
+Edit the source, rebuild, and commit source and output together. A change to either generator or to
+`docs/index.html` also requires `python tools/build_builder.py`. `docs/assets/builder/builder.js` is
+hand-written and must only validate and substitute tokens — never re-implement generator logic in it.
+CI runs all three builders with
 `--check` and fails on any difference. `tests/test_deye_controller_docs.py` fails when a blueprint
 input, package entity or runtime code is missing from either guide, or a dashboard example is not
 linked from `docs/installation.md` — fix the docs, never weaken the test.

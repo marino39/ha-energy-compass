@@ -688,7 +688,8 @@ programów czasowych (TOU), a każdy zapis sprawdza odczytem rejestrów. Wymaga 
 
 Pakiet zakłada domyślne nazwy encji TOU z Solarman (`number.inverter_deye_program_1_power` …
 `time.inverter_deye_program_6_time`). Przy innej nazwie urządzenia wygeneruj pakiet z własnym
-prefiksem: `python tools/deye_controller/build.py --prefix my_inverter_program_`.
+prefiksem w [generatorze YAML](builder.html) albo poleceniem
+`python tools/deye_controller/build.py --prefix my_inverter_program_`.
 
 ### Tryby
 
@@ -796,7 +797,8 @@ Teksty `runtime.reason` są w tej wersji po polsku.
 Generuje je `tools/dashboards/build.py` z zastępczymi identyfikatorami encji: sekcja stanu sterownika
 (`deye_controller.yaml`, karty natywne), wykres historii i planu load / grid / PV / SoC z pasmami stanów
 planu (`plan_chart.yaml`) oraz oś czasu poziomów Consumer Compass (`consumer_compass_chart.yaml`), oba
-dla ApexCharts Card. Opis: [przewodnik instalacji](installation.md#dashboard-examples) (EN).
+dla ApexCharts Card. [Generator YAML](builder.html) wypełnia każdą z nich Twoimi encjami, pojemnością
+i językiem. Opis: [przewodnik instalacji](installation.md#dashboard-examples) (EN).
 
 ## Słownik kodów powodów
 

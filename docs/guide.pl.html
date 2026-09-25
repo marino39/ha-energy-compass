@@ -1122,7 +1122,8 @@ programów czasowych (TOU), a każdy zapis sprawdza odczytem rejestrów. Wymaga 
 </table></section>
 <p>Pakiet zakłada domyślne nazwy encji TOU z Solarman (<code>number.inverter_deye_program_1_power</code> …
 <code>time.inverter_deye_program_6_time</code>). Przy innej nazwie urządzenia wygeneruj pakiet z własnym
-prefiksem: <code>python tools/deye_controller/build.py --prefix my_inverter_program_</code>.</p>
+prefiksem w <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/builder.html">generatorze YAML</a> albo poleceniem
+<code>python tools/deye_controller/build.py --prefix my_inverter_program_</code>.</p>
 <h3 id="tryby">Tryby</h3>
 <figure class="diagram"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/diagram-ac9c2721d676-dark.svg"><img src="assets/diagrams/diagram-ac9c2721d676.svg" alt="Diagram 12" loading="lazy"></picture></figure>
 <p><strong>Auto</strong> zapisuje; <strong>Simulation</strong> oblicza wszystkie cele i zapisuje je w <code>runtime</code>, nie dotykając
@@ -1335,7 +1336,8 @@ ustawia progi, na końcu włącza kierunek.</p>
 <p>Generuje je <code>tools/dashboards/build.py</code> z zastępczymi identyfikatorami encji: sekcja stanu sterownika
 (<code>deye_controller.yaml</code>, karty natywne), wykres historii i planu load / grid / PV / SoC z pasmami stanów
 planu (<code>plan_chart.yaml</code>) oraz oś czasu poziomów Consumer Compass (<code>consumer_compass_chart.yaml</code>), oba
-dla ApexCharts Card. Opis: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md#dashboard-examples">przewodnik instalacji</a> (EN).</p>
+dla ApexCharts Card. <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/builder.html">Generator YAML</a> wypełnia każdą z nich Twoimi encjami, pojemnością
+i językiem. Opis: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md#dashboard-examples">przewodnik instalacji</a> (EN).</p>
 <h2 id="słownik-kodów-powodów">Słownik kodów powodów</h2>
 <h3 id="powody-pokrycia--jakości-atrybuty-reason-reasons">Powody pokrycia / jakości (atrybuty <code>reason</code>, <code>reasons</code>)</h3>
 <section class="table-scroll"><table>
