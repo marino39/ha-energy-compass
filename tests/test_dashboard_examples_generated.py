@@ -36,7 +36,19 @@ def test_examples_hold_no_installation_entities(path):
 @pytest.mark.parametrize("path", EXAMPLES, ids=lambda path: path.name)
 async def test_markdown_cards_render(hass, path):
     section = yaml_util.load_yaml(path)
-    cards = [card for card in section["cards"] if card["type"] == "markdown"]
+    cards = []
+
+    def collect(value):
+        if isinstance(value, dict):
+            if value.get("type") == "markdown":
+                cards.append(value)
+            for child in value.values():
+                collect(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect(child)
+
+    collect(section)
     assert cards
     for card in cards:
         assert Template(card["content"], hass).async_render(parse_result=False)
