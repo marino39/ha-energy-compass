@@ -14,6 +14,7 @@ or later; the controller section uses native cards only.
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -33,6 +34,16 @@ ENTITIES = {
     "load": "sensor.replace_with_load_power",
     "grid": "sensor.replace_with_grid_power",
     "pv": "sensor.replace_with_pv_power",
+    "alert": "binary_sensor.replace_with_alert",
+    "optimizer": "sensor.replace_with_optimizer_status",
+    "machine": "sensor.replace_with_energy_compass",
+    "consumer_cost": "sensor.replace_with_consumption_cost",
+    "next_change": "sensor.replace_with_next_change",
+    "battery_power": "sensor.replace_with_battery_power",
+    "battery_state": "sensor.replace_with_battery_state",
+    "charge_limit": "number.replace_with_battery_max_charging_current",
+    "discharge_limit": "number.replace_with_battery_max_discharging_current",
+    "grid_limit": "number.replace_with_battery_grid_charging_current",
 }
 CAPACITY_KWH = (
     25  # Must match the Energy Compass battery capacity, not the BMS capacity.
@@ -438,42 +449,579 @@ def consumer_section(entities=ENTITIES, lang="en"):
     return {"type": "grid", "column_span": 4, "cards": [chart, note]}
 
 
-def controller_section(entities=ENTITIES, lang="en"):
-    """Deye controller mode and runtime; entity IDs are fixed by the package."""
-    t = {
-        "en": ("Deye controller", "Reason", "Warning", "Uncertain registers"),
-        "pl": ("Sterownik Deye", "Powód", "Ostrzeżenie", "Niepewne rejestry"),
-    }[lang]
-    runtime = "sensor.energy_compass_deye_runtime"
+# --- Controller panel and diagnostics -------------------------------------
+# The Deye controller package fixes these entity IDs.
+MODE = "input_select.energy_compass_deye_mode"
+RUNTIME = "sensor.energy_compass_deye_runtime"
+SESSION = "input_boolean.energy_compass_deye_session"
+RESTORE = "input_boolean.energy_compass_deye_restore_pending"
+NEXT_TOU = "sensor.energy_compass_deye_next_tou"
+PANEL_TEXT = {
+    "en": {
+        "title": "Battery",
+        "subtitle": "Energy Compass · plan and execution",
+        "check": "Check control",
+        "now": "Battery now",
+        "decision": "Compass decision",
+        "plan": "Battery plan",
+        "next24": "Next 24 hours",
+        "soc_forecast": "Charge forecast · 24 h",
+        "soc_series": "SOC forecast",
+        "consumption": "Household consumption compass",
+        "history": "History",
+        "soc_24h": "Charge · last 24 h",
+        "power_24h": "Power · + discharge / − charge",
+        "control_24h": "Control history · 24 h",
+        "h_mode": "Control",
+        "h_machine": "Battery recommendation",
+        "h_runtime": "Controller state",
+        "h_battery": "Battery operation",
+        "charge": "Charge",
+        "power": "Battery power",
+        "mode": "Control mode",
+        "diagnostics": "Energy Compass diagnostics",
+        "limits": "Inverter limits · read-back",
+        "l_charge": "Charge limit",
+        "l_discharge": "Discharge limit",
+        "l_grid": "Grid charge limit",
+        "l_tou": "Next TOU change",
+        "states": "{'CHARGE_PV':'Charging from PV','CHARGE_GRID':'Charging from grid','DISCHARGE_GRID':'Selling to grid','SELF_CONSUME':'Powering the house','HOLD':'Holding','CURTAIL':'Holding (PV curtailment)','BASE':'Base mode'}",
+        "modes": "{'Auto':'Automatic','Simulation':'Simulation','Off':'Off'}",
+        "levels": "{'BOOST':'🟢 Use more','CHEAP':'🟢 Cheap use','NORMAL':'⚪ Normal use','LIMIT':'🔴 Limit use'}",
+        "levels_lc": "{'BOOST':'use more','CHEAP':'cheap use','NORMAL':'normal use','LIMIT':'limit use'}",
+        "discharging": "Discharging",
+        "charging": "Charging",
+        "idle": "Idle",
+        "no_power": "No current power reading.",
+        "control": "Control",
+        "unavailable": "Unavailable",
+        "confirmed": "Settings confirmed",
+        "no_confirmation": "No mode confirmation",
+        "status": "Controller status",
+        "no_data": "No data",
+        "no_advice": "No recommendation",
+        "segment_until": "Current segment until",
+        "no_current": "**No current recommendation.** The plan expired or the forecast is unavailable.",
+        "soc_target": "SOC target",
+        "soc_floor": "SOC floor",
+        "of_controller": "of the controller",
+        "then": "Then",
+        "measure_note": "Power shows what the battery actually does. The recommendation and confirmation refer to the plan and the settings.",
+        "stale_forecast": "The forecast is not current. The schedule is not a current recommendation.",
+        "compass_problem": "The Compass reports a problem.",
+        "controller": "Controller",
+        "no_fresh": "No fresh confirmation of the inverter settings.",
+        "unconfirmed_writes": "Unconfirmed writes",
+        "from": "From",
+        "battery_plan": "Battery plan",
+        "soc_end": "SOC at the end",
+        "now_row": "Now",
+        "plan_note": "The plan can change after new measurements. SOC is computed for the configured",
+        "no_schedule": "Schedule unavailable - waiting for a current forecast.",
+        "extra_cost": "PLN/kWh of extra use",
+        "next_change": "Next change",
+        "cost_note": "Estimated cost of extra energy used in the house, with the battery taken into account. This is not the grid purchase price.",
+        "no_hint": "No consumption hint - no current forecast.",
+        "param": "Parameter",
+        "state": "State",
+        "optimizer": "Optimizer",
+        "reason": "Reason",
+        "confirmed_mode": "Confirmed mode",
+        "last_confirmation": "Last confirmation",
+        "plan_created": "Plan created",
+        "controller_valid": "Controller plan valid until",
+        "forecast_until": "Forecast until",
+        "active_tou": "Active TOU program",
+        "uncertain": "Unconfirmed writes",
+        "session": "Controller session",
+        "restore": "Restore after the session",
+        "none": "None",
+        "model_notes": "Model notes",
+        "restore_note": "The restore flag can be on during an Auto session. On its own it does not mean a fault.",
+        "currency": "PLN",
+    },
+    "pl": {
+        "title": "Bateria",
+        "subtitle": "Energy Compass · plan i wykonanie",
+        "check": "Sprawdź sterowanie",
+        "now": "Bateria teraz",
+        "decision": "Decyzja Kompasu",
+        "plan": "Plan baterii",
+        "next24": "Najbliższe 24 godziny",
+        "soc_forecast": "Prognoza naładowania · 24 h",
+        "soc_series": "Prognoza SOC",
+        "consumption": "Kompas zużycia w domu",
+        "history": "Historia",
+        "soc_24h": "Naładowanie · ostatnie 24 h",
+        "power_24h": "Moc · + rozładowanie / − ładowanie",
+        "control_24h": "Historia sterowania · 24 h",
+        "h_mode": "Sterowanie",
+        "h_machine": "Zalecenie baterii",
+        "h_runtime": "Stan sterownika",
+        "h_battery": "Praca baterii",
+        "charge": "Naładowanie",
+        "power": "Moc baterii",
+        "mode": "Tryb sterowania",
+        "diagnostics": "Diagnostyka Energy Compass",
+        "limits": "Limity falownika · odczyt",
+        "l_charge": "Limit ładowania",
+        "l_discharge": "Limit rozładowania",
+        "l_grid": "Limit ładowania z sieci",
+        "l_tou": "Następna zmiana TOU",
+        "states": "{'CHARGE_PV':'Ładowanie z PV','CHARGE_GRID':'Ładowanie z sieci','DISCHARGE_GRID':'Sprzedaż do sieci','SELF_CONSUME':'Zasilanie domu','HOLD':'Podtrzymanie','CURTAIL':'Podtrzymanie (ograniczenie PV)','BASE':'Tryb bazowy'}",
+        "modes": "{'Auto':'Automatyczne','Simulation':'Symulacja','Off':'Wyłączone'}",
+        "levels": "{'BOOST':'🟢 Zwiększ zużycie','CHEAP':'🟢 Tanie zużycie','NORMAL':'⚪ Zwykłe zużycie','LIMIT':'🔴 Ogranicz zużycie'}",
+        "levels_lc": "{'BOOST':'zwiększ zużycie','CHEAP':'tanie zużycie','NORMAL':'zwykłe zużycie','LIMIT':'ogranicz zużycie'}",
+        "discharging": "Rozładowanie",
+        "charging": "Ładowanie",
+        "idle": "Spoczynek",
+        "no_power": "Brak aktualnego pomiaru mocy.",
+        "control": "Sterowanie",
+        "unavailable": "Niedostępne",
+        "confirmed": "Ustawienia potwierdzone",
+        "no_confirmation": "Brak potwierdzenia trybu",
+        "status": "Status sterownika",
+        "no_data": "Brak danych",
+        "no_advice": "Brak zalecenia",
+        "segment_until": "Bieżący odcinek do",
+        "no_current": "**Brak aktualnego zalecenia.** Plan wygasł lub prognoza jest niedostępna.",
+        "soc_target": "Cel SOC",
+        "soc_floor": "Próg SOC",
+        "of_controller": "sterownika",
+        "then": "Następnie",
+        "measure_note": "Pomiar mocy pokazuje rzeczywistą pracę baterii. Zalecenie i potwierdzenie dotyczą planu oraz ustawień.",
+        "stale_forecast": "Prognoza nie jest aktualna. Harmonogram nie stanowi bieżącego zalecenia.",
+        "compass_problem": "Kompas zgłasza problem.",
+        "controller": "Sterownik",
+        "no_fresh": "Brak świeżego potwierdzenia ustawień falownika.",
+        "unconfirmed_writes": "Niepotwierdzone zapisy",
+        "from": "Od",
+        "battery_plan": "Plan baterii",
+        "soc_end": "SOC na koniec",
+        "now_row": "Teraz",
+        "plan_note": "Plan może się zmienić po nowych pomiarach. SOC wyliczony dla skonfigurowanych",
+        "no_schedule": "Harmonogram niedostępny — oczekiwanie na aktualną prognozę.",
+        "extra_cost": "zł/kWh dodatkowego zużycia",
+        "next_change": "Następna zmiana",
+        "cost_note": "Szacowany koszt dodatkowej energii zużytej w domu, z uwzględnieniem baterii. To nie cena zakupu z sieci.",
+        "no_hint": "Wskazówka zużycia niedostępna — brak aktualnej prognozy.",
+        "param": "Parametr",
+        "state": "Stan",
+        "optimizer": "Optymalizator",
+        "reason": "Powód",
+        "confirmed_mode": "Tryb potwierdzony",
+        "last_confirmation": "Ostatnie potwierdzenie",
+        "plan_created": "Plan utworzony",
+        "controller_valid": "Plan sterownika ważny do",
+        "forecast_until": "Prognoza do",
+        "active_tou": "Aktywny program TOU",
+        "uncertain": "Niepotwierdzone zapisy",
+        "session": "Sesja sterownika",
+        "restore": "Przywrócenie po zakończeniu sesji",
+        "none": "Brak",
+        "model_notes": "Uwagi modelu",
+        "restore_note": "Flaga przywrócenia może być aktywna podczas sesji Auto. Sama nie oznacza awarii.",
+        "currency": "zł",
+    },
+}
+COLORS = "{'CHARGE_PV':'🟢','CHARGE_GRID':'🔵','DISCHARGE_GRID':'🟠','SELF_CONSUME':'🟣','HOLD':'⚪','CURTAIL':'⚪','BASE':'⚪'}"
+
+
+def _fill(text, e, t, capacity=None):
+    """Replace @role@ with entity IDs and @t:key@ with labels."""
+    out = re.sub(r"@t:([a-z_0-9]+)@", lambda m: t[m.group(1)], text)
+    out = re.sub(r"@([a-z_]+)@", lambda m: e[m.group(1)], out)
+    return out.replace("@CAPACITY@", str(capacity))
+
+
+PANEL_BASE = (
+    """{% set labels = @t:states@ %}
+{% set colors = """
+    + COLORS
+    + """ %}
+{% set rt = state_attr('"""
+    + RUNTIME
+    + """','runtime') or {} %}
+{% set plan = '@plan@' %}
+{% set valid = is_state('@valid@','on') and as_timestamp(state_attr(plan,'valid_until'),0) > as_timestamp(now()) %}
+{% set fresh = as_timestamp(rt.get('original_deadline'),0) > as_timestamp(now()) and as_timestamp(rt.get('last_confirmation'),0) > 0 %}
+"""
+)
+
+
+def _md(title, body, e, t, capacity=None, columns=12):
+    return {
+        "type": "markdown",
+        "title": _fill(title, e, t),
+        "content": _fill(PANEL_BASE + body.strip(), e, t, capacity),
+        "grid_options": {"columns": columns, "rows": "auto"},
+    }
+
+
+def _heading(text, icon, style="subtitle"):
+    return {"type": "heading", "heading": text, "heading_style": style, "icon": icon}
+
+
+def panel_section(entities=ENTITIES, lang="en", capacity=CAPACITY_KWH):
+    """Deye controller panel: health, battery now, decision, 24 h plan, consumption, history."""
+    e, t = entities, PANEL_TEXT[lang]
+    alert = _md(
+        "@t:check@",
+        """
+{% if not valid %}⚠️ @t:stale_forecast@{% endif %}
+{% if is_state('@alert@','on') %}
+⚠️ {{ state_attr('@alert@','reason') or '@t:compass_problem@' }}
+{% endif %}
+{% if is_state('"""
+        + MODE
+        + """','Auto') %}
+{% if rt.get('code') != 'ok' %}⚠️ @t:controller@: {{ rt.get('reason') or rt.get('code') or '@t:no_data@' }}{% endif %}
+{% if not fresh %}⚠️ @t:no_fresh@{% endif %}
+{% if rt.get('uncertain') %}⚠️ @t:unconfirmed_writes@: {{ rt.get('uncertain')|length }}.{% endif %}
+{% if rt.get('warning') %}⚠️ {{ rt.warning }}{% endif %}
+{% endif %}
+""",
+        e,
+        t,
+        columns=24,
+    )
+    alert = {
+        "type": "conditional",
+        "grid_options": {"columns": 24, "rows": "auto"},
+        "conditions": [
+            {
+                "condition": "or",
+                "conditions": [
+                    {"condition": "state", "entity": e["valid"], "state_not": "on"},
+                    {"condition": "state", "entity": e["alert"], "state": "on"},
+                    {
+                        "condition": "and",
+                        "conditions": [
+                            {"condition": "state", "entity": MODE, "state": "Auto"},
+                            {
+                                "condition": "state",
+                                "entity": RUNTIME,
+                                "state_not": "ok",
+                            },
+                        ],
+                    },
+                ],
+            }
+        ],
+        "card": alert,
+    }
+    now_card = {
+        "type": "vertical-stack",
+        "grid_options": {"columns": 12, "rows": "auto"},
+        "cards": [
+            {
+                "type": "horizontal-stack",
+                "cards": [
+                    {
+                        "type": "tile",
+                        "entity": e["soc"],
+                        "name": t["charge"],
+                        "color": "green",
+                    },
+                    {
+                        "type": "tile",
+                        "entity": e["battery_power"],
+                        "name": t["power"],
+                        "color": "purple",
+                    },
+                ],
+            },
+            _md(
+                "@t:now@",
+                """
+{% set power = states('@battery_power@') %}
+{% if is_number(power) %}
+**{{ '@t:discharging@' if power|float > 50 else '@t:charging@' if power|float < -50 else '@t:idle@' }} · {{ (power|float|abs / 1000)|round(2) }} kW**
+{% else %}
+@t:no_power@
+{% endif %}
+
+@t:control@: **{{ @t:modes@.get(states('"""
+                + MODE
+                + """'),'@t:unavailable@') }}**
+
+{% if is_state('"""
+                + MODE
+                + """','Auto') and fresh and rt.get('code') == 'ok' and not rt.get('uncertain') %}
+@t:confirmed@: **{{ labels.get(rt.get('confirmed_mode'),'@t:no_confirmation@') }}**
+{% else %}
+@t:status@: **{{ rt.get('reason') or rt.get('code') or '@t:no_data@' }}**
+{% endif %}
+""",
+                e,
+                t,
+            ),
+            {
+                "type": "tile",
+                "entity": MODE,
+                "name": t["mode"],
+                "icon": "mdi:compass",
+                "features": [{"type": "select-options"}],
+            },
+        ],
+    }
+    decision = _md(
+        "@t:decision@",
+        """
+{% set mode = states('@machine@') %}
+{% if valid %}
+### {{ colors.get(mode,'⚪') }} {{ labels.get(mode,'@t:no_advice@') }}
+{% set ns = namespace(row=none) %}
+{% for row in state_attr(plan,'intervals') or [] %}
+{% if as_timestamp(row.start,0) <= as_timestamp(now()) < as_timestamp(row.end,0) %}{% set ns.row = row %}{% endif %}
+{% endfor %}
+{% if ns.row %}
+@t:segment_until@ **{{ as_local(as_datetime(ns.row.end)).strftime('%H:%M') }}**.
+{% endif %}
+{% else %}
+@t:no_current@
+{% endif %}
+
+{% set n = rt.get('active_tou',0)|int %}
+{% set confirmed = rt.get('confirmed') or {} %}
+{% set prefix = state_attr('sensor.energy_compass_deye_tou_settings','prefix') or '' %}
+{% set target = confirmed.get('number.' ~ prefix ~ n ~ '_soc') %}
+{% if is_state('"""
+        + MODE
+        + """','Auto') and fresh and rt.get('code') == 'ok' and not rt.get('uncertain') and target is not none %}
+{{ '@t:soc_target@' if rt.get('confirmed_mode') == 'CHARGE_GRID' else '@t:soc_floor@' }} @t:of_controller@: **{{ target|round(0)|int }}%**
+{% endif %}
+
+{% if valid %}
+{% set ns = namespace(next=none) %}
+{% for row in state_attr(plan,'intervals') or [] %}
+{% if not ns.next and as_timestamp(row.start,0) > as_timestamp(now()) and row.state != mode %}{% set ns.next = row %}{% endif %}
+{% endfor %}
+{% if ns.next %}
+@t:then@: **{{ labels.get(ns.next.state,ns.next.state) }}**, {{ as_local(as_datetime(ns.next.start)).strftime('%d.%m %H:%M') }}.
+{% endif %}
+{% endif %}
+
+@t:measure_note@
+""",
+        e,
+        t,
+    )
+    timeline = _md(
+        "@t:next24@",
+        """
+{% if valid %}
+{% set ns = namespace(rows=[], start=none, end=none, mode=none, soc=none) %}
+{% for r in state_attr(plan,'intervals') or [] %}
+{% if as_timestamp(r.end,0) > as_timestamp(now()) and as_timestamp(r.start,0) < as_timestamp(now())+86400 %}
+{% if ns.mode != r.state %}
+{% if ns.mode is not none %}{% set ns.rows = ns.rows + [{'start':ns.start,'end':ns.end,'mode':ns.mode,'soc':ns.soc}] %}{% endif %}
+{% set ns.start = r.start %}{% set ns.mode = r.state %}
+{% endif %}
+{% set ns.end = r.end %}{% set ns.soc = r.end_soc_kwh %}
+{% endif %}
+{% endfor %}
+{% if ns.mode is not none %}{% set ns.rows = ns.rows + [{'start':ns.start,'end':ns.end,'mode':ns.mode,'soc':ns.soc}] %}{% endif %}
+| @t:from@ | @t:battery_plan@ | @t:soc_end@ |
+|:--|:--|--:|
+{% for r in ns.rows %}| {{ '@t:now_row@' if as_timestamp(r.start,0) <= as_timestamp(now()) else as_local(as_datetime(r.start)).strftime('%d.%m %H:%M') }} | {{ colors.get(r.mode,'⚪') }} {{ labels.get(r.mode,r.mode) }} | {{ (r.soc|float / @CAPACITY@ * 100)|round(0)|int }}% |
+{% endfor %}
+
+@t:plan_note@ @CAPACITY@ kWh.
+{% else %}
+@t:no_schedule@
+{% endif %}
+""",
+        e,
+        t,
+        capacity,
+    )
+    forecast = {
+        "type": "custom:apexcharts-card",
+        "grid_options": {"columns": 12, "rows": "auto"},
+        "header": {"show": True, "title": t["soc_forecast"]},
+        "graph_span": "24h",
+        "span": {"start": "minute"},
+        "update_interval": "1min",
+        "now": {"show": True, "label": t["now_row"]},
+        "hours_12": False,
+        "yaxis": [{"min": 0, "max": 100, "decimals": 0}],
+        "apex_config": {
+            "chart": {"height": 260, "toolbar": {"show": False}},
+            "legend": {"show": False},
+            "xaxis": {"labels": {"datetimeUTC": False}},
+            "tooltip": {"x": {"format": "dd.MM HH:mm"}},
+        },
+        "series": [
+            {
+                "entity": e["plan"],
+                "name": t["soc_series"],
+                "unit": "%",
+                "type": "area",
+                "color": "#43a047",
+                "opacity": 0.15,
+                "stroke_width": 2,
+                "curve": "straight",
+                "extend_to": False,
+                "float_precision": 0,
+                "data_generator": f"""const a = entity.attributes, now = Date.now();
+if (hass.states['{e["valid"]}']?.state !== 'on' || !(Date.parse(a.valid_until) > now)) return [];
+const rows = (a.intervals || []).filter(r => Date.parse(r.end) > now && Date.parse(r.end) <= now + 86400000);
+const points = rows.map(r => [Date.parse(r.end), Math.max(0, Math.min(100, Number(r.end_soc_kwh) / {capacity} * 100))]);
+const soc = hass.states['{e["soc"]}'];
+const reported = Date.parse(soc?.attributes?.reported_at ?? soc?.last_updated);
+if (soc && Number.isFinite(Number(soc.state)) && now - reported < 90000) points.unshift([now, Number(soc.state)]);
+return points;""",
+            }
+        ],
+    }
+    consumption = _md(
+        "@t:consumption@",
+        """
+{% if valid %}
+{% set level = states('@consumer@') %}
+{% set cost = states('@consumer_cost@') %}
+**{{ @t:levels@.get(level,'@t:no_advice@') }}**
+{% if is_number(cost) %} · {{ cost|float|round(3) }} @t:extra_cost@{% endif %}
+
+{% set change = states('@next_change@') %}
+{% if as_timestamp(change,0) > as_timestamp(now()) %}
+@t:next_change@: **{{ @t:levels_lc@.get(state_attr('@next_change@','next_level'),'@t:no_data@') }}**, {{ as_local(as_datetime(change)).strftime('%d.%m %H:%M') }}.
+{% endif %}
+
+@t:cost_note@
+{% else %}
+@t:no_hint@
+{% endif %}
+""",
+        e,
+        t,
+        columns=24,
+    )
+    history = [
+        {
+            "type": "sensor",
+            "entity": e["soc"],
+            "name": t["soc_24h"],
+            "graph": "line",
+            "hours_to_show": 24,
+            "detail": 2,
+            "grid_options": {"columns": 12, "rows": "auto"},
+        },
+        {
+            "type": "sensor",
+            "entity": e["battery_power"],
+            "name": t["power_24h"],
+            "graph": "line",
+            "hours_to_show": 24,
+            "detail": 2,
+            "grid_options": {"columns": 12, "rows": "auto"},
+        },
+        {
+            "type": "history-graph",
+            "title": t["control_24h"],
+            "hours_to_show": 24,
+            "grid_options": {"columns": 24, "rows": "auto"},
+            "entities": [
+                {"entity": MODE, "name": t["h_mode"]},
+                {"entity": e["machine"], "name": t["h_machine"]},
+                {"entity": RUNTIME, "name": t["h_runtime"]},
+                {"entity": e["battery_state"], "name": t["h_battery"]},
+            ],
+        },
+    ]
+    return {
+        "type": "grid",
+        "column_span": 2,
+        "cards": [
+            {
+                "type": "heading",
+                "heading": t["title"],
+                "heading_style": "title",
+                "icon": "mdi:home-battery",
+            },
+            alert,
+            now_card,
+            decision,
+            _heading(t["plan"], "mdi:chart-timeline-variant"),
+            timeline,
+            forecast,
+            consumption,
+            _heading(t["history"], "mdi:history"),
+            *history,
+        ],
+    }
+
+
+def diagnostics_section(entities=ENTITIES, lang="en"):
+    """Deye controller diagnostics: plan and controller freshness, inverter limit read-back."""
+    e, t = entities, PANEL_TEXT[lang]
+    date = "as_local(as_datetime({v})).strftime('%d.%m %H:%M:%S') if as_timestamp({v},0) else '@t:none@'"
+    rows = [
+        ("optimizer", "states('@optimizer@')"),
+        ("controller", "rt.get('code','@t:no_data@')"),
+        ("reason", "rt.get('reason','—')"),
+        (
+            "confirmed_mode",
+            "labels.get(rt.get('confirmed_mode'),rt.get('confirmed_mode','—'))",
+        ),
+        ("last_confirmation", date.format(v="rt.get('last_confirmation')")),
+        ("plan_created", date.format(v="state_attr(plan,'generated_at')")),
+        ("controller_valid", date.format(v="rt.get('original_deadline')")),
+        (
+            "forecast_until",
+            date.format(v="state_attr('@valid@','coverage_end')").replace(
+                "%H:%M:%S", "%H:%M"
+            ),
+        ),
+        ("active_tou", "rt.get('active_tou','—')"),
+        ("uncertain", "rt.get('uncertain',[])|length"),
+        ("session", f"states('{SESSION}')"),
+        ("restore", f"states('{RESTORE}')"),
+    ]
+    table = "| @t:param@ | @t:state@ |\n|:--|:--|\n" + "\n".join(
+        f"| @t:{k}@ | {{{{ {v} }}}} |" for k, v in rows
+    )
+    diagnostics = _md(
+        "@t:diagnostics@",
+        table
+        + """
+
+{% if rt.get('warning') %}⚠️ {{ rt.warning }}{% endif %}
+
+{% if state_attr(plan,'reasons') %}@t:model_notes@: {{ state_attr(plan,'reasons')|join(', ') }}.{% endif %}
+
+@t:restore_note@
+""",
+        e,
+        t,
+    )
+    del diagnostics["grid_options"]
+    limits = {
+        "type": "entities",
+        "title": t["limits"],
+        "show_header_toggle": False,
+        "entities": [
+            {
+                "type": "simple-entity",
+                "entity": e["charge_limit"],
+                "name": t["l_charge"],
+            },
+            {
+                "type": "simple-entity",
+                "entity": e["discharge_limit"],
+                "name": t["l_discharge"],
+            },
+            {"type": "simple-entity", "entity": e["grid_limit"], "name": t["l_grid"]},
+            {"type": "simple-entity", "entity": NEXT_TOU, "name": t["l_tou"]},
+        ],
+    }
     return {
         "type": "grid",
         "cards": [
-            {"type": "heading", "heading": t[0], "icon": "mdi:solar-power-variant"},
-            {
-                "type": "tile",
-                "entity": "input_select.energy_compass_deye_mode",
-                "features": [{"type": "select-options"}],
-                "grid_options": {"columns": 12},
-            },
-            {
-                "type": "entities",
-                "entities": [
-                    runtime,
-                    "input_boolean.energy_compass_deye_restore_pending",
-                    "sensor.energy_compass_deye_plan",
-                    "sensor.energy_compass_deye_interval_end",
-                    "sensor.energy_compass_deye_next_tou",
-                ],
-            },
-            {
-                "type": "markdown",
-                "content": f"""{{% set rt = state_attr('{runtime}', 'runtime') or {{}} %}}
-**{{{{ rt.get('state', '—') }}}}** · `{{{{ states('{runtime}') }}}}` · {{{{ rt.get('confirmed_mode', '—') }}}}
-
-{t[1]}: {{{{ rt.get('reason', '—') }}}}
-{{% if rt.get('warning') %}}{t[2]}: {{{{ rt.warning }}}}{{% endif %}}
-{{% if rt.get('uncertain') %}}{t[3]}: {{{{ rt.uncertain | join(', ') }}}}{{% endif %}}""",
-            },
+            _heading(t["diagnostics"], "mdi:wrench-outline", "title"),
+            diagnostics,
+            limits,
         ],
     }
 
@@ -481,7 +1029,8 @@ def controller_section(entities=ENTITIES, lang="en"):
 SECTIONS = {
     "plan": plan_section,
     "consumer": consumer_section,
-    "controller": controller_section,
+    "panel": panel_section,
+    "diagnostics": diagnostics_section,
 }
 
 
@@ -495,7 +1044,8 @@ def outputs():
     return {
         OUT / "plan_chart.yaml": dump(plan_section()),
         OUT / "consumer_compass_chart.yaml": dump(consumer_section()),
-        OUT / "deye_controller.yaml": dump(controller_section()),
+        OUT / "controller_panel.yaml": dump(panel_section()),
+        OUT / "controller_diagnostics.yaml": dump(diagnostics_section()),
     }
 
 
@@ -529,7 +1079,7 @@ def main(argv=None):
         unknown = set(entities) - set(ENTITIES)
         if unknown:
             parser.error(f"unknown role: {', '.join(sorted(unknown))}")
-        kwargs = {"capacity": args.capacity} if args.print == "plan" else {}
+        kwargs = {"capacity": args.capacity} if args.print in ("plan", "panel") else {}
         sys.stdout.write(dump(SECTIONS[args.print](entities, args.lang, **kwargs)))
         return 0
     stale = [

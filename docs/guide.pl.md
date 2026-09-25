@@ -794,10 +794,16 @@ Teksty `runtime.reason` są w tej wersji po polsku.
 
 ### Przykładowe dashboardy
 
-Generuje je `tools/dashboards/build.py` z zastępczymi identyfikatorami encji: sekcja stanu sterownika
-(`deye_controller.yaml`, karty natywne), wykres historii i planu load / grid / PV / SoC z pasmami stanów
-planu (`plan_chart.yaml`) oraz oś czasu poziomów Consumer Compass (`consumer_compass_chart.yaml`), oba
-dla ApexCharts Card. [Generator YAML](builder.html) wypełnia każdą z nich Twoimi encjami, pojemnością
+Generuje je `tools/dashboards/build.py` z zastępczymi identyfikatorami encji:
+
+| Sekcja | Co pokazuje |
+| --- | --- |
+| `controller_panel.yaml` | sterownik w skrócie: ostrzeżenie **Sprawdź sterowanie** (nieaktualna prognoza, Alert, runtime inny niż `ok`, brak świeżego potwierdzenia, niepotwierdzone zapisy), baterię teraz z przełącznikiem trybu i potwierdzonymi nastawami, decyzję Kompasu z celem SOC sterownika, stany planu na 24 h z SOC na koniec, wykres prognozy SOC, wskazówkę i koszt zużycia w domu oraz historię SOC, mocy i sterowania z 24 h |
+| `controller_diagnostics.yaml` | stan optymalizatora i sterownika, powód, potwierdzony tryb, ostatnie potwierdzenie, ważność planu i prognozy, aktywny program TOU, niepotwierdzone zapisy, flagi sesji i przywrócenia oraz odczyt trzech limitów prądu |
+| `plan_chart.yaml` | 12 h pomiarów load / grid / PV / SoC i 24 h planu na tle pasm stanów planu |
+| `consumer_compass_chart.yaml` | poziomy Consumer Compass: 4 h historii i 20 h prognozy |
+
+Panel używa kart natywnych oraz ApexCharts Card do prognozy SOC; oba wykresy wymagają ApexCharts Card. [Generator YAML](builder.html) wypełnia każdą z nich Twoimi encjami, pojemnością
 i językiem. Opis: [przewodnik instalacji](installation.md#dashboard-examples) (EN).
 
 ## Słownik kodów powodów

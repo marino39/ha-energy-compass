@@ -1333,10 +1333,34 @@ ustawia progi, na końcu włącza kierunek.</p>
 </tbody>
 </table></section>
 <h3 id="przykładowe-dashboardy">Przykładowe dashboardy</h3>
-<p>Generuje je <code>tools/dashboards/build.py</code> z zastępczymi identyfikatorami encji: sekcja stanu sterownika
-(<code>deye_controller.yaml</code>, karty natywne), wykres historii i planu load / grid / PV / SoC z pasmami stanów
-planu (<code>plan_chart.yaml</code>) oraz oś czasu poziomów Consumer Compass (<code>consumer_compass_chart.yaml</code>), oba
-dla ApexCharts Card. <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/builder.html">Generator YAML</a> wypełnia każdą z nich Twoimi encjami, pojemnością
+<p>Generuje je <code>tools/dashboards/build.py</code> z zastępczymi identyfikatorami encji:</p>
+<section class="table-scroll"><table>
+<thead>
+<tr>
+<th>Sekcja</th>
+<th>Co pokazuje</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>controller_panel.yaml</code></td>
+<td>sterownik w skrócie: ostrzeżenie <strong>Sprawdź sterowanie</strong> (nieaktualna prognoza, Alert, runtime inny niż <code>ok</code>, brak świeżego potwierdzenia, niepotwierdzone zapisy), baterię teraz z przełącznikiem trybu i potwierdzonymi nastawami, decyzję Kompasu z celem SOC sterownika, stany planu na 24 h z SOC na koniec, wykres prognozy SOC, wskazówkę i koszt zużycia w domu oraz historię SOC, mocy i sterowania z 24 h</td>
+</tr>
+<tr>
+<td><code>controller_diagnostics.yaml</code></td>
+<td>stan optymalizatora i sterownika, powód, potwierdzony tryb, ostatnie potwierdzenie, ważność planu i prognozy, aktywny program TOU, niepotwierdzone zapisy, flagi sesji i przywrócenia oraz odczyt trzech limitów prądu</td>
+</tr>
+<tr>
+<td><code>plan_chart.yaml</code></td>
+<td>12 h pomiarów load / grid / PV / SoC i 24 h planu na tle pasm stanów planu</td>
+</tr>
+<tr>
+<td><code>consumer_compass_chart.yaml</code></td>
+<td>poziomy Consumer Compass: 4 h historii i 20 h prognozy</td>
+</tr>
+</tbody>
+</table></section>
+<p>Panel używa kart natywnych oraz ApexCharts Card do prognozy SOC; oba wykresy wymagają ApexCharts Card. <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/builder.html">Generator YAML</a> wypełnia każdą z nich Twoimi encjami, pojemnością
 i językiem. Opis: <a href="https://github.com/marino39/ha-energy-compass/blob/main/docs/installation.md#dashboard-examples">przewodnik instalacji</a> (EN).</p>
 <h2 id="słownik-kodów-powodów">Słownik kodów powodów</h2>
 <h3 id="powody-pokrycia--jakości-atrybuty-reason-reasons">Powody pokrycia / jakości (atrybuty <code>reason</code>, <code>reasons</code>)</h3>

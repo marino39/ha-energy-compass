@@ -73,6 +73,61 @@ FIELDS = {
         "Moc sieci (W, + import)",
     ),
     "pv": ("entity", "sensor.inverter_deye_pv_power", "PV power (W)", "Moc PV (W)"),
+    "alert": ("entity", "binary_sensor.energy_compass_alert", "Alert", "Alert"),
+    "optimizer": (
+        "entity",
+        "sensor.energy_compass_optimizer_status",
+        "Optimizer status",
+        "Stan optymalizatora",
+    ),
+    "machine": (
+        "entity",
+        "sensor.energy_compass_energy_compass",
+        "Energy compass (planned battery state)",
+        "Kompas energii (planowany stan baterii)",
+    ),
+    "consumer_cost": (
+        "entity",
+        "sensor.energy_compass_consumption_cost",
+        "Consumption cost",
+        "Koszt zużycia",
+    ),
+    "next_change": (
+        "entity",
+        "sensor.energy_compass_next_change",
+        "Next change",
+        "Następna zmiana",
+    ),
+    "battery_power": (
+        "entity",
+        "sensor.inverter_deye_battery_power",
+        "Battery power (W, + discharge)",
+        "Moc baterii (W, + rozładowanie)",
+    ),
+    "battery_state": (
+        "entity",
+        "sensor.inverter_deye_battery_state",
+        "Battery state (inverter)",
+        "Stan baterii (falownik)",
+    ),
+    "charge_limit": (
+        "entity",
+        "number.inverter_deye_battery_max_charging_current",
+        "Battery max charging current",
+        "Maks. prąd ładowania baterii",
+    ),
+    "discharge_limit": (
+        "entity",
+        "number.inverter_deye_battery_max_discharging_current",
+        "Battery max discharging current",
+        "Maks. prąd rozładowania baterii",
+    ),
+    "grid_limit": (
+        "entity",
+        "number.inverter_deye_battery_grid_charging_current",
+        "Battery grid charging current",
+        "Prąd ładowania baterii z sieci",
+    ),
     "capacity": (
         "number",
         "25",
@@ -92,7 +147,8 @@ SECTIONS = {
         "Consumer Compass timeline (ApexCharts)",
         "Oś czasu Consumer Compass (ApexCharts)",
     ),
-    "controller": ("Deye controller status", "Status sterownika Deye"),
+    "panel": ("Deye controller panel", "Panel sterownika Deye"),
+    "diagnostics": ("Deye controller diagnostics", "Diagnostyka sterownika Deye"),
     "package": ("Deye controller package", "Pakiet sterownika Deye"),
 }
 
@@ -112,7 +168,7 @@ def section_text(name, lang, values):
     if name == "package":
         return dump(controller.package(values["prefix"]), controller.Dumper)
     entities = {role: values[role] for role in dashboards.ENTITIES}
-    kwargs = {"capacity": values["capacity"]} if name == "plan" else {}
+    kwargs = {"capacity": values["capacity"]} if name in ("plan", "panel") else {}
     return dump(dashboards.SECTIONS[name](entities, lang, **kwargs))
 
 
