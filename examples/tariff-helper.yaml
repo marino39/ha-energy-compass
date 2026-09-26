@@ -4,6 +4,9 @@ template:
         event: start
       - trigger: time_pattern
         minutes: "/15"
+      # Refresh right after a Template reload instead of waiting for the next quarter hour.
+      - trigger: event
+        event_type: event_template_reloaded
     variables:
       tariff_group: G12w
       # Illustrative final PLN/kWh rates; replace these with your own contract prices.
