@@ -1,5 +1,7 @@
 # Energy Compass
 
+> **Moved:** this repository now lives at [datamindzio/ha-energy-compass](https://github.com/datamindzio/ha-energy-compass) (guide: <https://datamindzio.github.io/ha-energy-compass/>). This copy is archived and read-only; in HACS, replace the custom repository URL with the new one.
+
 **English** · [Polski](README.pl.md)
 
 <picture>
